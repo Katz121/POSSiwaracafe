@@ -1,13 +1,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-  ClipboardList, RefreshCcw, Zap, X, CheckCircle2, Trash2,
+  ClipboardList, RefreshCcw, Zap, CheckCircle2, Trash2,
   ChevronDown, ChevronUp, Star, Eye, EyeOff, Edit, PackagePlus,
-  Coffee, Link2, Plus, Upload, TrendingUp, Store, AlertTriangle
+  Coffee, Link2, Plus, Upload, TrendingUp, Store, AlertTriangle, FolderCog
 } from 'lucide-react';
 import { doc, collection, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate, compressImage } from '../../utils/calculations';
+import { Button, Modal, EmptyState, useToast, ConfirmModal, InputModal, Skeleton } from '../ui';
 
 export default function MenuManageView() {
   const {
@@ -21,9 +22,10 @@ export default function MenuManageView() {
     runDbAction,
     callGeminiAPI,
     activePromotion,
-    setActivePromotion,
-    setView
+    setActivePromotion
   } = useAppContext();
+
+  const toast = useToast();
 
   // Local states - Menu form
   const [newItem, setNewItem] = useState({
@@ -40,6 +42,26 @@ export default function MenuManageView() {
   const [promotionIdeas, setPromotionIdeas] = useState([]);
   const [isGeneratingPromo, setIsGeneratingPromo] = useState(false);
   const [showPromoModal, setShowPromoModal] = useState(false);
+  const [promoMode, setPromoMode] = useState('ai'); // 'ai' | 'manual'
+  const [manualPromo, setManualPromo] = useState({
+    title: '',
+    description: '',
+    code: '',
+    discountPercent: 0
+  });
+
+  // Local states - Category management
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [newCategory, setNewCategory] = useState({ name: '', icon: '📁', color: 'gray' });
+  const [categoryToDelete, setCategoryToDelete] = useState(null);
+
+  // Local states - Delete menu confirmation
+  const [showDeleteMenuConfirm, setShowDeleteMenuConfirm] = useState(false);
+  const [menuToDelete, setMenuToDelete] = useState(null);
+
+  // Local states - Promotion input modal
+  const [showPromoInputModal, setShowPromoInputModal] = useState(false);
+  const [selectedPromo, setSelectedPromo] = useState(null);
 
   // Memoized groupedMenu
   const groupedMenu = useMemo(() => {
@@ -76,7 +98,7 @@ export default function MenuManageView() {
   // AI Promotion Generator
   const handleGeneratePromotions = async () => {
     if (!geminiApiKey) {
-      alert('กรุณาใส่ Gemini API Key ในการตั้งค่าก่อน');
+      toast.warning('กรุณาใส่ Gemini API Key ในการตั้งค่าก่อน');
       return;
     }
 
@@ -127,8 +149,7 @@ export default function MenuManageView() {
       }
 
     } catch (e) {
-      console.error(e);
-      alert('เกิดข้อผิดพลาดในการคิดโปรโมชั่น: ' + e.message);
+      toast.error('เกิดข้อผิดพลาดในการคิดโปรโมชั่น: ' + e.message);
       setShowPromoModal(false);
     } finally {
       setIsGeneratingPromo(false);
@@ -136,11 +157,43 @@ export default function MenuManageView() {
   };
 
   const handleSelectPromotion = (promo) => {
-    const discountInput = window.prompt(`ใช้โปรโมชั่นนี้: ${promo.title}\nระบุเปอร์เซ็นต์ส่วนลด (%) หรือใส่ 0 ถ้าไม่มีส่วนลดราคา`, "0");
-    if (discountInput === null) return;
-    const discountPercent = Number(discountInput) || 0;
+    setSelectedPromo(promo);
+    setShowPromoInputModal(true);
+  };
 
-    setActivePromotion({ ...promo, discountPercent: discountPercent });
+  const confirmPromoDiscount = (formData) => {
+    const discountPercent = Number(formData.discount) || 0;
+    setActivePromotion({ ...selectedPromo, discountPercent });
+    setShowPromoModal(false);
+    setShowPromoInputModal(false);
+    setSelectedPromo(null);
+  };
+
+  const confirmDeleteMenu = async () => {
+    setShowDeleteMenuConfirm(false);
+    if (!menuToDelete) return;
+    await runDbAction(async () => {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menu', menuToDelete.id));
+    }, 'ลบเมนูไม่สำเร็จ');
+    setMenuToDelete(null);
+  };
+
+  // Manual Promotion Handler
+  const handleApplyManualPromotion = () => {
+    if (!manualPromo.title.trim()) {
+      toast.warning('กรุณาใส่ชื่อโปรโมชั่น');
+      return;
+    }
+
+    setActivePromotion({
+      title: manualPromo.title,
+      description: manualPromo.description || '',
+      code: manualPromo.code || '',
+      discountPercent: Number(manualPromo.discountPercent) || 0
+    });
+
+    // Reset form and close modal
+    setManualPromo({ title: '', description: '', code: '', discountPercent: 0 });
     setShowPromoModal(false);
   };
 
@@ -152,6 +205,7 @@ export default function MenuManageView() {
     if (!data.category && dynamicCategories.length > 0) data.category = dynamicCategories[0].name;
     await runDbAction(async () => {
       if (editingItem) await updateDoc(doc(col, editingItem.id), data); else await addDoc(col, data);
+      toast.success(editingItem ? 'แก้ไขเมนูสำเร็จ' : 'เพิ่มเมนูใหม่สำเร็จ');
       setEditingItem(null);
       setNewItem({ name: '', price: '', category: '', image: '', recommended: false, isFeatured: false, available: true, stockLinks: [] });
     }, 'บันทึกเมนูไม่สำเร็จ');
@@ -187,78 +241,401 @@ export default function MenuManageView() {
     }
   };
 
+  // Category Management Handlers
+  const handleAddCategory = async (e) => {
+    e.preventDefault();
+    if (!newCategory.name.trim()) return;
+
+    // Check if category name already exists
+    const exists = dynamicCategories.some(c => c.name.toLowerCase() === newCategory.name.trim().toLowerCase());
+    if (exists) {
+      toast.warning('หมวดหมู่นี้มีอยู่แล้ว');
+      return;
+    }
+
+    await runDbAction(async () => {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'categories'), {
+        name: newCategory.name.trim(),
+        icon: newCategory.icon,
+        color: newCategory.color
+      });
+      setNewCategory({ name: '', icon: '📁', color: 'gray' });
+    }, 'เพิ่มหมวดหมู่ไม่สำเร็จ');
+  };
+
+  const handleDeleteCategory = async (category) => {
+    // Check if any menu items use this category
+    const itemsUsingCategory = menu.filter(m => m.category === category.name);
+    if (itemsUsingCategory.length > 0) {
+      toast.error(`ไม่สามารถลบหมวดหมู่ "${category.name}" ได้ เนื่องจากมีเมนู ${itemsUsingCategory.length} รายการใช้อยู่`);
+      return;
+    }
+
+    await runDbAction(async () => {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categories', category.id));
+      setCategoryToDelete(null);
+    }, 'ลบหมวดหมู่ไม่สำเร็จ');
+  };
+
   return (
     <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-gray-800">
-      <header className="h-24 bg-white border-b border-gray-100 px-12 flex items-center justify-between shadow-sm z-10 font-black text-gray-800">
-        <div className="flex items-center gap-4 text-emerald-600 uppercase font-black"><ClipboardList size={36} /><h1 className="text-2xl font-black uppercase tracking-tight text-gray-800">คลังเมนูอาหารและเครื่องดื่ม</h1></div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleGeneratePromotions}
-            disabled={isGeneratingPromo}
-            className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white px-6 py-4.5 rounded-2xl text-xs font-black shadow-lg shadow-violet-500/30 uppercase border-b-4 border-violet-700 active:scale-95 tracking-widest leading-none flex items-center gap-2 transition-all hover:scale-105"
+      <header className="h-16 md:h-20 lg:h-24 bg-white border-b border-gray-100 px-4 md:px-8 lg:px-12 flex items-center justify-between shadow-sm z-10 font-black text-gray-800">
+        <div className="flex items-center gap-2 md:gap-4 text-emerald-600 uppercase font-black"><ClipboardList size={24} className="md:w-8 md:h-8 lg:w-9 lg:h-9" /><h1 className="text-base md:text-xl lg:text-2xl font-black uppercase tracking-tight text-gray-800">คลังเมนู</h1></div>
+        <div className="flex items-center gap-2 md:gap-4">
+          <Button
+            onClick={() => setShowCategoryModal(true)}
+            variant="warning"
+            size="lg"
+            leftIcon={<FolderCog size={16} />}
           >
-            {isGeneratingPromo ? <RefreshCcw size={16} className="animate-spin" /> : <Zap size={16} fill="white" />}
-            {isGeneratingPromo ? 'กำลังระดมสมอง...' : 'ช่วยคิดโปรโมชั่น (AI)'}
-          </button>
-          <button onClick={() => { setEditingItem(null); setNewItem({ name: '', price: '', category: '', image: '', recommended: false, available: true, stockLinks: [] }); }} className="bg-emerald-500 text-white px-10 py-4.5 rounded-2xl text-xs font-black shadow-lg uppercase border-b-4 border-emerald-700 active:scale-95 tracking-widest leading-none">เตรียมเพิ่มเมนูใหม่</button>
+            จัดการหมวดหมู่
+          </Button>
+          <Button
+            onClick={() => setShowPromoModal(true)}
+            variant="secondary"
+            size="lg"
+            leftIcon={<Zap size={16} fill="white" />}
+            className="bg-gradient-to-r from-violet-500 to-fuchsia-500 border-violet-700"
+          >
+            จัดการโปรโมชั่น
+          </Button>
+          <Button
+            onClick={() => { setEditingItem(null); setNewItem({ name: '', price: '', category: '', image: '', recommended: false, available: true, stockLinks: [] }); }}
+            variant="primary"
+            size="lg"
+          >
+            เตรียมเพิ่มเมนูใหม่
+          </Button>
         </div>
       </header>
 
       {/* 🏷️ Promotion Generator Modal */}
-      {showPromoModal && (
-        <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-[3rem] p-10 max-w-4xl w-full shadow-2xl relative animate-in zoom-in-95 border border-white/20">
-            <button onClick={() => setShowPromoModal(false)} className="absolute top-6 right-6 p-4 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><X size={24} /></button>
-            <div className="text-center mb-10">
-              <div className="w-20 h-20 bg-gradient-to-tr from-violet-500 to-fuchsia-500 rounded-3xl flex items-center justify-center text-white mx-auto mb-4 shadow-lg shadow-violet-500/30"><Zap size={40} fill="white" /></div>
-              <h2 className="text-3xl font-black text-gray-800 uppercase tracking-tighter">AI Promotion Ideas</h2>
-              <p className="text-gray-400 font-bold mt-2">โปรโมชั่นที่ AI แนะนำสำหรับร้านของคุณตอนนี้</p>
+      <Modal
+        isOpen={showPromoModal}
+        onClose={() => setShowPromoModal(false)}
+        size="xl"
+        title={
+          <div className="text-center">
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-white mx-auto mb-3 shadow-lg transition-all ${promoMode === 'ai' ? 'bg-gradient-to-tr from-violet-500 to-fuchsia-500 shadow-violet-500/30' : 'bg-gradient-to-tr from-emerald-500 to-teal-500 shadow-emerald-500/30'}`}>
+              {promoMode === 'ai' ? <Zap size={32} fill="white" /> : <Edit size={32} />}
             </div>
+            <span className="text-2xl font-black text-gray-800 uppercase tracking-tighter">
+              {promoMode === 'ai' ? 'AI Promotion Ideas' : 'สร้างโปรโมชั่นเอง'}
+            </span>
+            <p className="text-gray-400 font-bold mt-2 text-sm">
+              {promoMode === 'ai' ? 'โปรโมชั่นที่ AI แนะนำสำหรับร้านของคุณ' : 'กำหนดโปรโมชั่นและส่วนลดตามใจคุณ'}
+            </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {promotionIdeas.map((idea, idx) => (
-                <div key={idx} className="bg-gray-50 border border-gray-100 p-8 rounded-[2.5rem] relative group hover:bg-white hover:border-violet-200 hover:shadow-xl hover:shadow-violet-500/10 transition-all">
-                  <div className="absolute -top-3 -right-3 w-10 h-10 bg-violet-500 text-white rounded-full flex items-center justify-center font-black shadow-lg">{idx + 1}</div>
-                  <h3 className="text-xl font-black text-violet-600 mb-3 leading-tight">{idea.title}</h3>
-                  <p className="text-gray-600 text-sm font-bold mb-6 leading-relaxed opacity-80">{idea.description}</p>
-                  <div className="bg-white border-2 border-dashed border-violet-200 p-3 rounded-xl text-center mb-6">
-                    <span className="text-xs font-black text-gray-400 uppercase tracking-widest block mb-1">Code</span>
-                    <span className="text-lg font-black text-gray-800">{idea.code}</span>
-                  </div>
-                  <button
-                    onClick={() => handleSelectPromotion(idea)}
-                    className="w-full py-4 bg-violet-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-500/20 active:scale-95 flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle2 size={16} /> ใช้โปรโมชั่นนี้
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="mt-8 flex items-center justify-center gap-6">
-              <button onClick={handleGeneratePromotions} className="text-gray-400 font-black text-xs uppercase hover:text-violet-500 transition-colors flex items-center justify-center gap-2"><RefreshCcw size={14} /> ลองคิดใหม่</button>
-              {activePromotion && (
-                <button onClick={() => setActivePromotion(null)} className="text-red-400 font-black text-xs uppercase hover:text-red-600 transition-colors flex items-center justify-center gap-2 border-l border-gray-100 pl-6"><Trash2 size={14} /> ยกเลิกโปรโมชั่นที่ใช้อยู่</button>
-              )}
+            {/* Mode Toggle Tabs */}
+            <div className="flex justify-center mt-4 gap-2 bg-gray-100 p-1.5 rounded-2xl w-fit mx-auto">
+              <button
+                onClick={() => setPromoMode('ai')}
+                className={`px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${promoMode === 'ai' ? 'bg-white text-violet-600 shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
+              >
+                <Zap size={14} fill={promoMode === 'ai' ? 'currentColor' : 'none'} /> AI สร้างให้
+              </button>
+              <button
+                onClick={() => setPromoMode('manual')}
+                className={`px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${promoMode === 'manual' ? 'bg-white text-emerald-600 shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
+              >
+                <Edit size={14} /> สร้างเอง
+              </button>
             </div>
           </div>
-        </div>
-      )}
+        }
+      >
 
-      <div className="flex-1 flex gap-8 p-8 overflow-hidden text-gray-800">
-        <div className="flex-1 bg-white rounded-[4rem] shadow-sm border border-gray-100 overflow-hidden flex flex-col animate-in slide-in-from-left shadow-emerald-500/5">
-          <div className="p-8 bg-gray-50/50 border-b font-black text-gray-400 text-xs uppercase flex justify-between px-10 tracking-[0.2em] leading-none">
+            {/* AI Mode Content */}
+            {promoMode === 'ai' && (
+              <>
+                {isGeneratingPromo ? (
+                  <div className="py-16 flex flex-col items-center justify-center gap-4">
+                    <RefreshCcw size={48} className="animate-spin text-violet-500" />
+                    <p className="text-gray-500 font-bold">AI กำลังคิดโปรโมชั่นให้...</p>
+                  </div>
+                ) : promotionIdeas.length === 0 ? (
+                  <div className="py-16 flex flex-col items-center justify-center gap-4">
+                    <Zap size={48} className="text-gray-300" />
+                    <p className="text-gray-400 font-bold">กดปุ่มด้านล่างเพื่อให้ AI คิดโปรโมชั่น</p>
+                    <button
+                      onClick={handleGeneratePromotions}
+                      className="mt-4 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white px-8 py-4 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-violet-500/30 hover:scale-105 transition-transform flex items-center gap-2"
+                    >
+                      <Zap size={16} fill="white" /> เริ่มคิดโปรโมชั่น
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {promotionIdeas.map((idea, idx) => (
+                      <div key={idx} className="bg-gray-50 border border-gray-100 p-8 rounded-[2.5rem] relative group hover:bg-white hover:border-violet-200 hover:shadow-xl hover:shadow-violet-500/10 transition-all">
+                        <div className="absolute -top-3 -right-3 w-10 h-10 bg-violet-500 text-white rounded-full flex items-center justify-center font-black shadow-lg">{idx + 1}</div>
+                        <h3 className="text-xl font-black text-violet-600 mb-3 leading-tight">{idea.title}</h3>
+                        <p className="text-gray-600 text-sm font-bold mb-6 leading-relaxed opacity-80">{idea.description}</p>
+                        <div className="bg-white border-2 border-dashed border-violet-200 p-3 rounded-xl text-center mb-6">
+                          <span className="text-xs font-black text-gray-400 uppercase tracking-widest block mb-1">Code</span>
+                          <span className="text-lg font-black text-gray-800">{idea.code}</span>
+                        </div>
+                        <button
+                          onClick={() => handleSelectPromotion(idea)}
+                          className="w-full py-4 bg-violet-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-500/20 active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle2 size={16} /> ใช้โปรโมชั่นนี้
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {promotionIdeas.length > 0 && (
+                  <div className="mt-8 flex items-center justify-center gap-6">
+                    <button onClick={handleGeneratePromotions} className="text-gray-400 font-black text-xs uppercase hover:text-violet-500 transition-colors flex items-center justify-center gap-2"><RefreshCcw size={14} /> ลองคิดใหม่</button>
+                    {activePromotion && (
+                      <button onClick={() => setActivePromotion(null)} className="text-red-400 font-black text-xs uppercase hover:text-red-600 transition-colors flex items-center justify-center gap-2 border-l border-gray-100 pl-6"><Trash2 size={14} /> ยกเลิกโปรโมชั่นที่ใช้อยู่</button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Manual Mode Content */}
+            {promoMode === 'manual' && (
+              <div className="max-w-xl mx-auto space-y-6">
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest block mb-3 ml-2">ชื่อโปรโมชั่น *</label>
+                  <input
+                    type="text"
+                    value={manualPromo.title}
+                    onChange={e => setManualPromo({ ...manualPromo, title: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-5 text-base font-black outline-none focus:bg-white focus:border-emerald-300 transition-all"
+                    placeholder="เช่น ลด 20% ทุกเมนู, ซื้อ 2 แถม 1"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest block mb-3 ml-2">รายละเอียด</label>
+                  <textarea
+                    value={manualPromo.description}
+                    onChange={e => setManualPromo({ ...manualPromo, description: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-5 text-sm font-bold outline-none focus:bg-white focus:border-emerald-300 transition-all min-h-[100px]"
+                    placeholder="รายละเอียดเพิ่มเติมของโปรโมชั่น..."
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest block mb-3 ml-2">โค้ดโปรโมชั่น</label>
+                    <input
+                      type="text"
+                      value={manualPromo.code}
+                      onChange={e => setManualPromo({ ...manualPromo, code: e.target.value.toUpperCase() })}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-5 text-base font-black outline-none focus:bg-white focus:border-emerald-300 transition-all uppercase"
+                      placeholder="เช่น SAVE20"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest block mb-3 ml-2">ส่วนลด (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={manualPromo.discountPercent}
+                      onChange={e => setManualPromo({ ...manualPromo, discountPercent: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-5 text-base font-black outline-none focus:bg-white focus:border-emerald-300 transition-all"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                {/* Preview Card */}
+                {manualPromo.title && (
+                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-200 rounded-3xl p-6 mt-8">
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-3">ตัวอย่างโปรโมชั่น</p>
+                    <h3 className="text-xl font-black text-gray-800 mb-2">{manualPromo.title}</h3>
+                    {manualPromo.description && <p className="text-sm text-gray-600 font-bold mb-4">{manualPromo.description}</p>}
+                    <div className="flex items-center gap-4">
+                      {manualPromo.code && (
+                        <span className="bg-white border-2 border-dashed border-emerald-300 px-4 py-2 rounded-xl text-sm font-black text-gray-700">
+                          Code: {manualPromo.code}
+                        </span>
+                      )}
+                      {manualPromo.discountPercent > 0 && (
+                        <span className="bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-black">
+                          ลด {manualPromo.discountPercent}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-4 mt-8">
+                  <button
+                    onClick={handleApplyManualPromotion}
+                    disabled={!manualPromo.title.trim()}
+                    className="flex-1 py-5 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <CheckCircle2 size={18} /> ใช้โปรโมชั่นนี้
+                  </button>
+                </div>
+
+                {activePromotion && (
+                  <div className="text-center mt-4">
+                    <button onClick={() => setActivePromotion(null)} className="text-red-400 font-black text-xs uppercase hover:text-red-600 transition-colors flex items-center justify-center gap-2 mx-auto">
+                      <Trash2 size={14} /> ยกเลิกโปรโมชั่นที่ใช้อยู่
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+      </Modal>
+
+      {/* 🗂️ Category Management Modal */}
+      <Modal
+        isOpen={showCategoryModal}
+        onClose={() => { setShowCategoryModal(false); setCategoryToDelete(null); }}
+        size="lg"
+        title={
+          <div className="text-center">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white mx-auto mb-3 shadow-lg bg-gradient-to-tr from-amber-500 to-orange-500 shadow-amber-500/30">
+              <FolderCog size={32} />
+            </div>
+            <span className="text-2xl font-black text-gray-800 uppercase tracking-tighter">จัดการหมวดหมู่</span>
+            <p className="text-gray-400 font-bold mt-2 text-sm">เพิ่มหรือลบหมวดหมู่สินค้า</p>
+          </div>
+        }
+      >
+        {/* Add Category Form */}
+        <form onSubmit={handleAddCategory} className="bg-gray-50 rounded-3xl p-6 mb-8 border border-gray-100">
+              <h3 className="text-sm font-black text-gray-600 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Plus size={18} className="text-emerald-500" /> เพิ่มหมวดหมู่ใหม่
+              </h3>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={newCategory.name}
+                    onChange={e => setNewCategory({ ...newCategory, name: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-base font-black outline-none focus:border-amber-300 transition-all"
+                    placeholder="ชื่อหมวดหมู่ เช่น กาแฟ, ชา, ขนม..."
+                  />
+                </div>
+                <select
+                  value={newCategory.icon}
+                  onChange={e => setNewCategory({ ...newCategory, icon: e.target.value })}
+                  className="bg-white border border-gray-200 rounded-2xl px-4 text-2xl cursor-pointer outline-none focus:border-amber-300"
+                >
+                  <option value="📁">📁</option>
+                  <option value="☕">☕</option>
+                  <option value="🧋">🧋</option>
+                  <option value="🍵">🍵</option>
+                  <option value="🧁">🧁</option>
+                  <option value="🍰">🍰</option>
+                  <option value="🥐">🥐</option>
+                  <option value="🥪">🥪</option>
+                  <option value="🍜">🍜</option>
+                  <option value="🍕">🍕</option>
+                  <option value="🍔">🍔</option>
+                  <option value="🥗">🥗</option>
+                  <option value="🍹">🍹</option>
+                  <option value="🧃">🧃</option>
+                  <option value="🍦">🍦</option>
+                  <option value="⭐">⭐</option>
+                </select>
+                <button
+                  type="submit"
+                  disabled={!newCategory.name.trim()}
+                  className="bg-emerald-500 text-white px-8 rounded-2xl font-black text-xs uppercase tracking-wider hover:bg-emerald-600 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  เพิ่ม
+                </button>
+              </div>
+            </form>
+
+            {/* Category List */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-black text-gray-600 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <ClipboardList size={18} className="text-amber-500" /> หมวดหมู่ทั้งหมด ({dynamicCategories.length})
+              </h3>
+
+              {dynamicCategories.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 font-bold">
+                  ยังไม่มีหมวดหมู่
+                </div>
+              ) : (
+                dynamicCategories.map(cat => {
+                  const itemCount = menu.filter(m => m.category === cat.name).length;
+                  const isDeleting = categoryToDelete?.id === cat.id;
+
+                  return (
+                    <div
+                      key={cat.id}
+                      className={`flex items-center gap-4 p-5 rounded-2xl border transition-all ${isDeleting ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100 hover:border-amber-200'}`}
+                    >
+                      <span className="text-3xl">{cat.icon || '📁'}</span>
+                      <div className="flex-1">
+                        <p className="font-black text-gray-800 text-lg">{cat.name}</p>
+                        <p className="text-xs font-bold text-gray-400">
+                          {itemCount > 0 ? `${itemCount} เมนูในหมวดหมู่นี้` : 'ไม่มีเมนู'}
+                        </p>
+                      </div>
+
+                      {isDeleting ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-red-500 mr-2">ยืนยันลบ?</span>
+                          <button
+                            onClick={() => handleDeleteCategory(cat)}
+                            className="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-red-600 transition-all active:scale-95"
+                          >
+                            ลบ
+                          </button>
+                          <button
+                            onClick={() => setCategoryToDelete(null)}
+                            className="bg-gray-200 text-gray-600 px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-gray-300 transition-all active:scale-95"
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setCategoryToDelete(cat)}
+                          disabled={itemCount > 0}
+                          className={`p-3 rounded-xl transition-all ${itemCount > 0 ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-red-50 text-red-500 hover:bg-red-500 hover:text-white active:scale-95'}`}
+                          title={itemCount > 0 ? `ไม่สามารถลบได้ มี ${itemCount} เมนูใช้อยู่` : 'ลบหมวดหมู่'}
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+        {/* Info Note */}
+        <div className="mt-8 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+          <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5" />
+          <p className="text-xs font-bold text-amber-700">
+            หมายเหตุ: ไม่สามารถลบหมวดหมู่ที่มีเมนูใช้อยู่ได้ กรุณาย้ายหรือลบเมนูในหมวดหมู่นั้นก่อน
+          </p>
+        </div>
+      </Modal>
+
+      <div className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 lg:gap-8 p-4 md:p-6 lg:p-8 overflow-hidden text-gray-800">
+        <div className="flex-1 bg-white rounded-2xl md:rounded-[3rem] lg:rounded-[4rem] shadow-sm border border-gray-100 overflow-hidden flex flex-col animate-in slide-in-from-left shadow-emerald-500/5">
+          <div className="p-4 md:p-6 lg:p-8 bg-gray-50/50 border-b font-black text-gray-400 text-[10px] md:text-xs uppercase flex justify-between px-4 md:px-8 lg:px-10 tracking-[0.2em] leading-none">
             <span>รายการเมนูอาหารทั้งหมด ({menu.length})</span>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-gray-50 scrollbar-hide px-6">
             {isSyncing && (
-              <div className="py-12 text-center text-xs font-black uppercase tracking-widest text-gray-400">
-                กำลังโหลดเมนู...
+              <div className="py-6 px-4 space-y-4">
+                {[...Array(6)].map((_, i) => <Skeleton.Card key={i} />)}
               </div>
             )}
             {!isSyncing && menu.length === 0 && (
-              <div className="py-12 text-center text-xs font-black uppercase tracking-widest text-gray-400">
-                ยังไม่มีเมนู
-              </div>
+              <EmptyState
+                icon={ClipboardList}
+                title="ยังไม่มีเมนู"
+                description="เริ่มเพิ่มเมนูอาหารและเครื่องดื่มใหม่"
+                action={{ label: "เพิ่มเมนูใหม่", onClick: () => { setEditingItem(null); setNewItem({ name: '', price: '', category: '', image: '', recommended: false, available: true, stockLinks: [] }); } }}
+              />
             )}
             {groupedMenu.map(group => (
               <div key={group.name} className="py-4">
@@ -297,12 +674,10 @@ export default function MenuManageView() {
                     </div>
                     <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => toggleAvailability(i)} className={`p-4 rounded-2xl transition-all shadow-sm active:scale-90 ${i.available !== false ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>{i.available !== false ? <Eye size={22} /> : <EyeOff size={22} />}</button>
-                      <button onClick={() => { setEditingItem(i); setNewItem(i); }} className="p-4 bg-blue-50 text-blue-500 rounded-2xl transition-all shadow-sm border border-blue-100 active:scale-90"><Edit size={22} /></button>
-                      <button onClick={async () => {
-                        if (!window.confirm("ลบเมนูนี้ออกจากระบบ?")) return;
-                        await runDbAction(async () => {
-                          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menu', i.id));
-                        }, 'ลบเมนูไม่สำเร็จ');
+                      <button onClick={() => { setEditingItem(i); setNewItem(i); }} aria-label="แก้ไขเมนู" className="p-4 bg-blue-50 text-blue-500 rounded-2xl transition-all shadow-sm border border-blue-100 active:scale-90"><Edit size={22} /></button>
+                      <button onClick={() => {
+                        setMenuToDelete(i);
+                        setShowDeleteMenuConfirm(true);
                       }} className="p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm border border-red-100 active:scale-90"><Trash2 size={22} /></button>
                     </div>
                   </div>
@@ -311,7 +686,7 @@ export default function MenuManageView() {
             ))}
           </div>
         </div>
-        <div className="w-[500px] bg-white rounded-[4rem] shadow-2xl border border-emerald-50 p-12 overflow-y-auto flex flex-col shadow-emerald-500/10 text-gray-800">
+        <div className="w-full lg:w-[400px] xl:w-[500px] bg-white rounded-2xl md:rounded-[3rem] lg:rounded-[4rem] shadow-2xl border border-emerald-50 p-6 md:p-8 lg:p-12 overflow-y-auto flex flex-col shadow-emerald-500/10 text-gray-800 order-first lg:order-last">
           <h2 className="font-black text-3xl text-gray-800 mb-10 flex items-center gap-5 uppercase font-black leading-none"><div className={`p-3.5 rounded-3xl shadow-lg ${editingItem ? 'bg-blue-500 shadow-blue-500/20' : 'bg-emerald-500 shadow-emerald-500/20'} text-white`}><PackagePlus size={32} /></div>{editingItem ? 'แก้ไขเมนูเดิม' : 'เพิ่มเมนูใหม่'}</h2>
           <form onSubmit={saveMenuItem} className="space-y-8 text-gray-800">
             <div><label className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] block mb-3 ml-2 leading-none">ชื่อรายการอาหาร</label><input type="text" required value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full bg-[#f8faf9] border border-gray-100 rounded-[2rem] p-6 text-base font-black outline-none focus:bg-white transition-all shadow-inner leading-none" /></div>
@@ -324,11 +699,11 @@ export default function MenuManageView() {
                   type="button"
                   onClick={async () => {
                     if (!newItem.name || !newItem.category) {
-                      alert('กรุณาระบุชื่อและหมวดหมู่ก่อนใช้ Magic Write');
+                      toast.warning('กรุณาระบุชื่อและหมวดหมู่ก่อนใช้ Magic Write');
                       return;
                     }
                     if (!geminiApiKey) {
-                      alert('กรุณาใส่ Gemini API Key ในการตั้งค่าก่อน');
+                      toast.warning('กรุณาใส่ Gemini API Key ในการตั้งค่าก่อน');
                       return;
                     }
 
@@ -346,8 +721,7 @@ export default function MenuManageView() {
                       }
 
                     } catch (error) {
-                      console.error('Magic Write Error:', error);
-                      alert('เกิดข้อผิดพลาด: ' + error.message);
+                      toast.error('เกิดข้อผิดพลาด: ' + error.message);
                     } finally {
                       if (btn) btn.innerText = '✨ Magic Write';
                     }
@@ -546,6 +920,33 @@ export default function MenuManageView() {
           </form>
         </div>
       </div>
+
+      {/* Delete Menu Confirm Modal */}
+      <ConfirmModal
+        isOpen={showDeleteMenuConfirm}
+        onClose={() => { setShowDeleteMenuConfirm(false); setMenuToDelete(null); }}
+        onConfirm={confirmDeleteMenu}
+        title="ลบเมนู"
+        message={`ต้องการลบ "${menuToDelete?.name || 'เมนู'}" ออกจากระบบใช่หรือไม่?`}
+        confirmText="ลบ"
+        cancelText="ยกเลิก"
+        variant="danger"
+      />
+
+      {/* Promotion Discount Input Modal */}
+      <InputModal
+        isOpen={showPromoInputModal}
+        onClose={() => { setShowPromoInputModal(false); setSelectedPromo(null); }}
+        onSubmit={confirmPromoDiscount}
+        title="ระบุส่วนลด"
+        description={selectedPromo?.title || ''}
+        variant="primary"
+        icon={Star}
+        fields={[
+          { name: 'discount', label: 'เปอร์เซ็นต์ส่วนลด (%)', placeholder: '0', type: 'number', defaultValue: '0' }
+        ]}
+        submitText="ใช้โปรโมชั่น"
+      />
     </div>
   );
 }

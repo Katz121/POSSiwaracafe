@@ -1,5 +1,36 @@
 @import "tailwindcss";
 
+/* Dark Mode CSS Variables */
+:root {
+  --bg-primary: #f8faf9;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f9fafb;
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --border-color: #e5e7eb;
+  --border-light: #f3f4f6;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --accent-emerald: #10b981;
+  --accent-emerald-dark: #047857;
+  --accent-emerald-light: #d1fae5;
+}
+
+html.dark {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  --border-color: #334155;
+  --border-light: #1e293b;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --accent-emerald: #34d399;
+  --accent-emerald-dark: #10b981;
+  --accent-emerald-light: #064e3b;
+}
+
 @layer base {
   html {
     font-size: clamp(14px, 1.1vw + 10px, 16px);
@@ -13,6 +44,23 @@
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+    /* Prevent pull-to-refresh on mobile */
+    overscroll-behavior-y: contain;
+    /* Apply CSS variables */
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  /* Prevent text selection on UI elements */
+  button, .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Better input styling for iOS */
+  input, select, textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
   }
 }
 
@@ -25,7 +73,7 @@
   display: none;
 }
 
-/* Responsive font scaling */
+/* Responsive font scaling - Tablet (iPad) */
 @media (max-width: 1024px) {
   .text-6xl { font-size: clamp(2rem, 6vw, 3.25rem); }
   .text-5xl { font-size: clamp(1.75rem, 5vw, 3rem); }
@@ -53,10 +101,31 @@
   .tracking-\[0\.2em\] { letter-spacing: 0.08em; }
 }
 
+/* Small mobile (iPhone SE, etc.) */
+@media (max-width: 375px) {
+  html {
+    font-size: 13px;
+  }
+  .text-6xl { font-size: clamp(1.25rem, 7vw, 2rem); }
+  .text-5xl { font-size: clamp(1.15rem, 6vw, 1.75rem); }
+  .text-4xl { font-size: clamp(1.1rem, 5vw, 1.5rem); }
+  .text-3xl { font-size: clamp(1rem, 4.5vw, 1.35rem); }
+}
+
 /* Touch-friendly targets */
 @media (hover: none) and (pointer: coarse) {
   button, a, input, select {
     min-height: 44px;
+  }
+
+  /* Larger tap targets for small buttons */
+  button {
+    position: relative;
+  }
+
+  /* Better scrolling on touch devices */
+  .overflow-y-auto, .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -64,4 +133,273 @@
 .nav-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* iPad landscape optimization */
+@media (min-width: 1024px) and (max-width: 1366px) and (orientation: landscape) {
+  html {
+    font-size: 15px;
+  }
+}
+
+/* iPad portrait optimization */
+@media (min-width: 768px) and (max-width: 1024px) and (orientation: portrait) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* ============================== */
+/* TABLET OVERRIDE                */
+/* Force desktop layout on tablets where Safari may report narrow viewport */
+/* Uses min-device-width (physical screen) instead of min-width (viewport) */
+/* ============================== */
+@media (pointer: coarse) and (min-device-width: 768px) {
+  /* App root - tablet bottom padding for nav */
+  [data-app="root"] {
+    padding-bottom: 5rem !important;
+  }
+
+  /* App nav - tablet spacing */
+  [data-app="nav"] {
+    bottom: 1rem !important;
+    padding: 0.5rem !important;
+    gap: 0.25rem !important;
+    border-radius: 3rem !important;
+  }
+
+  /* POS: Main layout → horizontal */
+  [data-pos="main"] {
+    flex-direction: row !important;
+  }
+
+  /* POS: Show category sidebar */
+  [data-pos="sidebar-cat"] {
+    display: flex !important;
+    width: 5rem !important;
+    flex-direction: column !important;
+    align-items: center !important;
+  }
+
+  /* POS: Hide mobile category bar */
+  [data-pos="mobile-cat"] {
+    display: none !important;
+  }
+
+  /* POS: Show cart sidebar */
+  [data-pos="sidebar-cart"] {
+    display: flex !important;
+    width: 18rem !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  /* POS: Hide mobile cart button */
+  [data-pos="mobile-cart-btn"] {
+    display: none !important;
+  }
+
+  /* POS: Hide mobile cart drawer */
+  [data-pos="mobile-cart-drawer"] {
+    display: none !important;
+  }
+
+  /* POS: Menu grid → 3 columns on tablet */
+  [data-pos="menu-grid"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    padding: 1rem !important;
+    gap: 0.75rem !important;
+    padding-bottom: 7rem !important;
+  }
+}
+
+/* Prevent content shift when keyboard opens on mobile */
+@media (max-width: 768px) {
+  body {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+  }
+  html {
+    height: -webkit-fill-available;
+  }
+}
+
+/* Smooth animations for drawers/modals */
+.animate-in {
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Active states for touch feedback */
+@media (hover: none) {
+  button:active, a:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+}
+
+/* ========== DARK MODE STYLES ========== */
+/* Main backgrounds */
+html.dark .bg-\[\#f8faf9\],
+html.dark .bg-\[\#fcfdfc\] {
+  background-color: var(--bg-primary) !important;
+}
+
+html.dark .bg-white {
+  background-color: var(--bg-secondary) !important;
+}
+
+html.dark .bg-gray-50,
+html.dark .bg-gray-100 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+/* Text colors */
+html.dark .text-gray-800,
+html.dark .text-gray-900 {
+  color: var(--text-primary) !important;
+}
+
+html.dark .text-gray-600,
+html.dark .text-gray-700 {
+  color: var(--text-secondary) !important;
+}
+
+html.dark .text-gray-400,
+html.dark .text-gray-500 {
+  color: var(--text-muted) !important;
+}
+
+/* Borders */
+html.dark .border-gray-100,
+html.dark .border-gray-200 {
+  border-color: var(--border-color) !important;
+}
+
+html.dark .border-white\/20,
+html.dark .border-white\/40,
+html.dark .border-white\/50 {
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+/* Input backgrounds */
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: var(--text-muted) !important;
+}
+
+/* Cards and panels */
+html.dark .shadow-sm,
+html.dark .shadow-lg,
+html.dark .shadow-xl,
+html.dark .shadow-2xl {
+  --tw-shadow-color: var(--shadow-color);
+}
+
+/* Navigation bar */
+html.dark .bg-white\/95 {
+  background-color: rgba(30, 41, 59, 0.95) !important;
+}
+
+/* Modals and overlays */
+html.dark .bg-black\/60,
+html.dark .bg-black\/70,
+html.dark .bg-black\/80 {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+}
+
+/* Hover states */
+html.dark .hover\:bg-gray-50:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+
+html.dark .hover\:bg-gray-100:hover {
+  background-color: var(--border-color) !important;
+}
+
+/* Preserve accent colors - they look good in both modes */
+html.dark .bg-emerald-500 {
+  background-color: var(--accent-emerald) !important;
+}
+
+html.dark .bg-emerald-50 {
+  background-color: var(--accent-emerald-light) !important;
+}
+
+html.dark .text-emerald-500,
+html.dark .text-emerald-600 {
+  color: var(--accent-emerald) !important;
+}
+
+/* Special elements */
+html.dark .backdrop-blur-sm,
+html.dark .backdrop-blur-md,
+html.dark .backdrop-blur-xl,
+html.dark .backdrop-blur-3xl {
+  backdrop-filter: blur(12px) saturate(150%);
+}
+
+/* Charts and data visualization - keep visible */
+html.dark .bg-emerald-50\/40 {
+  background-color: rgba(6, 78, 59, 0.4) !important;
+}
+
+/* Focus rings */
+html.dark .focus\:ring-emerald-500\/10:focus {
+  --tw-ring-color: rgba(52, 211, 153, 0.2) !important;
+}
+
+/* Additional accent color backgrounds for dark mode */
+html.dark .bg-red-50 {
+  background-color: rgba(127, 29, 29, 0.3) !important;
+}
+
+html.dark .bg-orange-50 {
+  background-color: rgba(124, 45, 18, 0.3) !important;
+}
+
+html.dark .bg-blue-50 {
+  background-color: rgba(30, 58, 138, 0.3) !important;
+}
+
+html.dark .bg-violet-50 {
+  background-color: rgba(76, 29, 149, 0.3) !important;
+}
+
+html.dark .bg-amber-50 {
+  background-color: rgba(120, 53, 15, 0.3) !important;
+}
+
+/* Additional text overrides */
+html.dark .text-red-700,
+html.dark .text-red-600 {
+  color: #fca5a5 !important;
+}
+
+html.dark .text-orange-700,
+html.dark .text-orange-600 {
+  color: #fdba74 !important;
+}
+
+html.dark .text-blue-700,
+html.dark .text-blue-600 {
+  color: #93c5fd !important;
+}
+
+html.dark .text-violet-700,
+html.dark .text-violet-600 {
+  color: #c4b5fd !important;
 }

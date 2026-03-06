@@ -28,7 +28,7 @@ export default function MerchantColumn({ title, color, status, orders, onUpdate,
             <div className="p-5 border-b border-gray-700 bg-gray-800/80 pt-12">
               <div className="flex justify-between items-start mb-2 text-gray-500">
                 <span className="font-bold text-[10px] uppercase leading-none">#{String(order.id).slice(-4).toUpperCase()}</span>
-                <button onClick={() => onEdit(order)} className="bg-white/5 hover:bg-emerald-500/20 text-gray-400 hover:text-emerald-400 p-2.5 rounded-2xl transition-all border border-white/5 active:scale-90"><Edit3 size={16} /></button>
+                <button onClick={() => onEdit(order)} aria-label="แก้ไขออเดอร์" className="bg-white/5 hover:bg-emerald-500/20 text-gray-400 hover:text-emerald-400 p-2.5 rounded-2xl transition-all border border-white/5 active:scale-90"><Edit3 size={16} /></button>
               </div>
               <div className="flex items-center gap-2 text-white font-black text-xl"><Utensils size={18} className="text-emerald-400" />{String(order.table || 'Walk-in')}</div>
               {order.memberNickname && <p className="text-emerald-400 text-xs font-black mt-2 uppercase tracking-wide">👤 {order.memberNickname}</p>}

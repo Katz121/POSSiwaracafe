@@ -1,10 +1,50 @@
 <!doctype html>
-<html lang="en">
+<html lang="th">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>my-pos-app</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#10b981" />
+    <meta name="description" content="ระบบ POS สำหรับร้านกาแฟและร้านอาหาร" />
+
+    <!-- iOS/iPad Specific -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="POS App" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.svg" />
+
+    <!-- Splash Screens for iPad -->
+    <link rel="apple-touch-startup-image" href="/icons/icon-512x512.svg" />
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/icons/icon-192x192.svg" />
+
+    <title>POS App - ระบบขายหน้าร้าน</title>
+
+    <!-- Preconnect to Firebase -->
+    <link rel="preconnect" href="https://firestore.googleapis.com" />
+    <link rel="preconnect" href="https://firebase.googleapis.com" />
+
+    <!-- Fix iPad viewport: Safari may report narrow device-width in mobile mode -->
+    <script>
+      (function() {
+        var tp = navigator.maxTouchPoints || 0;
+        var maxDim = Math.max(screen.width || 0, screen.height || 0);
+        // Tablet detection: touch device with large screen (not phone)
+        if (tp > 1 && maxDim >= 1024) {
+          var meta = document.querySelector('meta[name="viewport"]');
+          if (meta) {
+            meta.setAttribute('content',
+              'width=' + maxDim + ', initial-scale=1.0, user-scalable=no, viewport-fit=cover'
+            );
+          }
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

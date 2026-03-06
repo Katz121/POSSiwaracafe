@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronUp, ChevronDown, Coffee } from 'lucide-react';
+import { ChevronLeft, ChevronUp, ChevronDown, Coffee, BarChart3 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
+import { EmptyState } from '../ui';
 import { getISODate, getOrderDate, isDateInRange } from '../../utils/calculations';
 
 export default function CategorySummaryView() {
@@ -247,7 +248,7 @@ export default function CategorySummaryView() {
                   </div>
                 ))
               ) : (
-                <p className="text-center text-[11px] text-gray-400 font-black uppercase tracking-widest py-4">ไม่มีข้อมูลในช่วงวันที่นี้</p>
+                <EmptyState icon={BarChart3} title="ไม่มีข้อมูลในช่วงวันที่นี้" description="ลองเลือกช่วงวันที่อื่น" size="sm" />
               )}
             </div>
           </div>
