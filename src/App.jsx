@@ -289,10 +289,10 @@ export default function App() {
 
   return (
     <AppProvider value={contextValue}>
-      <div data-app="root" className="h-screen w-screen overflow-hidden bg-[#f8faf9] pb-16 md:pb-20">
+      <div data-app="root" className="h-screen w-screen overflow-hidden bg-[var(--bg-primary)] pb-16 md:pb-20">
         {/* Loading / Auth State */}
         {(!user || isSyncing) && (
-          <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-white/80 dark:bg-gray-900/80 backdrop-blur-md">
+          <div className="fixed inset-0 z-[500] flex flex-col items-center justify-center bg-white/80 dark:bg-gray-900/80 backdrop-blur-md">
             <Spinner size="xl" />
             <h2 className="mt-8 text-xl font-black text-gray-800 dark:text-white uppercase tracking-widest animate-pulse">
               {!user ? 'กำลังเข้าสู่ระบบ...' : 'กำลังโหลดข้อมูล...'}
@@ -303,7 +303,7 @@ export default function App() {
 
         {/* Error Message Display */}
         {errorMessage && (
-          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[600] bg-red-500 text-white px-8 py-4 rounded-2xl shadow-2xl font-black text-sm animate-in slide-in-from-top-4 duration-300">
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[400] bg-red-500 text-white px-8 py-4 rounded-2xl shadow-2xl font-black text-sm transition-all duration-300">
             {errorMessage}
             <button onClick={() => setErrorMessage('')} className="ml-4 opacity-70 hover:opacity-100">✕</button>
           </div>
@@ -311,7 +311,7 @@ export default function App() {
 
         {/* View Router - Lazy Loaded with Suspense */}
         <Suspense fallback={
-          <div className="h-full flex flex-col items-center justify-center bg-[#f8faf9]">
+          <div className="h-full flex flex-col items-center justify-center bg-[var(--bg-primary)]">
             <Spinner size="lg" />
             <p className="mt-4 text-gray-400 font-bold text-sm uppercase tracking-widest">กำลังโหลด...</p>
           </div>
@@ -343,14 +343,15 @@ export default function App() {
             </div>
             <h3 className="font-black text-2xl mb-2 uppercase tracking-tight">Protected Access</h3>
             <p className="text-sm text-gray-400 font-bold mb-8 uppercase tracking-wider">ระบุรหัส PIN เพื่อดำเนินการต่อ</p>
-            <input
+            <Input
               type="password"
               maxLength={4}
               autoFocus
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && checkPin()}
-              className="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-2xl p-6 text-4xl font-black tracking-[1em] text-center text-emerald-600 dark:text-emerald-400 outline-none focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 mb-8"
+              size="lg"
+              inputClassName="text-4xl font-black tracking-[1em] text-center text-emerald-600 dark:text-emerald-400 mb-8"
               placeholder="••••"
             />
             <div className="grid grid-cols-2 gap-4">
@@ -391,7 +392,7 @@ export default function App() {
         </Modal>
 
         {/* Navigation Bar */}
-        <div data-app="nav" className="fixed bottom-2 md:bottom-4 left-1/2 -translate-x-1/2 z-[100] flex items-center bg-white/95 dark:bg-gray-800/95 backdrop-blur-3xl border border-white/40 dark:border-gray-700 p-1 md:p-2 lg:p-3 rounded-2xl md:rounded-[3rem] lg:rounded-[3.5rem] shadow-[0_30px_100px_rgba(0,0,0,0.25)] gap-0.5 md:gap-1 lg:gap-2 transition-all duration-500 border-b-4 border-gray-100 dark:border-gray-700">
+        <div data-app="nav" className="fixed bottom-2 md:bottom-4 left-1/2 -translate-x-1/2 z-[150] flex items-center bg-white/95 dark:bg-gray-800/95 backdrop-blur-3xl border border-white/40 dark:border-gray-700 p-1 md:p-2 lg:p-3 rounded-2xl md:rounded-[3rem] lg:rounded-[3.5rem] shadow-[0_30px_100px_rgba(0,0,0,0.25)] gap-0.5 md:gap-1 lg:gap-2 transition-all duration-500">
           {/* Primary Nav Items */}
           {[
             { key: 'pos', icon: User, label: 'POS' },
@@ -400,7 +401,7 @@ export default function App() {
             { key: 'stock', icon: Package, label: 'สต็อก' },
             { key: 'dashboard', icon: PieChart, label: 'สรุป' },
           ].map(({ key, icon: Icon, label }) => (
-            <button key={key} onClick={() => handleViewChange(key)} className={`flex items-center justify-center gap-1 md:gap-2 px-2.5 md:px-4 lg:px-8 py-2.5 md:py-3 lg:py-4 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] lg:text-[12px] font-black transition-all duration-300 leading-none shrink-0 ${view === key ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'text-gray-400 dark:text-gray-500 hover:text-emerald-500 active:bg-gray-100 dark:active:bg-gray-700'}`}>
+            <button key={key} onClick={() => handleViewChange(key)} className={`flex items-center justify-center gap-1 md:gap-2 px-2.5 md:px-4 lg:px-8 py-2.5 md:py-3 lg:py-4 rounded-xl md:rounded-2xl text-xs md:text-xs lg:text-sm font-black transition-all duration-300 leading-none shrink-0 ${view === key ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'text-gray-400 dark:text-gray-500 hover:text-emerald-500 active:bg-gray-100 dark:active:bg-gray-700'}`}>
               <Icon size={16} strokeWidth={3} className="md:w-[18px] md:h-[18px] lg:w-5 lg:h-5" />
               <span className="uppercase tracking-wider leading-none font-black">{label}</span>
             </button>
@@ -410,7 +411,7 @@ export default function App() {
           <div className="relative">
             <button
               onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className={`flex items-center justify-center gap-1 md:gap-2 px-2.5 md:px-4 lg:px-8 py-2.5 md:py-3 lg:py-4 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] lg:text-[12px] font-black transition-all duration-300 leading-none shrink-0 ${['expenses', 'menu_manage', 'members_manage', 'financial', 'admin'].includes(view) ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'text-gray-400 dark:text-gray-500 hover:text-emerald-500 active:bg-gray-100 dark:active:bg-gray-700'}`}
+              className={`flex items-center justify-center gap-1 md:gap-2 px-2.5 md:px-4 lg:px-8 py-2.5 md:py-3 lg:py-4 rounded-xl md:rounded-2xl text-xs md:text-xs lg:text-sm font-black transition-all duration-300 leading-none shrink-0 ${['expenses', 'menu_manage', 'members_manage', 'financial', 'admin', 'category_summary'].includes(view) ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'text-gray-400 dark:text-gray-500 hover:text-emerald-500 active:bg-gray-100 dark:active:bg-gray-700'}`}
             >
               <MoreHorizontal size={16} strokeWidth={3} className="md:w-[18px] md:h-[18px] lg:w-5 lg:h-5" />
               <span className="uppercase tracking-wider leading-none font-black">อื่นๆ</span>
@@ -419,12 +420,13 @@ export default function App() {
             {/* More Menu Popup */}
             {showMoreMenu && (
               <>
-                <div className="fixed inset-0 z-[99]" onClick={() => setShowMoreMenu(false)} />
-                <div className="absolute bottom-full mb-3 right-0 bg-white dark:bg-gray-800 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.2)] border border-gray-100 dark:border-gray-700 p-2 min-w-[180px] z-[100]">
+                <div className="fixed inset-0 z-[149]" onClick={() => setShowMoreMenu(false)} />
+                <div className="absolute bottom-full mb-3 right-0 bg-white dark:bg-gray-800 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.2)] border border-gray-100 dark:border-gray-700 p-2 min-w-[180px] z-[160]">
                   {[
                     { key: 'expenses', icon: DollarSign, label: 'รายจ่าย' },
                     { key: 'menu_manage', icon: ClipboardList, label: 'เมนู' },
                     { key: 'members_manage', icon: Users, label: 'สมาชิก' },
+                    { key: 'category_summary', icon: PieChart, label: 'ยอดขายหมวด' },
                     { key: 'financial', icon: DollarSign, label: 'การเงิน' },
                     { key: 'admin', icon: LayoutDashboard, label: 'แอดมิน' },
                   ].map(({ key, icon: Icon, label }) => (

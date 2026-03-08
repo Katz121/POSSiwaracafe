@@ -14,6 +14,25 @@
   --accent-emerald: #10b981;
   --accent-emerald-dark: #047857;
   --accent-emerald-light: #d1fae5;
+
+  /* AI Feature Accent — violet/fuchsia สำหรับ AI ทั้งหมด */
+  --accent-ai: #7c3aed;
+  --accent-ai-dark: #5b21b6;
+  --accent-ai-light: #ede9fe;
+
+  /* Shadow Scale */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-nav: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.05);
+  --shadow-modal: 0 20px 60px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.1);
+
+  /* Z-Index Scale — ห้ามใช้ค่าอื่นนอกจากนี้ */
+  --z-dropdown:  100;   /* More menu popup, tooltips */
+  --z-nav:       150;   /* Navigation bar */
+  --z-modal-bg:  200;   /* Modal backdrop */
+  --z-modal:     300;   /* Modal content */
+  --z-toast:     400;   /* Toast notifications */
+  --z-overlay:   500;   /* Full-screen loading overlay */
 }
 
 html.dark {
@@ -37,7 +56,7 @@ html.dark {
     -webkit-tap-highlight-color: transparent;
   }
   body {
-    line-height: 1.45;
+    line-height: 1.5;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     padding-top: env(safe-area-inset-top);

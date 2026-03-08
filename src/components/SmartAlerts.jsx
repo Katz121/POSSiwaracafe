@@ -61,7 +61,7 @@ export default function SmartAlerts({ data, onAction, compact = false }) {
       >
         <Bell size={22} className="text-gray-600" />
         {alerts.length > 0 && (
-          <span className={`absolute -top-1 -right-1 w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center text-white ${criticalCount > 0 ? 'bg-red-500' : warningCount > 0 ? 'bg-amber-500' : 'bg-blue-500'}`}>
+          <span className={`absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs font-black flex items-center justify-center text-white ${criticalCount > 0 ? 'bg-red-500' : warningCount > 0 ? 'bg-amber-500' : 'bg-blue-500'}`}>
             {alerts.length}
           </span>
         )}
@@ -131,7 +131,7 @@ export default function SmartAlerts({ data, onAction, compact = false }) {
               {alert.action && (
                 <button
                   onClick={() => handleAction(alert)}
-                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider ${colors.text} bg-white border ${colors.border} hover:scale-105 transition-transform flex items-center gap-1`}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider ${colors.text} bg-white border ${colors.border} hover:scale-105 transition-transform flex items-center gap-1`}
                 >
                   {alert.action.label} <ChevronRight size={12} />
                 </button>
@@ -168,7 +168,7 @@ export default function SmartAlerts({ data, onAction, compact = false }) {
             <SeverityIcon size={18} className={colors.icon} />
             <div className="flex-1">
               <p className={`font-bold text-xs ${colors.text}`}>{alert.title}</p>
-              <p className="text-[10px] text-gray-500">{alert.message}</p>
+              <p className="text-xs text-gray-500">{alert.message}</p>
             </div>
             <button onClick={() => dismissAlert(alert.id)} className="p-1">
               <X size={14} className="text-gray-400" />

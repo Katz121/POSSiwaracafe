@@ -68,8 +68,6 @@ export default function PosView() {
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE);
 
   // Member states
-
-  // Member states
   const [memberPhone, setMemberPhone] = useState('');
   const [memberNickname, setMemberNickname] = useState('');
   const [currentMember, setCurrentMember] = useState(null);
@@ -459,7 +457,7 @@ export default function PosView() {
           <div className="w-12 h-12 lg:w-14 lg:h-14 xl:w-20 xl:h-20 bg-emerald-500 rounded-2xl lg:rounded-2xl xl:rounded-3xl flex items-center justify-center text-white mb-4 lg:mb-4 xl:mb-8 shadow-lg font-black text-xl lg:text-xl xl:text-3xl tracking-tighter uppercase border-b-4 border-emerald-700 shadow-emerald-500/20">S</div>
           <div className="flex-1 overflow-y-auto w-full px-2 lg:px-2 xl:px-3 space-y-2 lg:space-y-2 xl:space-y-4 scrollbar-hide">
             {categories.map(cat => (
-              <button key={cat} onClick={() => setActiveCategory(cat)} className={`w-full py-3 lg:py-3 xl:py-7 rounded-xl lg:rounded-xl xl:rounded-[1.5rem] text-[10px] lg:text-[10px] xl:text-sm font-black uppercase tracking-wider lg:tracking-wider xl:tracking-widest transition-all ${activeCategory === cat ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 scale-105' : 'text-gray-400 hover:bg-gray-50 hover:text-emerald-500'}`}>{String(cat)}</button>
+              <button key={cat} onClick={() => setActiveCategory(cat)} className={`w-full py-3 lg:py-3 xl:py-7 rounded-xl lg:rounded-xl xl:rounded-[1.5rem] text-xs lg:text-xs xl:text-sm font-black uppercase tracking-wider lg:tracking-wider xl:tracking-widest transition-all ${activeCategory === cat ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 scale-105' : 'text-gray-400 hover:bg-gray-50 hover:text-emerald-500'}`}>{String(cat)}</button>
             ))}
           </div>
         </div>
@@ -482,17 +480,17 @@ export default function PosView() {
                 <div className="hidden sm:flex items-center gap-4 bg-violet-50 px-6 py-2 rounded-2xl border border-violet-100 animate-in slide-in-from-top duration-500 overflow-hidden relative group">
                   <div className="absolute top-0 left-0 w-1 h-full bg-violet-500"></div>
                   <div>
-                    <span className="text-[10px] font-black text-violet-600 uppercase tracking-widest block leading-none mb-1 flex items-center gap-1"><Zap size={10} fill="currentColor" /> โปรโมชั่นปัจจุบัน</span>
-                    <p className="text-xs font-black text-gray-800 truncate max-w-[200px]">{activePromotion.title} {activePromotion.code && <span className="text-[10px] text-violet-400 opacity-60 ml-1">({activePromotion.code})</span>}</p>
+                    <span className="text-xs font-black text-violet-600 uppercase tracking-widest block leading-none mb-1 flex items-center gap-1"><Zap size={10} fill="currentColor" /> โปรโมชั่นปัจจุบัน</span>
+                    <p className="text-xs font-black text-gray-800 truncate max-w-[200px]">{activePromotion.title} {activePromotion.code && <span className="text-xs text-violet-400 opacity-60 ml-1">({activePromotion.code})</span>}</p>
                   </div>
-                  <button onClick={() => setActivePromotion(null)} className="p-1 px-3 text-[10px] font-black text-gray-400 hover:text-red-500 bg-white border border-gray-100 rounded-lg shadow-sm">ลบออก</button>
+                  <button onClick={() => setActivePromotion(null)} className="p-1 px-3 text-xs font-black text-gray-400 hover:text-red-500 bg-white border border-gray-100 rounded-lg shadow-sm">ลบออก</button>
                 </div>
               )}
 
               <div className="hidden lg:flex items-center gap-2 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
-                <span className="text-[10px] font-black text-gray-400 pl-2 uppercase tracking-wider">Show:</span>
+                <span className="text-xs font-black text-gray-400 pl-2 uppercase tracking-wider">Show:</span>
                 {MENU_PAGE_OPTIONS.map(num => (
-                  <button key={num} onClick={() => setItemsPerPage(num)} className={`w-8 h-8 rounded-xl text-[10px] font-black transition-all ${itemsPerPage === num ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 scale-105' : 'text-gray-400 hover:bg-white hover:text-emerald-500 hover:shadow-sm'}`}>{num}</button>
+                  <button key={num} onClick={() => setItemsPerPage(num)} className={`w-8 h-8 rounded-xl text-xs font-black transition-all ${itemsPerPage === num ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 scale-105' : 'text-gray-400 hover:bg-white hover:text-emerald-500 hover:shadow-sm'}`}>{num}</button>
                 ))}
               </div>
 
@@ -512,7 +510,7 @@ export default function PosView() {
               )}
               {pagedMenu.map(item => (
                 <div key={item.id} onClick={() => addToCart(item)} className="bg-white rounded-[2.5rem] border border-gray-50 overflow-hidden cursor-pointer hover:border-emerald-500 hover:shadow-2xl transition-all duration-300 active:scale-95 group relative shadow-sm text-gray-800 flex flex-col h-full animate-in zoom-in-95 duration-200">
-                  {(item.isFeatured || item.recommended) && <div className="absolute top-4 left-4 z-10 bg-orange-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 border border-white/20"><Star size={12} fill="white" stroke="white" /> แนะนำ</div>}
+                  {(item.isFeatured || item.recommended) && <div className="absolute top-4 left-4 z-10 bg-orange-500 text-white text-xs font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 border border-white/20"><Star size={12} fill="white" stroke="white" /> แนะนำ</div>}
                   <div className="h-32 lg:h-40 bg-gray-100 overflow-hidden shrink-0">
                     <img src={item.image || 'https://via.placeholder.com/300x300?text=No+Image'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={item.name} />
                   </div>
@@ -541,7 +539,7 @@ export default function PosView() {
         <div data-pos="sidebar-cart" className="hidden md:flex w-72 lg:w-80 xl:w-96 2xl:w-[420px] bg-white border-l border-gray-100 shadow-[-15px_0_40px_rgba(0,0,0,0.02)] flex-col z-20 overflow-hidden text-gray-800">
           <div className="p-4 lg:p-4 xl:p-8 border-b flex justify-between items-center bg-gray-50/40 text-gray-800 shrink-0">
             <div className="flex items-center gap-2 lg:gap-4 font-black text-lg lg:text-xl xl:text-2xl tracking-tighter uppercase text-gray-800"><Receipt size={20} className="text-emerald-500 lg:w-6 lg:h-6" /> ตะกร้า</div>
-            <button onClick={() => { setCart([]); setUsePoints(false); setBringOwnGlass(false); }} className="text-[10px] lg:text-xs text-gray-400 font-black uppercase hover:text-red-500 transition-colors px-2 lg:px-4 py-1.5 lg:py-2 hover:bg-red-50 rounded-xl">ล้าง</button>
+            <button onClick={() => { setCart([]); setUsePoints(false); setBringOwnGlass(false); }} className="text-xs lg:text-xs text-gray-400 font-black uppercase hover:text-red-500 transition-colors px-2 lg:px-4 py-1.5 lg:py-2 hover:bg-red-50 rounded-xl">ล้าง</button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 lg:p-3 xl:p-6 space-y-3 lg:space-y-3 scrollbar-hide text-gray-800 min-h-0">
             {cart.map(item => (
@@ -549,7 +547,7 @@ export default function PosView() {
                 <div className="flex gap-2 lg:gap-4 text-gray-800">
                   <div className="flex-1 min-w-0 text-gray-800">
                     <p className="text-base font-black text-gray-800 truncate mb-1">{String(item.name)}</p>
-                    {item.beanModifier && <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">{item.beanModifier}</span>}
+                    {item.beanModifier && <span className="text-xs font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">{item.beanModifier}</span>}
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mt-1">฿{Number(item.price).toLocaleString()} x {Number(item.quantity)}</p>
                   </div>
                   <div className="flex items-center bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm text-gray-800 h-fit">
@@ -566,7 +564,7 @@ export default function PosView() {
                   {activePromotion && (
                     <button onClick={() => toggleItemPromo(item.cartId || item.id)} className={`p-3.5 rounded-2xl border transition-all flex items-center justify-center gap-2 ${item.promoApplied ? 'bg-violet-600 text-white border-violet-700 shadow-lg' : 'bg-white text-violet-500 border-violet-100 hover:bg-violet-50'}`} title="ใช้โปรโมชั่นกับเมนูนี้">
                       <Tag size={16} />
-                      {item.promoApplied && <span className="text-[10px] font-black">{activePromotion.discountPercent}%</span>}
+                      {item.promoApplied && <span className="text-xs font-black">{activePromotion.discountPercent}%</span>}
                     </button>
                   )}
                 </div>
@@ -583,8 +581,8 @@ export default function PosView() {
                 ) : (
                   <div className="space-y-2">
                     <div className="flex justify-between items-center px-1">
-                      <span className="text-[10px] font-black text-violet-500 uppercase tracking-widest flex items-center gap-1"><Zap size={12} fill="currentColor" /> แนะนำทานคู่กัน</span>
-                      <button onClick={() => setRecommendations([])} aria-label="ปิดรายการแนะนำ" className="text-[10px] text-gray-300 hover:text-red-400"><X size={12} /></button>
+                      <span className="text-xs font-black text-violet-500 uppercase tracking-widest flex items-center gap-1"><Zap size={12} fill="currentColor" /> แนะนำทานคู่กัน</span>
+                      <button onClick={() => setRecommendations([])} aria-label="ปิดรายการแนะนำ" className="text-xs text-gray-300 hover:text-red-400"><X size={12} /></button>
                     </div>
                     <div className="grid grid-cols-1 gap-2">
                       {recommendations.map(rec => (
@@ -594,7 +592,7 @@ export default function PosView() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-black text-gray-800 truncate">{rec.name}</p>
-                            <p className="text-[10px] text-emerald-500 font-bold">฿{Number(rec.price).toLocaleString()}</p>
+                            <p className="text-xs text-emerald-500 font-bold">฿{Number(rec.price).toLocaleString()}</p>
                           </div>
                           <PlusCircle size={20} className="text-violet-300 group-hover:text-violet-600 transition-colors" />
                         </div>
@@ -611,7 +609,7 @@ export default function PosView() {
             <div className="flex items-center justify-between text-xs font-black text-emerald-600 uppercase tracking-[0.1em]">
               <span className="flex items-center gap-2"><Users size={16} /> สะสมแต้ม</span>
               {currentMember && Number(currentMember.points || 0) >= REDEEM_POINTS_THRESHOLD && (
-                <button onClick={() => setUsePoints(!usePoints)} className={`px-3 lg:px-3 xl:px-5 py-2 rounded-xl lg:rounded-xl xl:rounded-2xl flex items-center gap-2 transition-all border shadow-md font-black uppercase text-[10px] ${usePoints ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-orange-500 border-orange-200 hover:bg-orange-50'}`}><Gift size={14} /> {usePoints ? 'ยกเลิก' : `ใช้ ${REDEEM_POINTS_THRESHOLD} แต้ม`}</button>
+                <button onClick={() => setUsePoints(!usePoints)} className={`px-3 lg:px-3 xl:px-5 py-2 rounded-xl lg:rounded-xl xl:rounded-2xl flex items-center gap-2 transition-all border shadow-md font-black uppercase text-xs ${usePoints ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-orange-500 border-orange-200 hover:bg-orange-50'}`}><Gift size={14} /> {usePoints ? 'ยกเลิก' : `ใช้ ${REDEEM_POINTS_THRESHOLD} แต้ม`}</button>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -638,13 +636,13 @@ export default function PosView() {
                       <span className="bg-emerald-100 text-emerald-600 text-[8px] font-black px-2 py-0.5 rounded-full border border-emerald-200 uppercase animate-pulse">New!</span>
                     )}
                   </div>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase">
+                  <p className="text-xs text-gray-400 font-bold uppercase">
                     {currentMember.isNew ? 'ใหม่ - ได้รับ' : 'แต้ม:'} <span className="text-emerald-500 font-black">{currentMember.isNew ? Math.floor(netTotal / 10) : Number(currentMember.points || 0)}</span> แต้ม
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  {!currentMember.isNew && <div className="bg-emerald-500 text-white px-2 py-1 rounded-lg text-[10px] font-black tracking-widest">+ {Math.floor(netTotal / 10)}</div>}
-                  {usePoints && <div className="text-[9px] font-black text-red-500 uppercase bg-red-50 px-2 py-1 rounded-lg">หัก {REDEEM_POINTS_THRESHOLD} แต้ม</div>}
+                  {!currentMember.isNew && <div className="bg-emerald-500 text-white px-2 py-1 rounded-lg text-xs font-black tracking-widest">+ {Math.floor(netTotal / 10)}</div>}
+                  {usePoints && <div className="text-xs font-black text-red-500 uppercase bg-red-50 px-2 py-1 rounded-lg">หัก {REDEEM_POINTS_THRESHOLD} แต้ม</div>}
                 </div>
               </div>
             )}
@@ -690,7 +688,7 @@ export default function PosView() {
             <div className="p-4 border-b flex justify-between items-center bg-gray-50 shrink-0">
               <div className="flex items-center gap-3 font-black text-lg text-gray-800"><Receipt size={20} className="text-emerald-500" /> ตะกร้า ({cart.reduce((s, i) => s + i.quantity, 0)})</div>
               <div className="flex items-center gap-2">
-                <button onClick={() => { setCart([]); setUsePoints(false); setBringOwnGlass(false); }} className="text-[10px] text-gray-400 font-black uppercase hover:text-red-500 px-3 py-2 hover:bg-red-50 rounded-xl">ล้าง</button>
+                <button onClick={() => { setCart([]); setUsePoints(false); setBringOwnGlass(false); }} className="text-xs text-gray-400 font-black uppercase hover:text-red-500 px-3 py-2 hover:bg-red-50 rounded-xl">ล้าง</button>
                 <button onClick={() => setIsMobileCartOpen(false)} aria-label="ปิดตะกร้า" className="p-2 rounded-xl hover:bg-gray-100"><X size={24} /></button>
               </div>
             </div>
@@ -704,7 +702,7 @@ export default function PosView() {
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0">
                       <p className="font-black text-gray-800 truncate">{item.name}</p>
-                      {item.beanModifier && <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded">{item.beanModifier}</span>}
+                      {item.beanModifier && <span className="text-xs font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded">{item.beanModifier}</span>}
                       <p className="text-sm text-gray-400 font-bold">฿{Number(item.price).toLocaleString()} x {item.quantity}</p>
                     </div>
                     <div className="flex items-center gap-1 bg-white rounded-xl p-1 border shrink-0">
@@ -735,7 +733,7 @@ export default function PosView() {
                   ) : (
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-black text-violet-500 uppercase flex items-center gap-1"><Zap size={10} fill="currentColor" /> แนะนำ</span>
+                        <span className="text-xs font-black text-violet-500 uppercase flex items-center gap-1"><Zap size={10} fill="currentColor" /> แนะนำ</span>
                         <button onClick={() => setRecommendations([])} aria-label="ปิดรายการแนะนำ" className="text-gray-300"><X size={12} /></button>
                       </div>
                       {recommendations.map(rec => (
@@ -745,7 +743,7 @@ export default function PosView() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-black text-gray-800 truncate">{rec.name}</p>
-                            <p className="text-[10px] text-emerald-500 font-bold">฿{Number(rec.price).toLocaleString()}</p>
+                            <p className="text-xs text-emerald-500 font-bold">฿{Number(rec.price).toLocaleString()}</p>
                           </div>
                           <PlusCircle size={18} className="text-violet-400 shrink-0" />
                         </div>
@@ -788,13 +786,13 @@ export default function PosView() {
                         <span className="bg-emerald-100 text-emerald-600 text-[8px] font-black px-1.5 py-0.5 rounded-full">New</span>
                       )}
                     </p>
-                    <p className="text-[10px] text-gray-400 font-bold">
+                    <p className="text-xs text-gray-400 font-bold">
                       {currentMember.isNew ? 'จะได้รับ' : 'แต้ม:'} <span className="text-emerald-500 font-black">{currentMember.isNew ? Math.floor(netTotal / 10) : Number(currentMember.points || 0)}</span>
                       {!currentMember.isNew && <span> | +{Math.floor(netTotal / 10)}</span>}
                     </p>
                   </div>
                   {!currentMember.isNew && Number(currentMember.points || 0) >= REDEEM_POINTS_THRESHOLD && (
-                    <button onClick={() => setUsePoints(!usePoints)} className={`px-3 py-2 rounded-xl text-[10px] font-black border ${usePoints ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-orange-500 border-orange-200'}`}>
+                    <button onClick={() => setUsePoints(!usePoints)} className={`px-3 py-2 rounded-xl text-xs font-black border ${usePoints ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-orange-500 border-orange-200'}`}>
                       <Gift size={12} className="inline mr-1" /> {usePoints ? 'ยกเลิก' : `ใช้ ${REDEEM_POINTS_THRESHOLD} แต้ม`}
                     </button>
                   )}
@@ -813,8 +811,8 @@ export default function PosView() {
               {/* Discount Info */}
               {(bringOwnGlass || usePoints) && (
                 <div className="space-y-1">
-                  {bringOwnGlass && <div className="flex justify-between text-[10px] font-black text-blue-600 bg-blue-50 p-2 rounded-lg"><span>นำแก้วมาเอง</span><span>-฿{OWN_GLASS_DISCOUNT}</span></div>}
-                  {usePoints && <div className="flex justify-between text-[10px] font-black text-orange-600 bg-orange-50 p-2 rounded-lg"><span>ใช้แต้ม</span><span>-฿{REDEEM_DISCOUNT_VALUE}</span></div>}
+                  {bringOwnGlass && <div className="flex justify-between text-xs font-black text-blue-600 bg-blue-50 p-2 rounded-lg"><span>นำแก้วมาเอง</span><span>-฿{OWN_GLASS_DISCOUNT}</span></div>}
+                  {usePoints && <div className="flex justify-between text-xs font-black text-orange-600 bg-orange-50 p-2 rounded-lg"><span>ใช้แต้ม</span><span>-฿{REDEEM_DISCOUNT_VALUE}</span></div>}
                 </div>
               )}
 

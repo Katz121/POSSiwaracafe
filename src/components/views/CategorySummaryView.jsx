@@ -131,24 +131,24 @@ export default function CategorySummaryView() {
     <div className={`bg-gray-50 border border-gray-100 rounded-[2.5rem] p-6 space-y-5 ${extraClassName}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-[11px] font-black text-gray-500 uppercase tracking-[0.3em]">สรุปยอดขายตามหมวดหมู่</h3>
+          <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em]">สรุปยอดขายตามหมวดหมู่</h3>
           <p className="text-base font-black text-gray-800 mt-2">ดูหมวดที่ขายดีที่สุด</p>
         </div>
         {bestCategory ? (
-          <div className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest">
+          <div className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest">
             ขายดีที่สุด: {String(bestCategory.category)}
           </div>
         ) : (
-          <div className="bg-gray-200 text-gray-500 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest">
+          <div className="bg-gray-200 text-gray-500 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest">
             ไม่มีข้อมูล
           </div>
         )}
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button onClick={() => setCategoryRangePreset('all')} className={`px-4 py-2 rounded-2xl text-[11px] font-black border transition-all ${categoryRangeMode === 'all' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:bg-emerald-50'}`}>ทั้งหมด</button>
-        <button onClick={() => setCategoryRangePreset('week')} className={`px-4 py-2 rounded-2xl text-[11px] font-black border transition-all ${categoryRangeMode === 'week' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:bg-emerald-50'}`}>7 วันล่าสุด</button>
-        <button onClick={() => setCategoryRangePreset('custom')} className={`px-4 py-2 rounded-2xl text-[11px] font-black border transition-all ${categoryRangeMode === 'custom' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:bg-emerald-50'}`}>เลือกช่วงวันที่</button>
+        <button onClick={() => setCategoryRangePreset('all')} className={`px-4 py-2 rounded-2xl text-xs font-black border transition-all ${categoryRangeMode === 'all' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:bg-emerald-50'}`}>ทั้งหมด</button>
+        <button onClick={() => setCategoryRangePreset('week')} className={`px-4 py-2 rounded-2xl text-xs font-black border transition-all ${categoryRangeMode === 'week' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:bg-emerald-50'}`}>7 วันล่าสุด</button>
+        <button onClick={() => setCategoryRangePreset('custom')} className={`px-4 py-2 rounded-2xl text-xs font-black border transition-all ${categoryRangeMode === 'custom' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:bg-emerald-50'}`}>เลือกช่วงวันที่</button>
       </div>
 
       {categoryRangeMode === 'custom' && (
@@ -206,7 +206,7 @@ export default function CategorySummaryView() {
                         {/* Bean Modifiers Summary */}
                         {categoryItemsBreakdown[cat.category].beans.length > 0 && (
                           <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100 space-y-3">
-                            <div className="flex items-center gap-2 text-[11px] font-black text-amber-600 uppercase tracking-wider">
+                            <div className="flex items-center gap-2 text-xs font-black text-amber-600 uppercase tracking-wider">
                               <Coffee size={14} /> สรุปยอดเมล็ดกาแฟที่ใช้
                             </div>
                             <div className="grid grid-cols-2 gap-2">
@@ -217,7 +217,7 @@ export default function CategorySummaryView() {
                                   </div>
                                   <div className="text-right shrink-0">
                                     <p className="text-xs font-black text-amber-600">x{bean.quantity}</p>
-                                    <p className="text-[10px] font-bold text-gray-400">฿{bean.revenue.toLocaleString()}</p>
+                                    <p className="text-xs font-bold text-gray-400">฿{bean.revenue.toLocaleString()}</p>
                                   </div>
                                 </div>
                               ))}

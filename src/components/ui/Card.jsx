@@ -19,6 +19,18 @@ const paddings = {
   xl: 'p-8',
 };
 
+// Static lookup — ต้องเป็น full class string เพื่อให้ Tailwind JIT scan ได้
+const roundedClasses = {
+  none: 'rounded-none',
+  sm: 'rounded-sm',
+  md: 'rounded-md',
+  lg: 'rounded-lg',
+  xl: 'rounded-xl',
+  '2xl': 'rounded-2xl',
+  '3xl': 'rounded-3xl',
+  full: 'rounded-full',
+};
+
 const Card = forwardRef(({
   children,
   variant = 'default',
@@ -43,7 +55,7 @@ const Card = forwardRef(({
       ref={ref}
       onClick={onClick}
       className={`
-        rounded-${rounded}
+        ${roundedClasses[rounded] ?? 'rounded-2xl'}
         ${variants[variant]}
         ${paddings[padding]}
         ${hoverable ? 'transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5' : ''}

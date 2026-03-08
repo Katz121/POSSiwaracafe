@@ -6,7 +6,7 @@ const variants = {
   danger: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400',
   info: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400',
   neutral: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
-  primary: 'bg-emerald-500 text-white',
+  primary: 'bg-emerald-500 dark:bg-emerald-600 text-white',
 };
 
 const sizes = {

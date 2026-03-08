@@ -336,9 +336,9 @@ export default function ExpensesView() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
-            <button onClick={() => setExpenseViewMode('daily')} className={`px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${expenseViewMode === 'daily' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-red-500'}`}>รายวัน</button>
-            <button onClick={() => setExpenseViewMode('monthly')} className={`px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${expenseViewMode === 'monthly' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-red-500'}`}>รายเดือน</button>
-            <button onClick={() => setExpenseViewMode('all')} className={`px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${expenseViewMode === 'all' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-red-500'}`}>ทั้งหมด</button>
+            <button onClick={() => setExpenseViewMode('daily')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${expenseViewMode === 'daily' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-red-500'}`}>รายวัน</button>
+            <button onClick={() => setExpenseViewMode('monthly')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${expenseViewMode === 'monthly' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-red-500'}`}>รายเดือน</button>
+            <button onClick={() => setExpenseViewMode('all')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${expenseViewMode === 'all' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-red-500'}`}>ทั้งหมด</button>
           </div>
           {expenseViewMode !== 'all' && (
             <div className="relative flex items-center bg-red-50 border border-red-100 rounded-3xl p-1.5 shadow-sm">
@@ -590,10 +590,10 @@ export default function ExpensesView() {
                   <div className="min-w-0">
                     <p className="font-black text-gray-800 text-base truncate">{String(e.title)}</p>
                     <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                      <span className="text-[10px] font-black text-gray-400 uppercase">{e.date}</span>
-                      <span className="text-[10px] font-black text-red-500 bg-red-50 px-2 py-0.5 rounded-lg border border-red-100">{e.category}</span>
+                      <span className="text-xs font-black text-gray-400 uppercase">{e.date}</span>
+                      <span className="text-xs font-black text-red-500 bg-red-50 px-2 py-0.5 rounded-lg border border-red-100">{e.category}</span>
                       {e.quantity > 0 && (
-                        <span className="text-[10px] font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">
+                        <span className="text-xs font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">
                           {Number(e.quantity).toLocaleString()} {e.unit} (@฿{Number(e.pricePerUnit).toLocaleString()})
                         </span>
                       )}

@@ -93,7 +93,7 @@ export default function StockView() {
         <div className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 p-4 md:p-6 lg:p-8 overflow-hidden text-gray-800">
           {/* Stock List */}
           <div className="flex-1 min-w-0 bg-white rounded-2xl md:rounded-[2.5rem] lg:rounded-[3rem] shadow-sm border border-gray-100 overflow-hidden flex flex-col shadow-emerald-500/5">
-            <div className="p-4 md:p-5 lg:p-6 xl:p-8 bg-gray-50/50 border-b font-black text-gray-400 text-[10px] md:text-xs uppercase flex justify-between px-4 md:px-6 lg:px-8 xl:px-10 tracking-[0.2em] leading-none">
+            <div className="p-4 md:p-5 lg:p-6 xl:p-8 bg-gray-50/50 border-b font-black text-gray-400 text-xs md:text-xs uppercase flex justify-between px-4 md:px-6 lg:px-8 xl:px-10 tracking-[0.2em] leading-none">
               <span>รายการในสต็อกทั้งหมด ({stock.length})</span>
               {stock.some(s => Number(s.quantity) <= Number(s.minQuantity)) && (
                 <span className="text-red-500 flex items-center gap-2 animate-pulse uppercase">
@@ -138,7 +138,7 @@ export default function StockView() {
                         {String(item.name)}
                       </h3>
                     </div>
-                    <p className="text-[10px] md:text-xs lg:text-sm font-bold text-gray-400 uppercase tracking-wider leading-none hidden sm:block">
+                    <p className="text-xs md:text-xs lg:text-sm font-bold text-gray-400 uppercase tracking-wider leading-none hidden sm:block">
                       ขั้นต่ำ: {Number(item.minQuantity)} {String(item.unit)}
                     </p>
                   </div>
@@ -147,7 +147,7 @@ export default function StockView() {
                       <p className="text-2xl md:text-3xl lg:text-4xl font-black text-gray-800 mb-1 tracking-tighter leading-none">
                         {(Number(item.quantity) || 0).toLocaleString()}
                       </p>
-                      <p className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-[0.2em] leading-none">
+                      <p className="text-xs md:text-xs font-black text-gray-400 uppercase tracking-[0.2em] leading-none">
                         {String(item.unit)}
                       </p>
                     </div>
@@ -221,7 +221,7 @@ export default function StockView() {
             </h2>
             <form onSubmit={saveStockItem} className="space-y-4 lg:space-y-6">
               <div>
-                <label className="text-[10px] lg:text-xs font-black text-gray-400 uppercase tracking-[0.15em] block mb-2 ml-2 leading-none">
+                <label className="text-xs lg:text-xs font-black text-gray-400 uppercase tracking-[0.15em] block mb-2 ml-2 leading-none">
                   ชื่อรายการพัสดุ
                 </label>
                 <input
@@ -234,7 +234,7 @@ export default function StockView() {
               </div>
               <div className="grid grid-cols-2 gap-3 lg:gap-4">
                 <div>
-                  <label className="text-[10px] lg:text-xs font-black text-gray-400 uppercase tracking-[0.15em] block mb-2 ml-2 leading-none">
+                  <label className="text-xs lg:text-xs font-black text-gray-400 uppercase tracking-[0.15em] block mb-2 ml-2 leading-none">
                     ต้นทุนต่อหน่วย (บาท)
                   </label>
                   <input
@@ -247,7 +247,7 @@ export default function StockView() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] lg:text-xs font-black text-gray-400 uppercase tracking-[0.15em] block mb-2 ml-2 leading-none">
+                  <label className="text-xs lg:text-xs font-black text-gray-400 uppercase tracking-[0.15em] block mb-2 ml-2 leading-none">
                     หน่วยเรียก (ชิ้น, กรัม)
                   </label>
                   <input

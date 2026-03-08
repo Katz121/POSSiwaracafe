@@ -54,7 +54,7 @@ export default function BillsView() {
           <h1 className="text-base md:text-xl lg:text-2xl font-black uppercase tracking-tight text-gray-800 truncate">ประวัติบิล</h1>
         </div>
         <div className="flex items-center gap-2 md:gap-4 shrink-0">
-          <button onClick={() => handleViewChange('category_summary')} className="hidden sm:flex bg-emerald-600 text-white px-3 md:px-6 py-2 md:py-3 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-wider md:tracking-widest shadow-lg hover:bg-emerald-700 transition-all">
+          <button onClick={() => handleViewChange('category_summary')} className="hidden sm:flex bg-emerald-600 text-white px-3 md:px-6 py-2 md:py-3 rounded-xl md:rounded-2xl text-xs md:text-xs font-black uppercase tracking-wider md:tracking-widest shadow-lg hover:bg-emerald-700 transition-all">
             สรุปหมวดหมู่
           </button>
           <div className="relative flex items-center bg-emerald-50 border border-emerald-100 rounded-xl md:rounded-3xl p-1 md:p-1.5 shadow-sm">
@@ -79,7 +79,7 @@ export default function BillsView() {
               <Search className="absolute left-4 md:left-6 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5 md:w-[22px] md:h-[22px]" />
               <input type="text" placeholder="ค้นหาเลขคิว..." value={billSearchTerm} onChange={(e) => setBillSearchTerm(e.target.value)} className="w-full bg-gray-50 border-none rounded-xl md:rounded-2xl py-3 md:py-4 pl-12 md:pl-16 pr-4 md:pr-6 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500/10 text-gray-800" />
             </div>
-            <span className="text-[10px] md:text-xs font-black text-gray-400 uppercase tracking-wider md:tracking-widest px-2">บิลในระบบ ({billsForSelectedDate.length})</span>
+            <span className="text-xs md:text-xs font-black text-gray-400 uppercase tracking-wider md:tracking-widest px-2">บิลในระบบ ({billsForSelectedDate.length})</span>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-gray-50 scrollbar-hide text-gray-800 px-1 md:px-2">
             {isSyncing && (
@@ -96,12 +96,12 @@ export default function BillsView() {
                   <div className={`w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-base md:text-lg lg:text-xl shrink-0 ${selectedBill?.id === bill.id ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-gray-100 text-gray-500 shadow-sm'}`}>{Number(bill.queueNumber)}</div>
                   <div className="min-w-0">
                     <p className="font-black text-gray-800 text-sm md:text-base mb-1 md:mb-2 uppercase tracking-tighter truncate">#{String(bill.id).slice(-6).toUpperCase()}</p>
-                    <p className="text-[10px] md:text-xs font-bold text-gray-400 flex items-center gap-1 md:gap-1.5 uppercase"><Clock size={10} className="md:w-3 md:h-3" /> {String(bill.time)} น.</p>
+                    <p className="text-xs md:text-xs font-bold text-gray-400 flex items-center gap-1 md:gap-1.5 uppercase"><Clock size={10} className="md:w-3 md:h-3" /> {String(bill.time)} น.</p>
                   </div>
                 </div>
                 <div className="text-right flex flex-col items-end gap-1 md:gap-1.5">
                   <p className="font-black text-emerald-600 text-base md:text-lg lg:text-xl">฿{Number(bill.total || 0).toLocaleString()}</p>
-                  <span className={`text-[8px] md:text-[10px] font-black uppercase px-2 md:px-3 py-0.5 md:py-1 rounded-full border ${bill.isPaid ? 'bg-emerald-100 text-emerald-600 border-emerald-200' : 'bg-orange-100 text-orange-600 border-orange-200'}`}>{bill.isPaid ? 'จ่ายแล้ว' : 'ค้างชำระ'}</span>
+                  <span className={`text-[8px] md:text-xs font-black uppercase px-2 md:px-3 py-0.5 md:py-1 rounded-full border ${bill.isPaid ? 'bg-emerald-100 text-emerald-600 border-emerald-200' : 'bg-orange-100 text-orange-600 border-orange-200'}`}>{bill.isPaid ? 'จ่ายแล้ว' : 'ค้างชำระ'}</span>
                 </div>
                 <ChevronRight size={16} className="text-gray-300 lg:hidden shrink-0 ml-2" />
               </button>
@@ -126,7 +126,7 @@ export default function BillsView() {
                         <UserCheck size={20} />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[10px] lg:text-[11px] font-black text-emerald-600 uppercase tracking-wider lg:tracking-[0.2em] mb-1">ข้อมูลลูกค้าสมาชิก</p>
+                        <p className="text-xs lg:text-xs font-black text-emerald-600 uppercase tracking-wider lg:tracking-[0.2em] mb-1">ข้อมูลลูกค้าสมาชิก</p>
                         <p className="text-sm lg:text-lg font-black text-gray-800 truncate">
                           {selectedBill.memberNickname || members.find(m => m.phone === selectedBill.memberPhone)?.name || 'ลูกค้าทั่วไป'}
                           {selectedBill.memberPhone && <span className="ml-2 lg:ml-3 text-emerald-600 font-bold opacity-70 tracking-tighter">({selectedBill.memberPhone})</span>}
@@ -135,7 +135,7 @@ export default function BillsView() {
                     </div>
                   )}
                   {selectedBill.bringOwnGlass && (
-                    <div className="mt-3 p-2.5 lg:p-3 bg-blue-50 text-blue-600 rounded-xl lg:rounded-2xl border border-blue-100 text-[10px] lg:text-xs font-black uppercase flex items-center gap-2 w-fit">
+                    <div className="mt-3 p-2.5 lg:p-3 bg-blue-50 text-blue-600 rounded-xl lg:rounded-2xl border border-blue-100 text-xs lg:text-xs font-black uppercase flex items-center gap-2 w-fit">
                       <Coffee size={14} /> ส่วนลดนำแก้วมาเอง (-฿{OWN_GLASS_DISCOUNT})
                     </div>
                   )}
@@ -161,7 +161,7 @@ export default function BillsView() {
               <div className="flex-1 overflow-y-auto p-6 lg:p-12 scrollbar-hide">
                 <div className="max-w-3xl mx-auto space-y-8 lg:space-y-12">
                   <div>
-                    <h3 className="text-[10px] lg:text-xs font-black text-gray-400 uppercase tracking-wider lg:tracking-[0.3em] mb-4 lg:mb-6 border-b pb-2 lg:pb-3 px-2 lg:px-4">รายการสินค้าแยกตามหมวดหมู่</h3>
+                    <h3 className="text-xs lg:text-xs font-black text-gray-400 uppercase tracking-wider lg:tracking-[0.3em] mb-4 lg:mb-6 border-b pb-2 lg:pb-3 px-2 lg:px-4">รายการสินค้าแยกตามหมวดหมู่</h3>
                     <div className="space-y-6 lg:space-y-8 px-1 lg:px-2">
                       {Object.entries(groupItemsByCategory(selectedBill.items, menu)).map(([category, data]) => (
                         <div key={category} className="space-y-2 lg:space-y-3">
@@ -170,7 +170,7 @@ export default function BillsView() {
                               <div className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-emerald-500"></div>
                               <h4 className="text-xs lg:text-sm font-black text-gray-700 uppercase tracking-wide lg:tracking-wider">{category}</h4>
                             </div>
-                            <span className="text-[10px] lg:text-xs font-black text-emerald-600 bg-emerald-50 px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg lg:rounded-xl border border-emerald-100">
+                            <span className="text-xs lg:text-xs font-black text-emerald-600 bg-emerald-50 px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg lg:rounded-xl border border-emerald-100">
                               {data.quantity} ชิ้น • ฿{data.total.toLocaleString()}
                             </span>
                           </div>
@@ -181,8 +181,8 @@ export default function BillsView() {
                                   <div className="w-10 h-10 lg:w-12 lg:h-12 bg-white rounded-lg lg:rounded-xl flex items-center justify-center font-black text-xs lg:text-sm text-emerald-500 shadow-sm border border-gray-100 shrink-0">x{Number(item.quantity)}</div>
                                   <div className="min-w-0">
                                     <p className="font-black text-gray-800 text-sm lg:text-lg mb-0.5 lg:mb-1 truncate">{String(item.name)}</p>
-                                    <p className="text-[10px] lg:text-xs font-bold text-gray-400 uppercase tracking-tighter">฿{Number(item.price).toLocaleString()} / ชิ้น</p>
-                                    {item.note && <p className="text-[10px] lg:text-[11px] text-orange-500 font-bold mt-1 lg:mt-1.5 truncate">✨ {item.note}</p>}
+                                    <p className="text-xs lg:text-xs font-bold text-gray-400 uppercase tracking-tighter">฿{Number(item.price).toLocaleString()} / ชิ้น</p>
+                                    {item.note && <p className="text-xs lg:text-xs text-orange-500 font-bold mt-1 lg:mt-1.5 truncate">✨ {item.note}</p>}
                                   </div>
                                 </div>
                                 <p className="font-black text-gray-700 text-base lg:text-xl shrink-0 ml-2">฿{(Number(item.price) * Number(item.quantity)).toLocaleString()}</p>
@@ -204,7 +204,7 @@ export default function BillsView() {
                           <div className="flex flex-col">
                             <span>ส่วนลดทั้งหมด</span>
                             {selectedBill.promotionTitle && (
-                              <span className="text-[9px] lg:text-[10px] text-orange-200 opacity-60 normal-case mb-1 flex items-center gap-1">✨ {selectedBill.promotionTitle} {selectedBill.promotionDiscountPercent > 0 && `(${selectedBill.promotionDiscountPercent}%)`}</span>
+                              <span className="text-xs lg:text-xs text-orange-200 opacity-60 normal-case mb-1 flex items-center gap-1">✨ {selectedBill.promotionTitle} {selectedBill.promotionDiscountPercent > 0 && `(${selectedBill.promotionDiscountPercent}%)`}</span>
                             )}
                           </div>
                           <span>-฿{Number(selectedBill.discount).toLocaleString()}</span>
@@ -218,8 +218,8 @@ export default function BillsView() {
                       )}
                       <div className="flex justify-between items-end border-t border-white/10 pt-6 lg:pt-10">
                         <div className="flex flex-col">
-                          <span className="text-[10px] lg:text-xs font-black uppercase tracking-wider lg:tracking-[0.4em] opacity-40 mb-1.5 lg:mb-2">ยอดรวมสุทธิ</span>
-                          <span className={`text-[9px] lg:text-[11px] font-black uppercase px-3 lg:px-4 py-1 lg:py-1.5 rounded-lg lg:rounded-xl w-fit ${selectedBill.isPaid ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 'bg-orange-500 text-white'}`}>{selectedBill.isPaid ? 'จ่ายเรียบร้อย' : 'ค้างชำระ'}</span>
+                          <span className="text-xs lg:text-xs font-black uppercase tracking-wider lg:tracking-[0.4em] opacity-40 mb-1.5 lg:mb-2">ยอดรวมสุทธิ</span>
+                          <span className={`text-xs lg:text-xs font-black uppercase px-3 lg:px-4 py-1 lg:py-1.5 rounded-lg lg:rounded-xl w-fit ${selectedBill.isPaid ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 'bg-orange-500 text-white'}`}>{selectedBill.isPaid ? 'จ่ายเรียบร้อย' : 'ค้างชำระ'}</span>
                         </div>
                         <span className="text-3xl lg:text-6xl font-black tracking-tighter text-white drop-shadow-lg">฿{Number(selectedBill.total || 0).toLocaleString()}</span>
                       </div>
@@ -248,7 +248,7 @@ export default function BillsView() {
                   </button>
                   <div className="min-w-0">
                     <h2 className="text-base font-black text-gray-800 truncate">บิล #{String(selectedBill.id).slice(-6).toUpperCase()}</h2>
-                    <p className="text-[10px] text-gray-400 font-bold">{String(selectedBill.time)} น.</p>
+                    <p className="text-xs text-gray-400 font-bold">{String(selectedBill.time)} น.</p>
                   </div>
                 </div>
                 <button onClick={() => { setShowMobileBillDetail(false); setSelectedBill(null); }} className="p-2 rounded-xl hover:bg-gray-100">
@@ -265,7 +265,7 @@ export default function BillsView() {
                       <UserCheck size={20} />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-black text-emerald-600 uppercase tracking-wider">สมาชิก</p>
+                      <p className="text-xs font-black text-emerald-600 uppercase tracking-wider">สมาชิก</p>
                       <p className="text-sm font-black text-gray-800 truncate">
                         {selectedBill.memberNickname || members.find(m => m.phone === selectedBill.memberPhone)?.name || 'ลูกค้าทั่วไป'}
                       </p>
@@ -289,7 +289,7 @@ export default function BillsView() {
                           <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
                           {category}
                         </span>
-                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">{data.quantity} ชิ้น</span>
+                        <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">{data.quantity} ชิ้น</span>
                       </div>
                       {data.items.map((item, idx) => (
                         <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
@@ -297,7 +297,7 @@ export default function BillsView() {
                             <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center font-black text-xs text-emerald-500 shrink-0">x{Number(item.quantity)}</div>
                             <div className="min-w-0">
                               <p className="font-black text-gray-800 text-sm truncate">{String(item.name)}</p>
-                              {item.note && <p className="text-[10px] text-orange-500 font-bold truncate">✨ {item.note}</p>}
+                              {item.note && <p className="text-xs text-orange-500 font-bold truncate">✨ {item.note}</p>}
                             </div>
                           </div>
                           <p className="font-black text-gray-700 text-sm shrink-0 ml-2">฿{(Number(item.price) * Number(item.quantity)).toLocaleString()}</p>
@@ -327,8 +327,8 @@ export default function BillsView() {
                   )}
                   <div className="flex justify-between items-end border-t border-white/10 pt-4">
                     <div>
-                      <span className="text-[10px] font-black uppercase tracking-wider opacity-40 block mb-1">ยอดสุทธิ</span>
-                      <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg ${selectedBill.isPaid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-orange-500 text-white'}`}>{selectedBill.isPaid ? 'จ่ายแล้ว' : 'ค้างชำระ'}</span>
+                      <span className="text-xs font-black uppercase tracking-wider opacity-40 block mb-1">ยอดสุทธิ</span>
+                      <span className={`text-xs font-black uppercase px-2 py-1 rounded-lg ${selectedBill.isPaid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-orange-500 text-white'}`}>{selectedBill.isPaid ? 'จ่ายแล้ว' : 'ค้างชำระ'}</span>
                     </div>
                     <span className="text-3xl font-black">฿{Number(selectedBill.total || 0).toLocaleString()}</span>
                   </div>

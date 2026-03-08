@@ -367,46 +367,46 @@ export default function MembersView() {
         {/* Total Members */}
         <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl md:rounded-2xl p-3 md:p-5 text-white shadow-lg">
           <div className="flex items-center justify-between mb-1 md:mb-2">
-            <span className="text-[9px] md:text-[10px] font-black uppercase tracking-wider opacity-80">สมาชิกทั้งหมด</span>
+            <span className="text-xs md:text-xs font-black uppercase tracking-wider opacity-80">สมาชิกทั้งหมด</span>
             <Users size={16} className="md:w-5 md:h-5 opacity-60" />
           </div>
           <p className="text-2xl md:text-4xl font-black">{processedMembers.length}</p>
-          <p className="text-[9px] md:text-[10px] opacity-70 mt-0.5">คน</p>
+          <p className="text-xs md:text-xs opacity-70 mt-0.5">คน</p>
         </div>
 
         {/* Filtered Results */}
         <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl md:rounded-2xl p-3 md:p-5 text-white shadow-lg">
           <div className="flex items-center justify-between mb-1 md:mb-2">
-            <span className="text-[9px] md:text-[10px] font-black uppercase tracking-wider opacity-80">ผลการค้นหา</span>
+            <span className="text-xs md:text-xs font-black uppercase tracking-wider opacity-80">ผลการค้นหา</span>
             <Search size={16} className="md:w-5 md:h-5 opacity-60" />
           </div>
           <p className="text-2xl md:text-4xl font-black">{filteredMembers.length}</p>
-          <p className="text-[9px] md:text-[10px] opacity-70 mt-0.5">คน</p>
+          <p className="text-xs md:text-xs opacity-70 mt-0.5">คน</p>
         </div>
 
         {/* Redeemable Members */}
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl md:rounded-2xl p-3 md:p-5 text-white shadow-lg">
           <div className="flex items-center justify-between mb-1 md:mb-2">
-            <span className="text-[9px] md:text-[10px] font-black uppercase tracking-wider opacity-80">แลกแต้มได้</span>
-            <span className="text-[8px] md:text-[9px] bg-white/20 px-1.5 py-0.5 rounded-lg">≥{REDEEM_POINTS_THRESHOLD}</span>
+            <span className="text-xs md:text-xs font-black uppercase tracking-wider opacity-80">แลกแต้มได้</span>
+            <span className="text-[8px] md:text-xs bg-white/20 px-1.5 py-0.5 rounded-lg">≥{REDEEM_POINTS_THRESHOLD}</span>
           </div>
           <p className="text-2xl md:text-4xl font-black">{redeemableMembers}</p>
-          <p className="text-[9px] md:text-[10px] opacity-70 mt-0.5">คน</p>
+          <p className="text-xs md:text-xs opacity-70 mt-0.5">คน</p>
         </div>
 
         {/* Total Spent */}
         <div className="bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl md:rounded-2xl p-3 md:p-5 text-white shadow-lg">
           <div className="flex items-center justify-between mb-1 md:mb-2">
-            <span className="text-[9px] md:text-[10px] font-black uppercase tracking-wider opacity-80">ยอดใช้จ่ายรวม</span>
+            <span className="text-xs md:text-xs font-black uppercase tracking-wider opacity-80">ยอดใช้จ่ายรวม</span>
           </div>
           <p className="text-xl md:text-3xl font-black">฿{totalSpentAll.toLocaleString()}</p>
-          <p className="text-[9px] md:text-[10px] opacity-70 mt-0.5">แต้มรวม: {totalPoints.toLocaleString()}</p>
+          <p className="text-xs md:text-xs opacity-70 mt-0.5">แต้มรวม: {totalPoints.toLocaleString()}</p>
         </div>
       </div>
       <div className="flex-1 p-3 md:p-6 lg:p-8 overflow-hidden">
         <div className="h-full bg-white rounded-2xl md:rounded-[2.5rem] lg:rounded-[3.5rem] shadow-xl border border-gray-100 overflow-hidden flex flex-col shadow-emerald-500/5">
           {/* Desktop Table Header */}
-          <div className="hidden md:grid p-6 lg:p-10 border-b border-gray-50 grid-cols-4 font-black text-[10px] lg:text-[11px] text-gray-400 uppercase tracking-wider lg:tracking-[0.2em] px-6 lg:px-12 leading-none">
+          <div className="hidden md:grid p-6 lg:p-10 border-b border-gray-50 grid-cols-4 font-black text-xs lg:text-xs text-gray-400 uppercase tracking-wider lg:tracking-[0.2em] px-6 lg:px-12 leading-none">
             <span>ข้อมูลสมาชิก</span>
             <span className="text-center">รายการสำเร็จ</span>
             <span className="text-center">ยอดรวม</span>
@@ -437,14 +437,14 @@ export default function MembersView() {
                       </div>
                       <div className="min-w-0">
                         <p className="font-black text-gray-800 text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
-                        <p className="text-[10px] font-bold text-gray-400 tracking-wide">{m.phone ? String(m.phone) : 'ไม่ระบุเบอร์'}</p>
+                        <p className="text-xs font-bold text-gray-400 tracking-wide">{m.phone ? String(m.phone) : 'ไม่ระบุเบอร์'}</p>
                       </div>
                     </div>
                     <div className={`px-3 py-1.5 rounded-xl font-black text-xs shadow ${Number(m.points || 0) >= REDEEM_POINTS_THRESHOLD ? 'bg-orange-500 text-white animate-pulse' : 'bg-emerald-500 text-white'}`}>
                       {Number(m.points || 0)} แต้ม
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-[10px]">
+                  <div className="flex items-center justify-between text-xs">
                     <div className="flex gap-4">
                       <span className="text-gray-400">ซื้อ: <span className="text-gray-800 font-black">{Number(m.totalPurchases)} ชิ้น</span></span>
                       <span className="text-gray-400">ยอด: <span className="text-emerald-600 font-black">฿{Number(m.totalSpent).toLocaleString()}</span></span>
@@ -485,7 +485,7 @@ export default function MembersView() {
                   </div>
                   <div className="text-center text-gray-800">
                     <p className="text-xl lg:text-3xl font-black text-gray-800 mb-1 lg:mb-1.5 leading-none">{Number(m.totalPurchases)}</p>
-                    <p className="text-[9px] lg:text-[10px] font-black text-emerald-500 uppercase tracking-wider lg:tracking-widest mt-1 lg:mt-2 leading-none">รายการ</p>
+                    <p className="text-xs lg:text-xs font-black text-emerald-500 uppercase tracking-wider lg:tracking-widest mt-1 lg:mt-2 leading-none">รายการ</p>
                   </div>
                   <div className="text-center text-gray-800 font-black text-sm lg:text-lg">฿{Number(m.totalSpent).toLocaleString()}</div>
                   <div className="text-right text-gray-800 font-black leading-none">
@@ -553,15 +553,15 @@ export default function MembersView() {
               <div className="grid grid-cols-3 gap-3 md:gap-4 mb-6">
                 <div className="bg-pink-50 rounded-xl md:rounded-2xl p-3 md:p-4 text-center border border-pink-100">
                   <p className="text-lg md:text-2xl font-black text-pink-600">{memberData.totalOrders}</p>
-                  <p className="text-[9px] md:text-[10px] font-bold text-pink-400 uppercase tracking-wider">ออเดอร์ทั้งหมด</p>
+                  <p className="text-xs md:text-xs font-bold text-pink-400 uppercase tracking-wider">ออเดอร์ทั้งหมด</p>
                 </div>
                 <div className="bg-violet-50 rounded-xl md:rounded-2xl p-3 md:p-4 text-center border border-violet-100">
                   <p className="text-lg md:text-2xl font-black text-violet-600">{memberData.uniqueItems}</p>
-                  <p className="text-[9px] md:text-[10px] font-bold text-violet-400 uppercase tracking-wider">เมนูที่เคยสั่ง</p>
+                  <p className="text-xs md:text-xs font-bold text-violet-400 uppercase tracking-wider">เมนูที่เคยสั่ง</p>
                 </div>
                 <div className="bg-emerald-50 rounded-xl md:rounded-2xl p-3 md:p-4 text-center border border-emerald-100">
                   <p className="text-lg md:text-2xl font-black text-emerald-600">฿{Number(selectedMemberForFavorites.totalSpent || 0).toLocaleString()}</p>
-                  <p className="text-[9px] md:text-[10px] font-bold text-emerald-400 uppercase tracking-wider">ยอดใช้จ่ายรวม</p>
+                  <p className="text-xs md:text-xs font-bold text-emerald-400 uppercase tracking-wider">ยอดใช้จ่ายรวม</p>
                 </div>
               </div>
 
@@ -599,19 +599,19 @@ export default function MembersView() {
                           {/* Info */}
                           <div className="flex-1 min-w-0">
                             <p className="font-black text-gray-800 text-sm md:text-base truncate">{item.name}</p>
-                            <p className="text-[10px] md:text-xs text-gray-400 font-bold">{item.category || 'ไม่ระบุหมวดหมู่'}</p>
+                            <p className="text-xs md:text-xs text-gray-400 font-bold">{item.category || 'ไม่ระบุหมวดหมู่'}</p>
                           </div>
 
                           {/* Count */}
                           <div className="text-right shrink-0">
                             <p className="font-black text-pink-600 text-lg md:text-xl">{item.count}</p>
-                            <p className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">ครั้ง</p>
+                            <p className="text-xs md:text-xs text-gray-400 font-bold uppercase">ครั้ง</p>
                           </div>
 
                           {/* Total Spent */}
                           <div className="text-right shrink-0 hidden sm:block">
                             <p className="font-black text-emerald-600 text-sm md:text-base">฿{item.totalSpent.toLocaleString()}</p>
-                            <p className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase">รวม</p>
+                            <p className="text-xs md:text-xs text-gray-400 font-bold uppercase">รวม</p>
                           </div>
                         </div>
                       ))}
@@ -632,12 +632,12 @@ export default function MembersView() {
                         return (
                           <div key={order.id || idx} className="bg-gray-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-gray-100">
                             <div className="flex items-center justify-between mb-2">
-                              <span className="text-[10px] md:text-xs font-bold text-gray-400">{dateStr}</span>
+                              <span className="text-xs md:text-xs font-bold text-gray-400">{dateStr}</span>
                               <span className="text-sm md:text-base font-black text-emerald-600">฿{Number(order.total || 0).toLocaleString()}</span>
                             </div>
                             <div className="flex flex-wrap gap-1 md:gap-2">
                               {(order.items || []).map((item, i) => (
-                                <span key={i} className="text-[10px] md:text-xs bg-white px-2 py-1 rounded-lg border border-gray-100 font-bold text-gray-600">
+                                <span key={i} className="text-xs md:text-xs bg-white px-2 py-1 rounded-lg border border-gray-100 font-bold text-gray-600">
                                   {item.name} x{item.quantity}
                                 </span>
                               ))}
