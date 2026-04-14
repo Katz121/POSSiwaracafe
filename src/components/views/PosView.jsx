@@ -511,7 +511,8 @@ export default function PosView() {
           </header>
 
           <div className="flex-1 flex flex-col overflow-hidden relative">
-            <div data-pos="menu-grid" className="flex-1 overflow-y-auto p-3 md:p-4 lg:p-4 xl:p-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-3 lg:gap-4 xl:gap-6 scrollbar-hide text-gray-800 content-start pb-24 md:pb-28 lg:pb-28 xl:pb-52">
+            <div data-pos="menu-grid" className="flex-1 overflow-y-auto p-3 md:p-4 lg:p-4 xl:p-8 scrollbar-hide text-gray-800 pb-24 md:pb-28 lg:pb-28 xl:pb-52">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-3 lg:gap-4 xl:gap-6">
               {isSyncing && (
                 <div className="col-span-full"><Skeleton.MenuGrid items={8} /></div>
               )}
@@ -521,17 +522,18 @@ export default function PosView() {
                 </div>
               )}
               {pagedMenu.map(item => (
-                <div key={item.id} onClick={() => addToCart(item)} className="bg-white rounded-[2.5rem] border border-gray-50 overflow-hidden cursor-pointer hover:border-emerald-500 hover:shadow-2xl transition-all duration-300 active:scale-95 group relative shadow-sm text-gray-800 flex flex-col h-full animate-in zoom-in-95 duration-200">
-                  {(item.isFeatured || item.recommended) && <div className="absolute top-4 left-4 z-10 bg-orange-500 text-white text-xs font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 border border-white/20"><Star size={12} fill="white" stroke="white" /> แนะนำ</div>}
-                  <div className="h-32 lg:h-40 bg-gray-100 overflow-hidden shrink-0">
-                    <img src={item.image || 'https://via.placeholder.com/300x300?text=No+Image'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={item.name} />
+                <div key={item.id} onClick={() => addToCart(item)} className="bg-white rounded-2xl md:rounded-3xl lg:rounded-[2rem] xl:rounded-[2.5rem] border border-gray-50 overflow-hidden cursor-pointer hover:border-emerald-500 hover:shadow-2xl transition-all duration-300 active:scale-95 group relative shadow-sm text-gray-800 flex flex-col h-full animate-in zoom-in-95 duration-200">
+                  {(item.isFeatured || item.recommended) && <div className="absolute top-2 left-2 md:top-3 md:left-3 xl:top-4 xl:left-4 z-10 bg-orange-500 text-white text-[10px] md:text-xs font-black px-2.5 py-1 md:px-4 md:py-1.5 rounded-full shadow-lg flex items-center gap-1 md:gap-2 border border-white/20"><Star size={10} fill="white" stroke="white" /> แนะนำ</div>}
+                  <div className="aspect-[4/3] bg-gray-100 overflow-hidden shrink-0">
+                    <img src={item.image || 'https://via.placeholder.com/300x300?text=No+Image'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={item.name} loading="lazy" />
                   </div>
-                  <div className="p-5 flex-1 flex flex-col justify-between">
-                    <h3 className="text-base lg:text-lg font-black text-gray-800 line-clamp-3 min-h-[64px] leading-[1.3] mb-2">{String(item.name)}</h3>
-                    <p className="text-emerald-500 font-black text-xl lg:text-2xl mt-auto">฿{Number(item.price).toLocaleString()}</p>
+                  <div className="p-2.5 md:p-3 lg:p-4 xl:p-5 flex-1 flex flex-col justify-between gap-1">
+                    <h3 className="text-xs md:text-sm lg:text-base xl:text-lg font-black text-gray-800 line-clamp-2 leading-tight">{String(item.name)}</h3>
+                    <p className="text-emerald-500 font-black text-base md:text-lg lg:text-xl xl:text-2xl mt-auto">฿{Number(item.price).toLocaleString()}</p>
                   </div>
                 </div>
               ))}
+              </div>
             </div>
 
             {totalPages > 1 && (
