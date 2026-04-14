@@ -154,6 +154,7 @@ export default function StockView() {
                     <div className="flex items-center bg-gray-100/50 rounded-xl md:rounded-2xl p-1 md:p-2 shadow-inner border border-gray-100">
                       <button
                         onClick={() => updateStockQuantity(item, -1)}
+                        aria-label="ลดจำนวนสต็อก"
                         className="p-2 md:p-3 lg:p-4 hover:bg-red-50 text-red-400 transition-all active:scale-90"
                       >
                         <Minus size={18} className="md:w-5 md:h-5 lg:w-[22px] lg:h-[22px]" />
@@ -161,6 +162,7 @@ export default function StockView() {
                       <div className="w-[1px] h-8 md:h-10 lg:h-12 bg-gray-200 mx-1 md:mx-2 lg:mx-3"></div>
                       <button
                         onClick={() => updateStockQuantity(item, 1)}
+                        aria-label="เพิ่มจำนวนสต็อก"
                         className="p-2 md:p-3 lg:p-4 hover:bg-emerald-50 text-emerald-400 transition-all active:scale-90"
                       >
                         <Plus size={18} className="md:w-5 md:h-5 lg:w-[22px] lg:h-[22px]" />
@@ -174,6 +176,7 @@ export default function StockView() {
                         }}
                         className="p-2 md:p-3 lg:p-4 bg-orange-50 text-orange-500 rounded-xl md:rounded-2xl shadow-sm border border-orange-100 active:scale-90"
                         title="ตัดของเสีย"
+                        aria-label="ตัดของเสีย"
                       >
                         <Trash2 size={18} className="md:w-5 md:h-5 lg:w-6 lg:h-6" />
                       </button>
@@ -188,6 +191,7 @@ export default function StockView() {
                             unitCost: item.unitCost || 0
                           });
                         }}
+                        aria-label="แก้ไขสต็อก"
                         className="p-2 md:p-3 lg:p-4 bg-blue-50 text-blue-500 rounded-xl md:rounded-2xl shadow-sm border border-blue-100 active:scale-90"
                       >
                         <Edit size={18} className="md:w-5 md:h-5 lg:w-6 lg:h-6" />
@@ -197,6 +201,7 @@ export default function StockView() {
                           setStockToDelete(item);
                           setShowDeleteConfirm(true);
                         }}
+                        aria-label="ลบสต็อก"
                         className="p-2 md:p-3 lg:p-4 bg-red-50 text-red-500 rounded-xl md:rounded-2xl shadow-sm border border-red-100 active:scale-90"
                       >
                         <Trash2 size={18} className="md:w-5 md:h-5 lg:w-6 lg:h-6" />

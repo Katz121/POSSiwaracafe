@@ -25,3 +25,6 @@ export { default as Avatar, AvatarGroup } from './Avatar';
 // Layout Components
 export { default as Divider } from './Divider';
 export { default as EmptyState } from './EmptyState';
+
+// Error Handling
+export { default as ErrorBoundary } from './ErrorBoundary';

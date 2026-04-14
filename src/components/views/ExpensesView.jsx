@@ -5,6 +5,7 @@ import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate } from '../../utils/calculations';
 import { Button, Modal, Input, Select, Card, Spinner, EmptyState, useToast } from '../ui';
+import { EXPENSE_CATEGORIES } from '../../config/constants';
 
 export default function ExpensesView() {
   const { expenses, orders, quickExpenses, runDbAction, callGeminiAPI, setView, handleViewChange, setAdminTab, stock } = useAppContext();
@@ -512,10 +513,9 @@ export default function ExpensesView() {
                   className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 md:p-5 text-sm md:text-base font-black outline-none shadow-inner cursor-pointer text-gray-800"
                   aria-label="หมวดหมู่"
                 >
-                  <option>วัตถุดิบ</option>
-                  <option>ค่าจ้าง</option>
-                  <option>ค่าไฟ/น้ำ</option>
-                  <option>อื่น ๆ</option>
+                  {EXPENSE_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
                 </select>
                 {newExpense.category === 'วัตถุดิบ' && (
                   <div className="mt-3 p-3 md:p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 md:gap-3">

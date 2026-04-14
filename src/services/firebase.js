@@ -12,6 +12,13 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// Validate required config
+['apiKey', 'projectId'].forEach(key => {
+  if (!firebaseConfig[key]) {
+    console.error(`Missing Firebase config: VITE_FIREBASE_${key.replace(/([A-Z])/g, '_$1').toUpperCase()}`);
+  }
+});
+
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);

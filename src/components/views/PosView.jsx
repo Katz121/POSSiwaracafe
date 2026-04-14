@@ -96,15 +96,23 @@ export default function PosView() {
     return d;
   }, [usePoints, bringOwnGlass, activePromotion, cart, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT]);
 
-  const vatAmount = useMemo(() => vatEnabled ? Math.round((subtotal - discountAmount) * VAT_RATE) : 0, [subtotal, discountAmount, vatEnabled]);
+  const vatAmount = useMemo(() => vatEnabled ? Math.round(Math.max(0, subtotal - discountAmount) * VAT_RATE) : 0, [subtotal, discountAmount, vatEnabled]);
   const netTotal = useMemo(() => Math.max(0, (subtotal - discountAmount) + vatAmount), [subtotal, discountAmount, vatAmount]);
 
   const categories = useMemo(() => ['แนะนำ', ...[...new Set(dynamicCategories.map(c => c.name))]], [dynamicCategories]);
 
-  const filteredMenu = useMemo(() => menu.filter(i => {
-    const categoryMatch = activeCategory === 'แนะนำ' ? i.isFeatured : (i.category === activeCategory);
-    return categoryMatch && String(i.name || '').toLowerCase().includes(debouncedSearchTerm.toLowerCase()) && i.available !== false;
-  }), [activeCategory, debouncedSearchTerm, menu]);
+  const filteredMenu = useMemo(() => {
+    const search = debouncedSearchTerm.toLowerCase();
+    // ถ้ามีคำค้นหา → ค้นทุกหมวดเลย ไม่ต้องเลือกหมวดก่อน
+    if (search) {
+      return menu.filter(i => i.available !== false && String(i.name || '').toLowerCase().includes(search));
+    }
+    // ไม่มีคำค้นหา → กรองตามหมวดปกติ
+    return menu.filter(i => {
+      const categoryMatch = activeCategory === 'แนะนำ' ? i.isFeatured : (i.category === activeCategory);
+      return categoryMatch && i.available !== false;
+    });
+  }, [activeCategory, debouncedSearchTerm, menu]);
 
   const totalPages = Math.ceil(filteredMenu.length / itemsPerPage);
   const pagedMenu = useMemo(() => {
@@ -180,6 +188,10 @@ export default function PosView() {
         if (orderToEdit.memberNickname) {
           setMemberNickname(orderToEdit.memberNickname);
         }
+      } else {
+        // Order was deleted while trying to edit
+        toast.warning('บิลนี้ถูกลบแล้ว');
+        setEditingOrderId(null);
       }
     }
     prevEditingIdRef.current = editingOrderId;
@@ -457,7 +469,7 @@ export default function PosView() {
           <div className="w-12 h-12 lg:w-14 lg:h-14 xl:w-20 xl:h-20 bg-emerald-500 rounded-2xl lg:rounded-2xl xl:rounded-3xl flex items-center justify-center text-white mb-4 lg:mb-4 xl:mb-8 shadow-lg font-black text-xl lg:text-xl xl:text-3xl tracking-tighter uppercase border-b-4 border-emerald-700 shadow-emerald-500/20">S</div>
           <div className="flex-1 overflow-y-auto w-full px-2 lg:px-2 xl:px-3 space-y-2 lg:space-y-2 xl:space-y-4 scrollbar-hide">
             {categories.map(cat => (
-              <button key={cat} onClick={() => setActiveCategory(cat)} className={`w-full py-3 lg:py-3 xl:py-7 rounded-xl lg:rounded-xl xl:rounded-[1.5rem] text-xs lg:text-xs xl:text-sm font-black uppercase tracking-wider lg:tracking-wider xl:tracking-widest transition-all ${activeCategory === cat ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 scale-105' : 'text-gray-400 hover:bg-gray-50 hover:text-emerald-500'}`}>{String(cat)}</button>
+              <button key={cat} onClick={() => { setActiveCategory(cat); setSearchTerm(''); }} className={`w-full py-3 lg:py-3 xl:py-7 rounded-xl lg:rounded-xl xl:rounded-[1.5rem] text-xs lg:text-xs xl:text-sm font-black uppercase tracking-wider lg:tracking-wider xl:tracking-widest transition-all ${activeCategory === cat ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 scale-105' : 'text-gray-400 hover:bg-gray-50 hover:text-emerald-500'}`}>{String(cat)}</button>
             ))}
           </div>
         </div>
@@ -465,7 +477,7 @@ export default function PosView() {
         {/* Mobile Category Bar */}
         <div data-pos="mobile-cat" className="md:hidden flex overflow-x-auto scrollbar-hide bg-white border-b border-gray-100 px-4 py-3 gap-2 shrink-0">
           {categories.map(cat => (
-            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wide transition-all shrink-0 ${activeCategory === cat ? 'bg-emerald-500 text-white shadow-lg' : 'bg-gray-100 text-gray-500'}`}>{String(cat)}</button>
+            <button key={cat} onClick={() => { setActiveCategory(cat); setSearchTerm(''); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wide transition-all shrink-0 ${activeCategory === cat ? 'bg-emerald-500 text-white shadow-lg' : 'bg-gray-100 text-gray-500'}`}>{String(cat)}</button>
           ))}
         </div>
 

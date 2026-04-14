@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 
 // UI Components
-import { Modal, Button, Spinner, IconButton, Input } from './components/ui';
+import { Modal, Button, Spinner, IconButton, Input, ErrorBoundary } from './components/ui';
 
 // Firebase Imports
 import {
@@ -34,6 +34,7 @@ import { AppProvider } from './context/AppContext';
 import useKeyboardShortcuts, { KeyboardShortcutsHelp } from './hooks/useKeyboardShortcuts.jsx';
 import { generateSmartAlerts } from './services/alertService';
 import useDarkMode from './hooks/useDarkMode';
+import { getISODate } from './utils/calculations';
 
 // View Components (Lazy Loaded for Performance)
 const PosView = lazy(() => import('./components/views/PosView'));
@@ -57,7 +58,7 @@ export default function App() {
 
   // Data States from hook
   const {
-    isSyncing, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter,
+    isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter,
     pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash
   } = usePosData(user, appId);
 
@@ -75,14 +76,9 @@ export default function App() {
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
 
   // Constants
-  const ADMIN_PIN = adminPin || '1234';
+  const ADMIN_PIN = adminPin || '';
 
   // Get today's date for alerts
-  const getISODate = (date = new Date()) => {
-    const d = new Date(date);
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().split('T')[0];
-  };
   const today = getISODate();
   const currentMonth = today.substring(0, 7);
 
@@ -127,13 +123,13 @@ export default function App() {
   const protectedViews = useRef(['admin', 'menu_manage']).current;
 
   const handleViewChange = useCallback((newView) => {
-    if (pinEnabled && protectedViews.includes(newView)) {
+    if (pinEnabled && ADMIN_PIN && protectedViews.includes(newView)) {
       setTargetView(newView);
       setShowPinModal(true);
     } else {
       setView(newView);
     }
-  }, [pinEnabled, protectedViews]);
+  }, [pinEnabled, ADMIN_PIN, protectedViews]);
 
   // Keyboard Shortcuts (include handleViewChange in deps to avoid stale closure)
   const keyboardHandlers = useMemo(() => ({
@@ -224,71 +220,38 @@ export default function App() {
     }
   };
 
-  // Context value to pass to all views - memoized to prevent unnecessary re-renders
-  const contextValue = useMemo(() => ({
-    // Data
-    user,
-    orders,
-    menu,
-    stock,
-    expenses,
-    members,
-    dynamicCategories,
-    beanModifiers,
-    quickExpenses,
-    queueCounter,
-    // Config
-    pinEnabled,
-    vatEnabled,
-    adminPin,
-    redeemPointsThreshold,
-    redeemDiscountValue,
-    ownGlassDiscount,
-    geminiApiKey,
-    startingCash,
-    // UI States
-    isSyncing,
-    errorMessage,
-    // Shared States
-    activePromotion,
-    setActivePromotion,
-    orderToCancel,
-    setOrderToCancel,
-    editingOrderId,
-    setEditingOrderId,
-    adminTab,
-    setAdminTab,
-    // Handlers
-    runDbAction,
-    callGeminiAPI,
-    handleViewChange,
-    setView,
-    setErrorMessage,
-    updateStatus,
-    // AI Utilities (Chat History, Stats, etc.)
-    aiUtils,
-    // Smart Alerts Data
-    alertsData,
-    // Keyboard shortcuts
-    showKeyboardHelp,
-    setShowKeyboardHelp,
-    // Navigation state
-    isNavExpanded,
-    setIsNavExpanded,
-    // Dark Mode
-    isDark,
-    toggleDarkMode,
-  }), [
-    user, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers,
-    quickExpenses, queueCounter, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold,
-    redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, isSyncing,
-    errorMessage, activePromotion, orderToCancel, editingOrderId, adminTab,
-    runDbAction, callGeminiAPI, handleViewChange, updateStatus, aiUtils, alertsData,
-    showKeyboardHelp, isNavExpanded, isDark, toggleDarkMode
-  ]);
+  // Split context into 3 parts for performance — consumers only re-render when their part changes
+  const dataValue = useMemo(() => ({
+    user, orders, menu, stock, expenses, members,
+    dynamicCategories, beanModifiers, quickExpenses, queueCounter,
+    isSyncing, alertsData,
+  }), [user, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers,
+    quickExpenses, queueCounter, isSyncing, alertsData]);
+
+  const configValue = useMemo(() => ({
+    pinEnabled, vatEnabled, adminPin,
+    redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount,
+    geminiApiKey, startingCash,
+  }), [pinEnabled, vatEnabled, adminPin, redeemPointsThreshold,
+    redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash]);
+
+  const uiValue = useMemo(() => ({
+    errorMessage, setErrorMessage,
+    activePromotion, setActivePromotion,
+    orderToCancel, setOrderToCancel,
+    editingOrderId, setEditingOrderId,
+    adminTab, setAdminTab,
+    runDbAction, callGeminiAPI, handleViewChange,
+    setView, updateStatus,
+    aiUtils, showKeyboardHelp, setShowKeyboardHelp,
+    isNavExpanded, setIsNavExpanded,
+    isDark, toggleDarkMode,
+  }), [errorMessage, activePromotion, orderToCancel, editingOrderId, adminTab,
+    runDbAction, callGeminiAPI, handleViewChange, updateStatus,
+    aiUtils, showKeyboardHelp, isNavExpanded, isDark, toggleDarkMode]);
 
   return (
-    <AppProvider value={contextValue}>
+    <AppProvider dataValue={dataValue} configValue={configValue} uiValue={uiValue}>
       <div data-app="root" className="h-screen w-screen overflow-hidden bg-[var(--bg-primary)] pb-16 md:pb-20">
         {/* Loading / Auth State */}
         {(!user || isSyncing) && (
@@ -301,33 +264,42 @@ export default function App() {
           </div>
         )}
 
+        {/* Sync Error Display */}
+        {syncError && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[400] bg-orange-500 text-white px-8 py-4 rounded-2xl shadow-2xl font-black text-sm transition-all duration-300">
+            {syncError}
+          </div>
+        )}
+
         {/* Error Message Display */}
         {errorMessage && (
           <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[400] bg-red-500 text-white px-8 py-4 rounded-2xl shadow-2xl font-black text-sm transition-all duration-300">
             {errorMessage}
-            <button onClick={() => setErrorMessage('')} className="ml-4 opacity-70 hover:opacity-100">✕</button>
+            <button onClick={() => setErrorMessage('')} aria-label="ปิดข้อความ" className="ml-4 opacity-70 hover:opacity-100">✕</button>
           </div>
         )}
 
-        {/* View Router - Lazy Loaded with Suspense */}
-        <Suspense fallback={
-          <div className="h-full flex flex-col items-center justify-center bg-[var(--bg-primary)]">
-            <Spinner size="lg" />
-            <p className="mt-4 text-gray-400 font-bold text-sm uppercase tracking-widest">กำลังโหลด...</p>
-          </div>
-        }>
-          {view === 'pos' && <PosView />}
-          {view === 'merchant' && <MerchantView />}
-          {view === 'bills' && <BillsView />}
-          {view === 'dashboard' && <DashboardView onNavigate={handleViewChange} />}
-          {view === 'category_summary' && <CategorySummaryView />}
-          {view === 'stock' && <StockView />}
-          {view === 'expenses' && <ExpensesView />}
-          {view === 'menu_manage' && <MenuManageView />}
-          {view === 'members_manage' && <MembersView />}
-          {view === 'admin' && <AdminView />}
-          {view === 'financial' && <FinancialView />}
-        </Suspense>
+        {/* View Router - Lazy Loaded with Suspense + Error Boundary */}
+        <ErrorBoundary>
+          <Suspense fallback={
+            <div className="h-full flex flex-col items-center justify-center bg-[var(--bg-primary)]">
+              <Spinner size="lg" />
+              <p className="mt-4 text-gray-400 font-bold text-sm uppercase tracking-widest">กำลังโหลด...</p>
+            </div>
+          }>
+            {view === 'pos' && <PosView />}
+            {view === 'merchant' && <MerchantView />}
+            {view === 'bills' && <BillsView />}
+            {view === 'dashboard' && <DashboardView onNavigate={handleViewChange} />}
+            {view === 'category_summary' && <CategorySummaryView />}
+            {view === 'stock' && <StockView />}
+            {view === 'expenses' && <ExpensesView />}
+            {view === 'menu_manage' && <MenuManageView />}
+            {view === 'members_manage' && <MembersView />}
+            {view === 'admin' && <AdminView />}
+            {view === 'financial' && <FinancialView />}
+          </Suspense>
+        </ErrorBoundary>
 
         {/* PIN Modal */}
         <Modal

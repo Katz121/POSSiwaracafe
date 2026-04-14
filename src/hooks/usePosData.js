@@ -11,6 +11,7 @@ import {
 
 export default function usePosData(user, appId) {
   const [isSyncing, setIsSyncing] = useState(true);
+  const [syncError, setSyncError] = useState(null);
   const [orders, setOrders] = useState([]);
   const [menu, setMenu] = useState([]);
   const [stock, setStock] = useState([]);
@@ -39,7 +40,7 @@ export default function usePosData(user, appId) {
 
     const handleSnapshotError = (err) => {
       console.error("Firestore Error:", err);
-      // If permission denied or other error, stop syncing so app doesn't hang
+      setSyncError(err.code === 'permission-denied' ? 'ไม่มีสิทธิ์เข้าถึงข้อมูล' : 'เชื่อมต่อฐานข้อมูลไม่สำเร็จ');
       setIsSyncing(false);
     };
 
@@ -77,5 +78,5 @@ export default function usePosData(user, appId) {
     return () => { unsubCats(); unsubMenu(); unsubStock(); unsubOrders(); unsubExp(); unsubMem(); unsubBeans(); unsubQuickExp(); unsubQueue(); unsubSettings(); };
   }, [userId, appId]);
 
-  return { isSyncing, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash };
+  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash };
 }

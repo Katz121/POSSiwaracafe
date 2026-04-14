@@ -9,12 +9,20 @@
  * 5. Historical context injection
  */
 
+import {
+  AI_RATE_LIMIT_DELAY,
+  AI_CACHE_TTL,
+  AI_CACHE_MAX_SIZE,
+  AI_MAX_RETRIES,
+  AI_CHAT_HISTORY_MAX
+} from '../config/constants';
+
 // --- Configuration ---
 const AI_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-const RATE_LIMIT_COOLDOWN_MS = 3000; // 3 seconds between requests
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes cache
-const MAX_CHAT_HISTORY = 50; // Max messages to store
-const MAX_RETRIES = 2;
+const RATE_LIMIT_COOLDOWN_MS = AI_RATE_LIMIT_DELAY;
+const CACHE_TTL_MS = AI_CACHE_TTL;
+const MAX_CHAT_HISTORY = AI_CHAT_HISTORY_MAX;
+const MAX_RETRIES = AI_MAX_RETRIES;
 
 // --- State ---
 let lastRequestTime = 0;
@@ -43,7 +51,7 @@ const getFromCache = (key) => {
 
 const setCache = (key, data) => {
   // Limit cache size
-  if (responseCache.size > 100) {
+  if (responseCache.size > AI_CACHE_MAX_SIZE) {
     const firstKey = responseCache.keys().next().value;
     responseCache.delete(firstKey);
   }
@@ -282,76 +290,87 @@ export const callGeminiAPISecure = async (apiKey, prompt, options = {}) => {
   // Try API call with retries
   let lastError = null;
   const key = apiKey.trim();
+  const proxyUrl = import.meta.env.VITE_GEMINI_PROXY_URL;
 
   for (let retry = 0; retry <= MAX_RETRIES; retry++) {
-    for (const model of AI_MODELS) {
-      try {
-        // Note: In production, this should go through a backend proxy
-        // For now, we're calling directly but the key is at least not in the URL params
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: enhancedPrompt }] }],
-              generationConfig: {
-                temperature: 0.7,
-                maxOutputTokens: 2048
-              }
-            })
-          }
-        );
+    try {
+      let text;
 
+      if (proxyUrl) {
+        // Use Cloudflare Worker proxy (production - API key hidden server-side)
+        const response = await fetch(proxyUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: enhancedPrompt, parseAsJson })
+        });
         const data = await response.json();
-
-        if (data.error) {
-          throw new Error(data.error.message);
-        }
-
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (text) {
-          let result;
-
-          if (parseAsJson) {
-            const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            result = JSON.parse(cleanText);
-          } else {
-            result = text;
+        if (data.error) throw new Error(data.error);
+        text = data.text;
+      } else {
+        // Direct call fallback (development only)
+        let fetchedText = null;
+        for (const model of AI_MODELS) {
+          try {
+            const response = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: enhancedPrompt }] }],
+                  generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
+                })
+              }
+            );
+            const data = await response.json();
+            if (data.error) {
+              if (data.error.message?.includes('quota') || data.error.message?.includes('rate')) continue;
+              throw new Error(data.error.message);
+            }
+            fetchedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (fetchedText) break;
+          } catch (modelErr) {
+            lastError = modelErr.message;
+            continue;
           }
-
-          // Cache the result
-          if (useCache) {
-            setCache(cacheKey, result);
-          }
-
-          // Save assistant response to history
-          if (saveToChatHistory) {
-            addToChatHistory('assistant', typeof result === 'string' ? result : JSON.stringify(result));
-          }
-
-          return {
-            success: true,
-            data: result,
-            raw: text,
-            model,
-            fromCache: false
-          };
         }
-      } catch (e) {
-        console.warn(`[AI Service] Error (${model}, retry ${retry}):`, e.message);
-        lastError = e.message;
+        text = fetchedText;
+      }
 
-        // If it's a quota error, try next model
-        if (e.message.includes('quota') || e.message.includes('rate')) {
-          continue;
+      if (text) {
+        let result;
+
+        if (parseAsJson) {
+          const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+          result = JSON.parse(cleanText);
+        } else {
+          result = text;
         }
 
-        // For other errors, try retry
-        if (retry < MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, 1000 * (retry + 1)));
+        // Cache the result
+        if (useCache) {
+          setCache(cacheKey, result);
         }
+
+        // Save assistant response to history
+        if (saveToChatHistory) {
+          addToChatHistory('assistant', typeof result === 'string' ? result : JSON.stringify(result));
+        }
+
+        return {
+          success: true,
+          data: result,
+          raw: text,
+          fromCache: false
+        };
+      }
+    } catch (e) {
+      console.warn(`[AI Service] Error (retry ${retry}):`, e.message);
+      lastError = e.message;
+
+      // For errors, try retry
+      if (retry < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 1000 * (retry + 1)));
       }
     }
   }
@@ -361,6 +380,66 @@ export const callGeminiAPISecure = async (apiKey, prompt, options = {}) => {
     data: null,
     error: `AI ไม่สามารถตอบได้ในขณะนี้: ${lastError}`
   };
+};
+
+// --- Gemini Image Generation (Nano Banana Pro) ---
+const IMAGE_MODELS = ['gemini-3-pro-image-preview', 'gemini-3.1-flash-image-preview', 'gemini-2.0-flash-exp'];
+
+export const generateMenuImage = async (apiKey, menuName, category = '') => {
+  if (!apiKey || !apiKey.trim()) {
+    return { success: false, imageBase64: null, error: 'API Key ไม่ถูกต้อง' };
+  }
+
+  const key = apiKey.trim();
+  let lastError = null;
+  const prompt = `Professional food photography of "${menuName}" (${category || 'Thai cafe menu item'}).
+Top-down view on a clean wooden table, soft natural lighting, appetizing presentation,
+Thai cafe style, high quality, no text or watermarks.`;
+
+  for (const model of IMAGE_MODELS) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseModalities: ['TEXT', 'IMAGE']
+            }
+          })
+        }
+      );
+
+      const data = await response.json();
+      console.log(`[AI Image] ${model} response:`, JSON.stringify(data).substring(0, 300));
+
+      if (data.error) {
+        lastError = data.error.message;
+        console.warn(`[AI Image] ${model} error:`, data.error.message);
+        continue;
+      }
+
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+
+      if (imagePart) {
+        const base64 = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+        return { success: true, imageBase64: base64, error: null };
+      }
+
+      // Model responded but no image in parts
+      lastError = `${model}: ไม่มีรูปภาพใน response (${parts.length} parts)`;
+      console.warn(`[AI Image] ${lastError}`);
+    } catch (e) {
+      lastError = e.message;
+      console.warn(`[AI Image] ${model} failed:`, e.message);
+      continue;
+    }
+  }
+
+  return { success: false, imageBase64: null, error: lastError || 'ไม่สามารถสร้างรูปภาพได้ ลองอีกครั้ง' };
 };
 
 // --- Wrapper for existing code compatibility ---

@@ -4,7 +4,7 @@ import {
   History, Coffee, Link2, Plus, Trash2, Edit, BarChart3, DollarSign,
   ChefHat, FileText, Package, RefreshCcw, Banknote, Download, Save, Target
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+// xlsx loaded dynamically to reduce bundle size (7MB library)
 import { doc, collection, addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
@@ -18,7 +18,8 @@ import {
   DEFAULT_REDEEM_DISCOUNT_VALUE,
   DEFAULT_OWN_GLASS_DISCOUNT,
   DEFAULT_STARTING_CASH,
-  DEFAULT_EXPENSE_CATEGORY
+  DEFAULT_EXPENSE_CATEGORY,
+  EXPENSE_CATEGORIES
 } from '../../config/constants';
 
 export default function AdminView() {
@@ -325,13 +326,16 @@ export default function AdminView() {
     }
   };
 
-  // Export to Excel
-  const exportToExcel = () => {
+  // Export to Excel (xlsx loaded on demand)
+  const exportToExcel = async () => {
     try {
       if (!orders.length) {
         toast.warning('ไม่พบข้อมูลการขายในระบบ กรุณาลองขายสินค้าที่หน้า POS ก่อน');
         return;
       }
+
+      toast.info('กำลังเตรียมไฟล์ Excel...');
+      const XLSX = await import('xlsx');
 
       // Export ALL data (No filtering by month)
       const allOrders = orders.filter(o => o.status === 'completed');
@@ -961,10 +965,9 @@ export default function AdminView() {
                     <div>
                       <label className="text-xs font-black text-gray-400 uppercase tracking-widest">หมวดหมู่</label>
                       <select value={newQuickExpense.category} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, category: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-xs font-black outline-none">
-                        <option>วัตถุดิบ</option>
-                        <option>ค่าจ้าง</option>
-                        <option>ค่าไฟ/น้ำ</option>
-                        <option>อื่น ๆ</option>
+                        {EXPENSE_CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -984,9 +987,8 @@ export default function AdminView() {
                       <p className="text-xs text-gray-400 font-black uppercase tracking-widest">ยังไม่มีคีย์ลัด</p>
                       <button onClick={async () => {
                         const defaults = [
-                          { label: '#ค่าน้ำแข็ง 35.-', title: 'ค่าน้ำแข็ง', amount: 35, unit: 'บิล', category: 'วัตถุดิบ', icon: '🧊' },
-                          { label: '#ค่าไฟ 100.-', title: 'ค่าไฟ', amount: 100, unit: 'รอบ', category: 'ค่าไฟ/น้ำ', icon: '💡' },
-                          { label: '#ค่าน้ำ', title: 'ค่าน้ำ', amount: '', unit: 'รอบ', category: 'ค่าไฟ/น้ำ', icon: '💧' },
+                          { label: '#ค่าน้ำแข็ง 35.-', title: 'ค่าน้ำแข็ง', amount: 35, unit: 'บิล', category: 'ค่าน้ำแข็ง', icon: '🧊' },
+                          { label: '#ค่าไฟ 100.-', title: 'ค่าไฟ', amount: 100, unit: 'รอบ', category: 'ค่าไฟ', icon: '💡' },
                           { label: '#ซื้อของเข้าร้าน', title: 'ซื้อของเข้าร้าน', amount: '', unit: 'รายการ', category: 'วัตถุดิบ', icon: '🛒' }
                         ];
                         await runDbAction(async () => {
@@ -1072,7 +1074,7 @@ export default function AdminView() {
               <>
                 <form onSubmit={addExpense} className="space-y-5 text-gray-800">
                   <input type="text" placeholder="บันทึกรายจ่ายวันนี้..." required value={newExpense.title} onChange={e => setNewExpense({ ...newExpense, title: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-[1.5rem] p-5 text-sm font-black outline-none shadow-inner focus:bg-white transition-all" />
-                  <div className="grid grid-cols-2 gap-5"><input type="number" placeholder="จำนวนเงิน..." required value={newExpense.amount} onChange={e => setNewExpense({ ...newExpense, amount: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-[1.5rem] p-5 text-sm font-black outline-none shadow-inner" /><select value={newExpense.category} onChange={e => setNewExpense({ ...newExpense, category: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-[1.5rem] p-5 text-xs font-black outline-none shadow-inner cursor-pointer text-gray-800"><option>วัตถุดิบ</option><option>ค่าจ้าง</option><option>ค่าไฟ/น้ำ</option><option>อื่น ๆ</option></select></div>
+                  <div className="grid grid-cols-2 gap-5"><input type="number" placeholder="จำนวนเงิน..." required value={newExpense.amount} onChange={e => setNewExpense({ ...newExpense, amount: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-[1.5rem] p-5 text-sm font-black outline-none shadow-inner" /><select value={newExpense.category} onChange={e => setNewExpense({ ...newExpense, category: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-[1.5rem] p-5 text-xs font-black outline-none shadow-inner cursor-pointer text-gray-800">{EXPENSE_CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}</select></div>
                   <button type="submit" className="w-full bg-gray-800 text-white py-6 rounded-[2rem] font-black text-xs uppercase shadow-xl active:scale-95 tracking-[0.2em] border-b-4 border-gray-950">บันทึกรายจ่าย</button>
                 </form>
                 <div className="space-y-3 max-h-56 overflow-y-auto scrollbar-hide border-t border-gray-50 pt-6 text-gray-800">

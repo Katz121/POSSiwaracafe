@@ -8,6 +8,7 @@ import { doc, collection, addDoc, updateDoc, deleteDoc } from 'firebase/firestor
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate, compressImage } from '../../utils/calculations';
+import { generateMenuImage } from '../../services/aiService';
 import { Button, Modal, EmptyState, useToast, ConfirmModal, InputModal, Skeleton } from '../ui';
 
 export default function MenuManageView() {
@@ -34,6 +35,8 @@ export default function MenuManageView() {
   });
   const [editingItem, setEditingItem] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSuggestingStock, setIsSuggestingStock] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   // Local states - Collapsed categories
   const [collapsedCategories, setCollapsedCategories] = useState({});
@@ -815,6 +818,47 @@ export default function MenuManageView() {
                     ))}
                   </select>
                   <button type="button" onClick={addStockLink} className="flex items-center gap-2 text-emerald-600 font-black text-xs bg-white border border-emerald-100 px-5 py-2.5 rounded-2xl shadow-sm hover:bg-emerald-50 active:scale-95 leading-none"><Plus size={16} /> เพิ่มพัสดุ</button>
+                  <button
+                    type="button"
+                    disabled={isSuggestingStock}
+                    onClick={async () => {
+                      if (!newItem.name) { toast.warning('กรุณาระบุชื่อเมนูก่อน'); return; }
+                      if (!stock.length) { toast.warning('ยังไม่มีวัตถุดิบในระบบ'); return; }
+                      if (!geminiApiKey) { toast.warning('กรุณาตั้งค่า Gemini API Key ก่อน'); return; }
+                      setIsSuggestingStock(true);
+                      try {
+                        const stockList = stock.map(s => `- id:"${s.id}" name:"${s.name}" unit:"${s.unit}"`).join('\n');
+                        const prompt = `You are a Thai cafe recipe expert. Given menu item "${newItem.name}" (category: ${newItem.category || 'ไม่ระบุ'}), suggest which ingredients from the available stock are needed and how much of each.
+
+Available stock:
+${stockList}
+
+Return ONLY a JSON array. Each element: { "stockId": "exact id from list", "usage": number (amount per 1 serving) }
+Only include ingredients that are relevant. Be realistic with quantities (e.g. milk 30ml, ice 100g, coffee 18g).
+Return [] if no stock items match.`;
+
+                        const result = await callGeminiAPI(prompt, true);
+                        if (result.success && Array.isArray(result.data)) {
+                          const validLinks = result.data.filter(l => stock.some(s => s.id === l.stockId));
+                          if (validLinks.length > 0) {
+                            setNewItem(prev => ({ ...prev, stockLinks: validLinks.map(l => ({ stockId: l.stockId, usage: Number(l.usage) || 1 })) }));
+                            toast.success(`AI แนะนำวัตถุดิบ ${validLinks.length} รายการ`);
+                          } else {
+                            toast.warning('AI ไม่พบวัตถุดิบที่เหมาะสมในระบบ');
+                          }
+                        } else {
+                          toast.error('AI ไม่สามารถแนะนำได้: ' + (result.error || ''));
+                        }
+                      } catch (e) {
+                        toast.error('เกิดข้อผิดพลาด: ' + e.message);
+                      } finally {
+                        setIsSuggestingStock(false);
+                      }
+                    }}
+                    className="flex items-center gap-2 text-violet-600 font-black text-xs bg-violet-50 border border-violet-100 px-5 py-2.5 rounded-2xl shadow-sm hover:bg-violet-100 active:scale-95 leading-none disabled:opacity-50"
+                  >
+                    <Zap size={14} /> {isSuggestingStock ? 'กำลังวิเคราะห์...' : 'AI แนะนำ'}
+                  </button>
                 </div>
               </div>
 
@@ -843,6 +887,19 @@ export default function MenuManageView() {
                         <option value="">เลือกพัสดุในคลัง...</option>
                         {stock.map(s => <option key={s.id} value={s.id}>{String(s.name)}</option>)}
                       </select>
+                      {(() => {
+                        const s = stock.find(s => s.id === link.stockId);
+                        if (!s) return null;
+                        const unitCost = Number(s.unitCost || 0);
+                        const usage = Number(link.usage || 0);
+                        const lineCost = unitCost * usage;
+                        return (
+                          <div className="flex items-center gap-3 mt-1 ml-2 text-xs font-bold">
+                            <span className="text-gray-400">ราคาต่อหน่วย: <span className="text-gray-600">฿{unitCost.toLocaleString()}/{s.unit}</span></span>
+                            {usage > 0 && <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg">ต้นทุน: ฿{lineCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div className="flex items-end gap-4">
@@ -882,7 +939,35 @@ export default function MenuManageView() {
                   {isUploading && <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10 text-emerald-500 leading-none"><RefreshCcw className="animate-spin" size={32} /></div>}
                   {newItem.image ? <img src={newItem.image} className="w-full h-full object-cover" /> : <Upload className="text-gray-200" size={32} />}
                 </div>
-                <label className="flex-1 bg-emerald-50 text-emerald-600 px-6 py-6 rounded-[2rem] text-center text-[12px] font-black cursor-pointer hover:bg-emerald-100 transition-all uppercase tracking-[0.2em] border-2 border-emerald-100 shadow-sm active:scale-95 leading-none">เลือกรูปภาพสินค้า<input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isUploading} /></label>
+                <div className="flex-1 flex flex-col gap-3">
+                  <label className="bg-emerald-50 text-emerald-600 px-6 py-6 rounded-[2rem] text-center text-[12px] font-black cursor-pointer hover:bg-emerald-100 transition-all uppercase tracking-[0.2em] border-2 border-emerald-100 shadow-sm active:scale-95 leading-none">เลือกรูปภาพสินค้า<input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isUploading} /></label>
+                  <button
+                    type="button"
+                    disabled={isGeneratingImage}
+                    onClick={async () => {
+                      if (!newItem.name) { toast.warning('กรุณาระบุชื่อเมนูก่อน'); return; }
+                      if (!geminiApiKey) { toast.warning('กรุณาตั้งค่า Gemini API Key ก่อน'); return; }
+                      setIsGeneratingImage(true);
+                      try {
+                        const result = await generateMenuImage(geminiApiKey, newItem.name, newItem.category);
+                        if (result.success && result.imageBase64) {
+                          const compressed = await compressImage(result.imageBase64);
+                          setNewItem(prev => ({ ...prev, image: compressed }));
+                          toast.success('AI สร้างรูปภาพสำเร็จ!');
+                        } else {
+                          toast.error(result.error || 'ไม่สามารถสร้างรูปภาพได้');
+                        }
+                      } catch (e) {
+                        toast.error('เกิดข้อผิดพลาด: ' + e.message);
+                      } finally {
+                        setIsGeneratingImage(false);
+                      }
+                    }}
+                    className="bg-violet-50 text-violet-600 px-6 py-5 rounded-[2rem] text-center text-[12px] font-black hover:bg-violet-100 transition-all uppercase tracking-[0.2em] border-2 border-violet-100 shadow-sm active:scale-95 leading-none disabled:opacity-50"
+                  >
+                    {isGeneratingImage ? '✨ กำลังสร้างรูป...' : '✨ AI เจนรูปเมนู'}
+                  </button>
+                </div>
               </div>
             </div>
 

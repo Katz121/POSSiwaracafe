@@ -4,7 +4,7 @@
  */
 
 // ==================== SECURITY ====================
-export const DEFAULT_ADMIN_PIN = '1234';
+export const DEFAULT_ADMIN_PIN = '';
 
 // ==================== POINTS & REWARDS ====================
 export const DEFAULT_REDEEM_POINTS_THRESHOLD = 100;  // แต้มขั้นต่ำที่ใช้แลกได้
@@ -31,7 +31,8 @@ export const EXPENSE_CATEGORIES = [
   'วัตถุดิบ',
   'ค่าแรง',
   'ค่าเช่า',
-  'ค่าน้ำ/ค่าไฟ',
+  'ค่าน้ำแข็ง',
+  'ค่าไฟ',
   'อุปกรณ์',
   'การตลาด',
   'ของเสีย (Waste)',
@@ -45,6 +46,10 @@ export const TOAST_DURATION = 3000;                  // ms
 
 // ==================== API ====================
 export const AI_RATE_LIMIT_DELAY = 2000;             // ms ระหว่าง AI calls
+export const AI_CACHE_TTL = 15 * 60 * 1000;          // 15 นาที cache timeout
+export const AI_CACHE_MAX_SIZE = 100;                 // จำนวน cache entries สูงสุด
+export const AI_MAX_RETRIES = 1;                      // จำนวนครั้ง retry สูงสุด
+export const AI_CHAT_HISTORY_MAX = 50;                // จำนวน chat history สูงสุด
 
 // ==================== DATE/TIME ====================
 export const DATE_LOCALE = 'th-TH';

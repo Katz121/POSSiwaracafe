@@ -60,7 +60,7 @@ export const seedDatabase = async (db, appId) => {
 
     // 5. Quick Expenses
     const quickExpenses = [
-        { label: '#ค่าน้ำแข็ง 40.-', title: 'น้ำแข็งหลอด', amount: 40, unit: 'กระสอบ', category: 'วัตถุดิบ', icon: '🧊' },
+        { label: '#ค่าน้ำแข็ง 40.-', title: 'น้ำแข็งหลอด', amount: 40, unit: 'กระสอบ', category: 'ค่าน้ำแข็ง', icon: '🧊' },
         { label: '#ค่าแรงพนักงาน', title: 'ค่าจ้างรายวัน', amount: 350, unit: 'วัน', category: 'ค่าจ้าง', icon: '👤' },
         { label: '#ซื้อนมสด 7-11', title: 'นมสด Meiji', amount: 96, unit: 'ขวด', category: 'วัตถุดิบ', icon: '🥛' }
     ];

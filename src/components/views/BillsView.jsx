@@ -243,7 +243,7 @@ export default function BillsView() {
               {/* Mobile Header */}
               <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
                 <div className="flex items-center gap-3 min-w-0">
-                  <button onClick={() => setShowMobileBillDetail(false)} className="p-2 rounded-xl hover:bg-gray-100">
+                  <button onClick={() => setShowMobileBillDetail(false)} aria-label="ย้อนกลับ" className="p-2 rounded-xl hover:bg-gray-100">
                     <ChevronLeft size={24} />
                   </button>
                   <div className="min-w-0">
@@ -251,7 +251,7 @@ export default function BillsView() {
                     <p className="text-xs text-gray-400 font-bold">{String(selectedBill.time)} น.</p>
                   </div>
                 </div>
-                <button onClick={() => { setShowMobileBillDetail(false); setSelectedBill(null); }} className="p-2 rounded-xl hover:bg-gray-100">
+                <button onClick={() => { setShowMobileBillDetail(false); setSelectedBill(null); }} aria-label="ปิดรายละเอียดบิล" className="p-2 rounded-xl hover:bg-gray-100">
                   <X size={20} />
                 </button>
               </div>

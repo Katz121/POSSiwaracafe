@@ -2,6 +2,7 @@
  * AI Smart Alerts Service
  * Analyzes shop data and generates intelligent alerts
  */
+import { getOrderDate } from '../utils/calculations';
 
 // Alert types
 export const ALERT_TYPES = {
@@ -36,16 +37,7 @@ export const generateSmartAlerts = (data) => {
 
   const alerts = [];
 
-  // Helper to get order date
-  const getOrderDate = (order) => {
-    if (order.date) return String(order.date);
-    if (order.createdAt?.seconds) {
-      const d = new Date(order.createdAt.seconds * 1000);
-      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-      return d.toISOString().split('T')[0];
-    }
-    return '';
-  };
+  // getOrderDate imported from utils/calculations
 
   // 1. Low Stock Alerts
   const lowStockItems = stock.filter(s => {
@@ -100,8 +92,9 @@ export const generateSmartAlerts = (data) => {
   }
 
   const last7DaysOrders = completedOrders.filter(o => last7Days.includes(getOrderDate(o)));
-  const avgDailyRevenue = last7DaysOrders.length > 0
-    ? last7DaysOrders.reduce((s, o) => s + (Number(o.total) || 0), 0) / 7
+  const daysWithData = new Set(last7DaysOrders.map(o => getOrderDate(o))).size;
+  const avgDailyRevenue = daysWithData > 0
+    ? last7DaysOrders.reduce((s, o) => s + (Number(o.total) || 0), 0) / daysWithData
     : 0;
 
   if (avgDailyRevenue > 0) {

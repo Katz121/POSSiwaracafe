@@ -5,9 +5,12 @@ import {
     History, Download, RotateCcw, Clock, Database, Bell, Package, Settings, PlusCircle, Tag,
     TrendingDown, ArrowUpRight, ArrowDownRight, AlertCircle, Award, ThumbsDown
 } from 'lucide-react';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
+import { getISODate, getOrderDate } from '../../utils/calculations';
 import SmartAlerts from '../SmartAlerts';
-import { Button, Modal, Card, Badge, Spinner, Tabs, ConfirmModal } from '../ui';
+import { Button, Modal, Card, Badge, Spinner, Tabs, ConfirmModal, useToast } from '../ui';
 
 /**
  * DashboardView - ภาพรวมธุรกิจ Dashboard
@@ -19,11 +22,16 @@ const DashboardView = () => {
         expenses,
         stock,
         members,
+        menu,
         callGeminiAPI,
         startingCash,
         aiUtils,
-        handleViewChange
+        handleViewChange,
+        runDbAction
     } = useAppContext();
+
+    const toast = useToast();
+    const [menuToDelete, setMenuToDelete] = useState(null);
 
     const [showConsultantModal, setShowConsultantModal] = useState(false);
     const [consultantQuery, setConsultantQuery] = useState('');
@@ -38,22 +46,7 @@ const DashboardView = () => {
         if (aiUtils?.getChatHistory) {
             setChatHistory(aiUtils.getChatHistory());
         }
-    }, [aiUtils, consultantResponse]); // Refresh when new response comes
-
-    // --- Helper Functions ---
-    const getISODate = (date = new Date()) => {
-        const d = new Date(date);
-        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-        return d.toISOString().split('T')[0];
-    };
-
-    const getOrderDate = (order) => {
-        if (order.date) return String(order.date);
-        if (order.createdAt?.seconds) {
-            return getISODate(new Date(order.createdAt.seconds * 1000));
-        }
-        return '';
-    };
+    }, [aiUtils]); // Load once on mount
 
     // --- Statistics Calculations ---
     const today = getISODate();
@@ -210,7 +203,6 @@ const DashboardView = () => {
     }, [orders, expenses, stock, currentMonth]);
 
     // Menu Performance Analysis
-    const { menu } = useAppContext();
     const menuPerformance = useMemo(() => {
         const monthOrders = orders.filter(o => o.status === 'completed' && String(getOrderDate(o)).startsWith(currentMonth));
 
@@ -234,6 +226,7 @@ const DashboardView = () => {
                     });
 
                     menuStats[key] = {
+                        id: menuItem?.id || null,
                         name: item.name,
                         image: item.image || menuItem?.image || '',
                         category: item.category || menuItem?.category || '',
@@ -266,6 +259,7 @@ const DashboardView = () => {
         const zeroSalesItems = menu
             .filter(m => m.available !== false && !menuStats[m.name])
             .map(m => ({
+                id: m.id,
                 name: m.name,
                 image: m.image || '',
                 category: m.category || '',
@@ -305,6 +299,16 @@ const DashboardView = () => {
         };
     }, [orders, menu, stock, currentMonth]);
 
+
+    // --- Delete Menu from Review ---
+    const handleDeleteMenu = async () => {
+        if (!menuToDelete) return;
+        await runDbAction(async () => {
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menu', menuToDelete.id));
+            toast.success(`ลบเมนู "${menuToDelete.name}" แล้ว`);
+            setMenuToDelete(null);
+        }, 'ลบเมนูไม่สำเร็จ');
+    };
 
     // --- AI Consultant Logic --- วิเคราะห์ตามเดือนที่เลือก + เปรียบเทียบวันนี้ + Historical Context
     const handleConsultantQuery = async () => {
@@ -1036,6 +1040,15 @@ const DashboardView = () => {
                                             </>
                                         )}
                                     </div>
+                                    {item.id && (
+                                        <button
+                                            onClick={() => setMenuToDelete(item)}
+                                            aria-label={`ลบเมนู ${item.name}`}
+                                            className="p-2 rounded-xl text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all shrink-0"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                             {menuPerformance.needsReview.length === 0 && (
@@ -1084,6 +1097,17 @@ const DashboardView = () => {
                 title="ล้างประวัติการสนทนา"
                 message="ต้องการล้างประวัติการสนทนา AI ทั้งหมดใช่หรือไม่?"
                 confirmText="ล้าง"
+                cancelText="ยกเลิก"
+                variant="danger"
+            />
+            {/* Delete Menu Confirm Modal */}
+            <ConfirmModal
+                isOpen={!!menuToDelete}
+                onClose={() => setMenuToDelete(null)}
+                onConfirm={handleDeleteMenu}
+                title={`ลบเมนู "${menuToDelete?.name || ''}"?`}
+                message="เมนูนี้จะถูกลบออกจากระบบอย่างถาวร ข้อมูลการขายเก่าจะยังอยู่ในรายงาน"
+                confirmText="ยืนยันลบ"
                 cancelText="ยกเลิก"
                 variant="danger"
             />
