@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   PieChart, Calendar, ChevronUp, ChevronDown, TrendingUp, Zap,
   History, Coffee, Link2, Plus, Trash2, Edit, BarChart3, DollarSign,
-  ChefHat, FileText, Package, RefreshCcw, Banknote, Download, Save, Target
+  ChefHat, FileText, Package, RefreshCcw, Banknote, Download, Save, Target, Settings, FolderCog
 } from 'lucide-react';
 // xlsx loaded dynamically to reduce bundle size (7MB library)
 import { doc, collection, addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -53,6 +53,9 @@ export default function AdminView() {
   const REDEEM_DISCOUNT_VALUE = Number(redeemDiscountValue) || DEFAULT_REDEEM_DISCOUNT_VALUE;
   const OWN_GLASS_DISCOUNT = Number(ownGlassDiscount) || DEFAULT_OWN_GLASS_DISCOUNT;
   const STARTING_CASH = Number(startingCash) || DEFAULT_STARTING_CASH;
+
+  // Tab state
+  const [activeAdminTab, setActiveAdminTab] = useState('stats');
 
   // Local states
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(getISODate());
@@ -461,8 +464,30 @@ export default function AdminView() {
           <button onClick={togglePinSecurity} className={`hidden md:flex px-4 lg:px-8 py-2.5 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-xs font-black items-center gap-2 border transition-all leading-none ${pinEnabled ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>{pinEnabled ? 'PIN ON' : 'PIN OFF'}</button>
         </div>
       </header>
+
+      {/* Tab Bar */}
+      <div className="flex items-center gap-1 md:gap-2 px-4 md:px-8 lg:px-12 py-3 bg-white/50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700 shrink-0">
+        {[
+          { key: 'stats', icon: BarChart3, label: 'สรุปยอด' },
+          { key: 'settings', icon: Settings, label: 'ตั้งค่า' },
+          { key: 'manage', icon: FolderCog, label: 'จัดการ' },
+        ].map(({ key, icon: Icon, label }) => (
+          <button
+            key={key}
+            onClick={() => setActiveAdminTab(key)}
+            className={`flex items-center gap-2 px-4 md:px-6 py-2.5 md:py-3 rounded-xl md:rounded-2xl text-xs md:text-sm font-black uppercase tracking-wider transition-all ${activeAdminTab === key ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+          >
+            <Icon size={16} />
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-8 p-4 md:p-6 lg:p-8 overflow-auto text-gray-800">
-        <div className="w-full lg:w-[400px] xl:w-[480px] space-y-4 md:space-y-6 lg:space-y-8 shrink-0 animate-in slide-in-from-left">
+        <div className={`w-full ${activeAdminTab === 'stats' ? 'lg:w-[400px] xl:w-[480px]' : ''} space-y-4 md:space-y-6 lg:space-y-8 shrink-0 animate-in fade-in duration-300`}>
+
+          {/* ==================== TAB: สรุปยอด ==================== */}
+          {activeAdminTab === 'stats' && <>
           {/* Daily Stats Card */}
           <div className="bg-gray-900 rounded-2xl md:rounded-[2.5rem] lg:rounded-[3rem] p-6 md:p-8 lg:p-10 text-white shadow-2xl relative overflow-hidden border-b-8 border-emerald-500/20">
             <TrendingUp size={160} className="absolute -right-12 -bottom-12 opacity-10" />
@@ -495,6 +520,10 @@ export default function AdminView() {
             )}
           </div>
 
+          </>}
+
+          {/* ==================== TAB: ตั้งค่า ==================== */}
+          {activeAdminTab === 'settings' && <>
           {/* Settings Panel */}
           <div className="bg-white rounded-[3rem] p-8 border border-gray-100 shadow-sm space-y-6">
             <div className="flex items-center justify-between">
@@ -651,6 +680,10 @@ export default function AdminView() {
             )}
           </div>
 
+          </>}
+
+          {/* ==================== TAB: จัดการ ==================== */}
+          {activeAdminTab === 'manage' && <>
           {/* Backdated Sales Panel */}
           <div className="bg-white rounded-[3rem] p-8 border border-gray-100 shadow-sm space-y-6">
             <div className="flex items-center justify-between">
@@ -1022,6 +1055,10 @@ export default function AdminView() {
             )}
           </div>
 
+          </>}
+
+          {/* Monthly & Expenses — shown in stats tab */}
+          {activeAdminTab === 'stats' && <>
           {/* Monthly Stats Panel */}
           <div className="bg-white rounded-[3rem] p-10 border border-gray-100 shadow-xl relative overflow-hidden border-t-[10px] border-t-emerald-500 shadow-emerald-500/5">
             <div className="flex justify-between items-start mb-8">
@@ -1098,10 +1135,13 @@ export default function AdminView() {
               </>
             )}
           </div>
+          </>}
+
         </div>
 
         {/* Right Panel - Store Management */}
-        <div className="flex-1 bg-white rounded-2xl md:rounded-[3rem] lg:rounded-[3.5rem] shadow-xl border border-gray-100 flex flex-col p-4 md:p-6 lg:p-10 space-y-4 md:space-y-6 lg:space-y-8 text-gray-800 shadow-emerald-500/5">
+        {(activeAdminTab === 'manage' || activeAdminTab === 'stats') && (
+        <div className={`${activeAdminTab === 'stats' ? 'hidden lg:flex' : 'flex'} flex-1 bg-white rounded-2xl md:rounded-[3rem] lg:rounded-[3.5rem] shadow-xl border border-gray-100 flex-col p-4 md:p-6 lg:p-10 space-y-4 md:space-y-6 lg:space-y-8 text-gray-800 shadow-emerald-500/5`}>
           <h2 className="font-black text-lg md:text-xl lg:text-2xl text-gray-800 uppercase tracking-tighter font-black px-2 leading-none">Store Management</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 gap-3 md:gap-4 lg:gap-6 flex-1 overflow-y-auto pr-2 scrollbar-hide text-gray-800">
             <button onClick={() => setView('merchant')} className="p-4 md:p-6 lg:p-10 bg-orange-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-orange-100 text-orange-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all shadow-md active:scale-95"><ChefHat size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">จอภาพครัว</span></button>
@@ -1127,6 +1167,7 @@ export default function AdminView() {
             <button onClick={() => setShowSeedConfirm(true)} className="p-4 md:p-6 lg:p-10 bg-gray-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-gray-100 text-gray-400 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all active:scale-95 hover:bg-white hover:text-emerald-500 hover:border-emerald-200 col-span-2 md:col-span-1"><Banknote size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">กู้คืนข้อมูลเริ่มต้น</span></button>
           </div>
         </div>
+        )}
       </div>
 
       {/* Reset Session Confirm Modal */}
