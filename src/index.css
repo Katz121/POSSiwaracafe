@@ -2,18 +2,21 @@
 
 /* Dark Mode CSS Variables */
 :root {
-  --bg-primary: #f8faf9;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #f9fafb;
-  --text-primary: #1f2937;
-  --text-secondary: #4b5563;
-  --text-muted: #9ca3af;
-  --border-color: #e5e7eb;
-  --border-light: #f3f4f6;
-  --shadow-color: rgba(0, 0, 0, 0.1);
-  --accent-emerald: #10b981;
-  --accent-emerald-dark: #047857;
-  --accent-emerald-light: #d1fae5;
+  /* Warm & Cozy palette (Variant A) */
+  --bg-primary: #FAF6EF;       /* warm cream page bg */
+  --bg-secondary: #FFFDF8;     /* surface — cards, inputs */
+  --bg-tertiary: #F3EDE2;      /* surface2 — options area */
+  --text-primary: #2A221A;
+  --text-secondary: #6B5F50;
+  --text-muted: #A89B87;
+  --border-color: #E8DFCE;
+  --border-light: #F0E8D7;
+  --shadow-color: rgba(42, 34, 26, 0.08);
+  --accent-emerald: #0E9F6E;
+  --accent-emerald-dark: #0B7F58;
+  --accent-emerald-light: #DDF3E8;
+  --accent-orange: #EA6B2B;
+  --accent-orange-light: #FCE6D8;
 
   /* AI Feature Accent — violet/fuchsia สำหรับ AI ทั้งหมด */
   --accent-ai: #7c3aed;
@@ -36,18 +39,21 @@
 }
 
 html.dark {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
-  --text-primary: #f8fafc;
-  --text-secondary: #cbd5e1;
-  --text-muted: #64748b;
-  --border-color: #334155;
-  --border-light: #1e293b;
-  --shadow-color: rgba(0, 0, 0, 0.3);
-  --accent-emerald: #34d399;
-  --accent-emerald-dark: #10b981;
-  --accent-emerald-light: #064e3b;
+  /* Warm & Cozy dark (Variant A) */
+  --bg-primary: #15120E;
+  --bg-secondary: #1E1A14;
+  --bg-tertiary: #27221A;
+  --text-primary: #F5EFE4;
+  --text-secondary: #BFB4A0;
+  --text-muted: #8A7E68;
+  --border-color: #34301D;
+  --border-light: #2A2619;
+  --shadow-color: rgba(0, 0, 0, 0.4);
+  --accent-emerald: #34D399;
+  --accent-emerald-dark: #10B981;
+  --accent-emerald-light: #0F2B22;
+  --accent-orange: #F97D3F;
+  --accent-orange-light: #2D1A10;
 }
 
 @layer base {
@@ -265,16 +271,19 @@ html.dark {
 /* ========== DARK MODE STYLES ========== */
 /* Main backgrounds */
 html.dark .bg-\[\#f8faf9\],
-html.dark .bg-\[\#fcfdfc\] {
+html.dark .bg-\[\#fcfdfc\],
+html.dark .bg-\[\#FAF6EF\] {
   background-color: var(--bg-primary) !important;
 }
 
-html.dark .bg-white {
+html.dark .bg-white,
+html.dark .bg-\[\#FFFDF8\] {
   background-color: var(--bg-secondary) !important;
 }
 
 html.dark .bg-gray-50,
-html.dark .bg-gray-100 {
+html.dark .bg-gray-100,
+html.dark .bg-\[\#F3EDE2\] {
   background-color: var(--bg-tertiary) !important;
 }
 
