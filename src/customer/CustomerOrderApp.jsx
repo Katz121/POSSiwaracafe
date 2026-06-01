@@ -33,6 +33,7 @@ import {
   serverTimestamp,
   increment,
   setDoc,
+  getDoc,
 } from 'firebase/firestore';
 import { auth, db, appId } from '../services/firebase';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
@@ -701,7 +702,7 @@ function CustomerOrderApp() {
   const [beanModifiers, setBeanModifiers] = useState([]);
   const [settings, setSettings] = useState({ shopName: 'ร้านกาแฟ', vatEnabled: true });
   const [settingsData, setSettingsData] = useState({});
-  const [members, setMembers] = useState([]);
+  const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // --- UI state ---
@@ -773,14 +774,6 @@ function CustomerOrderApp() {
       },
     );
 
-    // Members
-    const unsubMembers = onSnapshot(
-      collection(db, ...base, 'members'),
-      (snap) => {
-        setMembers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      },
-    );
-
     // Settings (single doc)
     const unsubSettings = onSnapshot(
       doc(db, ...base, 'config', 'settings'),
@@ -801,7 +794,7 @@ function CustomerOrderApp() {
       },
     );
 
-    unsubs.current = [unsubMenu, unsubCats, unsubBeans, unsubMembers, unsubSettings];
+    unsubs.current = [unsubMenu, unsubCats, unsubBeans, unsubSettings];
     return () => {
       unsubs.current.forEach((fn) => fn());
       unsubs.current = [];
@@ -866,9 +859,23 @@ function CustomerOrderApp() {
   const redeemPointsThreshold = Number(settingsData.redeemPointsThreshold) || 100;
   const redeemDiscountValue = Number(settingsData.redeemDiscountValue) || 50;
 
-  const member = customerPhone.trim().length >= 9
-    ? members.find((m) => m.phone === customerPhone.trim()) || null
-    : null;
+  // Look up the member by phone on demand (debounced) instead of loading the
+  // whole members collection on every QR scan — keeps Firestore reads minimal.
+  useEffect(() => {
+    const phone = customerPhone.trim();
+    if (phone.length < 9) { setMember(null); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', phone));
+        if (!cancelled) setMember(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+      } catch {
+        if (!cancelled) setMember(null);
+      }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [customerPhone]);
+
   const memberPoints = Number(member?.points || 0);
   const pointsEligible = !!member && memberPoints >= redeemPointsThreshold;
 
@@ -1058,7 +1065,7 @@ function CustomerOrderApp() {
           const redeemDeduct = (usePoints && pointsEligible) ? redeemPointsThreshold : 0;
           const netPoints = pointsToAdd - redeemDeduct;
 
-          const isExisting = members.some((m) => m.phone === phone);
+          const isExisting = !!member && member.phone === phone;
           const memberPayload = {
             phone,
             name: customerName.trim(),
