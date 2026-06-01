@@ -32,6 +32,7 @@ import {
   runTransaction,
   serverTimestamp,
   increment,
+  arrayUnion,
   setDoc,
   getDoc,
   updateDoc,
@@ -699,7 +700,7 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, canEarnR
           className="mt-8 w-full max-w-xs bg-white rounded-2xl shadow-sm border border-emerald-100 px-5 py-4 text-center"
         >
           {reviewDone ? (
-            <p className="font-bold text-emerald-600 text-base py-2">ได้รับ 10 แต้มแล้ว ขอบคุณนะคะ 💚</p>
+            <p className="font-bold text-emerald-600 text-base py-2">ส่งคำขอแล้ว · รอร้านอนุมัติ 10 แต้ม 💚</p>
           ) : (
             <>
               <p className="font-bold text-gray-900 text-base mb-1">
@@ -707,7 +708,7 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, canEarnR
               </p>
               <p className="text-gray-500 text-sm mb-4 leading-relaxed">
                 {canEarnReviewPoints
-                  ? 'ฝากรีวิวแล้วรับ 10 แต้มทันที (สะสมแลกส่วนลดได้)'
+                  ? 'ฝากรีวิวแล้วรับ 10 แต้ม (ร้านอนุมัติแล้วแต้มเข้าระบบ)'
                   : 'ฝากรีวิวให้เราหน่อยน้า เป็นกำลังใจให้ร้านมากๆ'}
               </p>
               <Button
@@ -1156,6 +1157,12 @@ function CustomerOrderApp() {
           if (!isExisting) {
             memberPayload.createdAt = serverTimestamp();
           }
+          // Points source history (kept on the member doc)
+          const now = new Date().toISOString();
+          const entries = [];
+          if (pointsToAdd > 0) entries.push({ delta: pointsToAdd, reason: 'order', at: now });
+          if (redeemDeduct > 0) entries.push({ delta: -redeemDeduct, reason: 'redeem', at: now });
+          if (entries.length > 0) memberPayload.pointsHistory = arrayUnion(...entries);
           await setDoc(memberRef, memberPayload, { merge: true });
         } catch {
           // Member write failure is non-critical — order already saved
@@ -1197,18 +1204,17 @@ function CustomerOrderApp() {
     setView('menu');
   };
 
-  // Award 10 points for a review — ONCE per member (flag prevents farming).
-  // Trust-based: we can't verify the external review, so we credit on click but
-  // only the first time for that phone.
+  // Review reward = 10 points PENDING the shop's approval (we can't verify the
+  // external review, so the owner approves it on the members page). Once per phone.
   const awardReviewPoints = useCallback(async () => {
     const phone = customerPhone.trim();
     if (phone.length < 9) return;
     try {
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'members', phone);
       const snap = await getDoc(ref);
-      if (!snap.exists() || snap.data().reviewRewarded) return; // already rewarded
-      await updateDoc(ref, { points: increment(10), reviewRewarded: true });
-      setMember((m) => (m ? { ...m, reviewRewarded: true, points: (Number(m.points) || 0) + 10 } : m));
+      if (!snap.exists() || snap.data().reviewRewarded) return; // already requested/rewarded
+      await updateDoc(ref, { pendingPoints: increment(10), pendingReason: 'review', reviewRewarded: true });
+      setMember((m) => (m ? { ...m, reviewRewarded: true } : m));
     } catch (e) {
       console.warn('[review points] failed', e);
     }

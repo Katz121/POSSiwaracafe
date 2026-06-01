@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Users, Search, User, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star } from 'lucide-react';
-import { doc, setDoc, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { Users, Search, User, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X } from 'lucide-react';
+import { doc, setDoc, deleteDoc, writeBatch, serverTimestamp, increment, arrayUnion } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getNameKey } from '../../utils/calculations';
@@ -34,6 +34,7 @@ export default function MembersView() {
   const debouncedMemberSearchTerm = useDebounce(memberSearchTerm, 200);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedMemberForFavorites, setSelectedMemberForFavorites] = useState(null);
+  const [historyMember, setHistoryMember] = useState(null);
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -174,22 +175,29 @@ export default function MembersView() {
   };
 
   // Handlers
+  // Resolve the member's ACTUAL Firestore doc id (registered members keep their id;
+  // name-only rows have no doc yet → name:key).
+  const resolveMemberId = (member) => {
+    const nameKey = getNameKey(member.name);
+    const isNameOnly = String(member.id || '').startsWith('name-only:');
+    return isNameOnly
+      ? (nameKey ? `name:${nameKey}` : null)
+      : (member.id || member.phone || (nameKey ? `name:${nameKey}` : null));
+  };
+  const historyEntry = (delta, reason) => ({ delta: Number(delta), reason, at: new Date().toISOString() });
+
   const syncMemberPoints = async (member, silent = false) => {
     await runDbAction(async () => {
-      const nameKey = getNameKey(member.name);
-      // Use the member's ACTUAL doc id for registered members (writing to
-      // members/{phone} can hit the wrong doc / create a duplicate when the doc
-      // id isn't the phone). name-only rows have no doc yet → create as name:key.
-      const isNameOnly = String(member.id || '').startsWith('name-only:');
-      const memberId = isNameOnly
-        ? (nameKey ? `name:${nameKey}` : null)
-        : (member.id || member.phone || (nameKey ? `name:${nameKey}` : null));
+      const memberId = resolveMemberId(member);
       if (!memberId) return;
 
       const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
       // Top up only — never reduce below current points (protects review/bonus points).
       const target = Math.max(Number(member.points) || 0, Number(member.expectedPoints) || 0);
-      await setDoc(memRef, { points: target }, { merge: true });
+      const delta = target - (Number(member.points) || 0);
+      const payload = { points: target };
+      if (delta > 0) payload.pointsHistory = arrayUnion(historyEntry(delta, 'recalc'));
+      await setDoc(memRef, payload, { merge: true });
 
       // Mark orders as processed
       const memberOrders = orders.filter(o => {
@@ -209,6 +217,32 @@ export default function MembersView() {
       }
     }, 'ปรับปรุงแต้มไม่สำเร็จ');
     if (!silent) toast.success(`ปรับปรุงแต้มของ ${member.name} เป็น ${member.expectedPoints} แต้มแล้ว`);
+  };
+
+  const approvePending = (member) => {
+    const pending = Number(member.pendingPoints || 0);
+    if (pending <= 0) return;
+    runDbAction(async () => {
+      const id = resolveMemberId(member);
+      if (!id) return;
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', id), {
+        points: increment(pending),
+        pendingPoints: 0,
+        pointsHistory: arrayUnion(historyEntry(pending, member.pendingReason || 'review'))
+      }, { merge: true });
+    }, 'อนุมัติแต้มไม่สำเร็จ');
+    toast.success(`อนุมัติ +${pending} แต้มให้ ${member.name} แล้ว`);
+  };
+
+  const rejectPending = (member) => {
+    runDbAction(async () => {
+      const id = resolveMemberId(member);
+      if (!id) return;
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', id), {
+        pendingPoints: 0
+      }, { merge: true });
+    }, 'ปฏิเสธไม่สำเร็จ');
+    toast.info('ปฏิเสธคำขอแต้มแล้ว');
   };
 
   const fixAllPoints = () => {
@@ -278,12 +312,17 @@ export default function MembersView() {
 
     const newId = nextPhone || `name:${nameKey}`;
     const currentId = member?.id || member?.phone;
+    const newPoints = formData.points != null && formData.points !== '' ? Number(formData.points) || 0 : Number(member?.points || 0);
+    const oldPoints = Number(editingMember?.points || 0);
     const data = {
       name: nextName || currentName || 'ลูกค้าทั่วไป',
       phone: nextPhone || '',
-      points: formData.points != null && formData.points !== '' ? Number(formData.points) || 0 : Number(member?.points || 0),
+      points: newPoints,
       createdAt: member?.createdAt || serverTimestamp(),
     };
+    if (newPoints - oldPoints !== 0) {
+      data.pointsHistory = arrayUnion(historyEntry(newPoints - oldPoints, 'manual'));
+    }
 
     await runDbAction(async () => {
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', newId), data, { merge: true });
@@ -415,6 +454,38 @@ export default function MembersView() {
           <p className="text-xs md:text-xs opacity-70 mt-0.5">แต้มรวม: {totalPoints.toLocaleString()}</p>
         </div>
       </div>
+      {/* Pending Approval Section */}
+      {processedMembers.some(m => Number(m.pendingPoints) > 0) && (
+        <div className="px-3 md:px-6 lg:px-8 pt-3 md:pt-4 shrink-0">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 md:p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3 text-amber-700 font-black text-sm md:text-base uppercase tracking-wider">
+              <History size={18} />
+              <span>รออนุมัติแต้ม</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
+              {processedMembers.filter(m => Number(m.pendingPoints) > 0).map(m => (
+                <div key={`pending-${m.phone || m.id}`} className="bg-white rounded-2xl border border-amber-100 p-3 flex items-center justify-between gap-3 shadow-sm">
+                  <div className="min-w-0">
+                    <p className="font-black text-gray-800 text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
+                    <span className="inline-block mt-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-700 font-black text-xs">
+                      รออนุมัติ +{Number(m.pendingPoints)} · รีวิว
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button onClick={() => approvePending(m)} variant="primary" size="sm" leftIcon={<Check size={14} />}>
+                      อนุมัติ
+                    </Button>
+                    <Button onClick={() => rejectPending(m)} variant="outline-danger" size="sm" leftIcon={<X size={14} />}>
+                      ปฏิเสธ
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 p-3 md:p-6 lg:p-8 overflow-hidden">
         <div className="h-full bg-white rounded-2xl md:rounded-[2.5rem] lg:rounded-[3.5rem] shadow-xl border border-gray-100 overflow-hidden flex flex-col shadow-emerald-500/5">
           {/* Desktop Table Header */}
@@ -465,6 +536,9 @@ export default function MembersView() {
                       <button onClick={() => setSelectedMemberForFavorites(m)} className="p-2 bg-pink-50 text-pink-500 rounded-lg active:scale-90" title="ดูเมนูโปรด">
                         <Heart size={14} />
                       </button>
+                      <button onClick={() => setHistoryMember(m)} className="p-2 bg-violet-50 text-violet-500 rounded-lg active:scale-90" title="ประวัติแต้ม">
+                        <History size={14} />
+                      </button>
                       {m.pointsDiscrepancy && (
                         <button onClick={() => syncMemberPoints(m)} className="p-2 bg-red-50 text-red-500 rounded-lg active:scale-90">
                           <RefreshCcw size={14} />
@@ -511,6 +585,13 @@ export default function MembersView() {
                         className="p-2 lg:p-3 bg-pink-50 text-pink-500 rounded-xl lg:rounded-2xl shadow-sm border border-pink-100 hover:bg-pink-100 transition-all active:scale-90"
                       >
                         <Heart size={16} className="lg:w-[18px] lg:h-[18px]" />
+                      </button>
+                      <button
+                        onClick={() => setHistoryMember(m)}
+                        title="ประวัติแต้ม"
+                        className="p-2 lg:p-3 bg-violet-50 text-violet-500 rounded-xl lg:rounded-2xl shadow-sm border border-violet-100 hover:bg-violet-100 transition-all active:scale-90"
+                      >
+                        <History size={16} className="lg:w-[18px] lg:h-[18px]" />
                       </button>
                       {m.pointsDiscrepancy && (
                         <button
@@ -674,6 +755,44 @@ export default function MembersView() {
                 </Button>
               </div>
             </>
+          );
+        })()}
+      </Modal>
+
+      {/* Points History Modal */}
+      <Modal
+        isOpen={!!historyMember}
+        onClose={() => setHistoryMember(null)}
+        title="ประวัติแต้ม"
+      >
+        {(() => {
+          const reasonLabels = { order: 'ออเดอร์', review: 'รีวิว', redeem: 'แลกแต้ม', manual: 'ปรับด้วยมือ', recalc: 'ปรับปรุง' };
+          const entries = [...(historyMember?.pointsHistory || [])].sort((a, b) => new Date(b.at) - new Date(a.at));
+          if (entries.length === 0) {
+            return (
+              <div className="text-center py-10 text-gray-400 font-bold text-sm">
+                ยังไม่มีประวัติ
+              </div>
+            );
+          }
+          return (
+            <div className="space-y-2 md:space-y-3">
+              {entries.map((e, idx) => {
+                const delta = Number(e.delta || 0);
+                const dateStr = e.at ? new Date(e.at).toLocaleString('th-TH') : 'ไม่ทราบวันที่';
+                return (
+                  <div key={idx} className="flex items-center justify-between gap-3 p-3 md:p-4 rounded-xl md:rounded-2xl bg-gray-50 border border-gray-100">
+                    <div className="min-w-0">
+                      <p className="font-black text-gray-800 text-sm">{reasonLabels[e.reason] || e.reason || 'ไม่ระบุ'}</p>
+                      <p className="text-xs font-bold text-gray-400">{dateStr}</p>
+                    </div>
+                    <div className={`font-black text-base md:text-lg shrink-0 ${delta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {delta >= 0 ? `+${delta}` : `${delta}`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           );
         })()}
       </Modal>
