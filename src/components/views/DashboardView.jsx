@@ -211,27 +211,30 @@ const DashboardView = () => {
         monthOrders.forEach(order => {
             (order.items || []).forEach(item => {
                 const key = item.name;
+                const menuItem = menu.find(m => m.name === item.name);
+
+                // Cost from the ACTUAL order item's recipe so the chosen bean is
+                // reflected (its stockLinks were merged in at order time). Fall back
+                // to the base menu recipe for older orders that have no stockLinks.
+                const links = (Array.isArray(item.stockLinks) && item.stockLinks.length)
+                    ? item.stockLinks
+                    : (menuItem?.stockLinks || []);
+                let itemCost = Number(menuItem?.additionalCost || 0);
+                links.forEach(link => {
+                    const stockItem = stock.find(s => s.id === link.stockId);
+                    if (stockItem) {
+                        itemCost += Number(stockItem.unitCost || 0) * Number(link.usage || 0);
+                    }
+                });
+
                 if (!menuStats[key]) {
-                    // Find menu item to get cost info
-                    const menuItem = menu.find(m => m.name === item.name);
-                    const stockLinks = menuItem?.stockLinks || [];
-                    let costPerItem = Number(menuItem?.additionalCost || 0);
-
-                    // Calculate cost from stock links
-                    stockLinks.forEach(link => {
-                        const stockItem = stock.find(s => s.id === link.stockId);
-                        if (stockItem) {
-                            costPerItem += Number(stockItem.unitCost || 0) * Number(link.usage || 0);
-                        }
-                    });
-
                     menuStats[key] = {
                         id: menuItem?.id || null,
                         name: item.name,
                         image: item.image || menuItem?.image || '',
                         category: item.category || menuItem?.category || '',
                         price: Number(item.price || 0),
-                        costPerItem,
+                        costPerItem: itemCost,
                         totalSold: 0,
                         totalRevenue: 0,
                         totalCost: 0,
@@ -243,9 +246,15 @@ const DashboardView = () => {
                 const price = Number(item.price || 0);
                 menuStats[key].totalSold += qty;
                 menuStats[key].totalRevenue += price * qty;
-                menuStats[key].totalCost += menuStats[key].costPerItem * qty;
-                menuStats[key].totalProfit += (price - menuStats[key].costPerItem) * qty;
+                menuStats[key].totalCost += itemCost * qty;
+                menuStats[key].totalProfit += (price - itemCost) * qty;
             });
+        });
+
+        // Display cost = weighted average across the month's sales (bean variants
+        // can differ), so margins shown reflect the real blended cost.
+        Object.values(menuStats).forEach(m => {
+            if (m.totalSold > 0) m.costPerItem = Math.round(m.totalCost / m.totalSold);
         });
 
         // Convert to array and calculate margins

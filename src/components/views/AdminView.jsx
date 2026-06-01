@@ -1174,11 +1174,19 @@ export default function AdminView() {
                   ) : (
                     beanModifiers.map(mod => {
                       const isHidden = mod.available === false;
+                      // Ingredient cost of this bean (mirrors the menu cost calc)
+                      const beanCost = (mod.stockLinks || []).reduce((sum, link) => {
+                        const s = stock.find(st => st.id === link.stockId);
+                        return sum + (Number(s?.unitCost || 0) * Number(link.usage || 0));
+                      }, 0) + Number(mod.additionalCost || 0);
                       return (
                       <div key={mod.id} className={`flex items-center justify-between p-4 rounded-2xl border ${isHidden ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-amber-50 border-amber-100'}`}>
                         <div className="flex items-center gap-3">
                           <span className={`font-black ${isHidden ? 'text-gray-400 line-through' : 'text-amber-700'}`}>#{mod.name}</span>
                           <span className="text-sm font-bold text-gray-400">฿{Number(mod.price).toLocaleString()}</span>
+                          {beanCost > 0 && (
+                            <span className="text-xs font-black text-rose-500 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-100">ทุน ฿{beanCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                          )}
                           {isHidden && (
                             <span className="text-xs font-black text-gray-500 bg-gray-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
                               <EyeOff size={10} /> ซ่อน (เมล็ดหมด)
