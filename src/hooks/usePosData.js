@@ -6,7 +6,11 @@ import {
   DEFAULT_REDEEM_POINTS_THRESHOLD,
   DEFAULT_REDEEM_DISCOUNT_VALUE,
   DEFAULT_OWN_GLASS_DISCOUNT,
-  DEFAULT_STARTING_CASH
+  DEFAULT_STARTING_CASH,
+  DEFAULT_CAKE_SALE_PERCENT,
+  DEFAULT_CAKE_SALE_START,
+  DEFAULT_CAKE_SALE_END,
+  DEFAULT_COMBO_PERCENT
 } from '../config/constants';
 
 export default function usePosData(user, appId) {
@@ -29,6 +33,14 @@ export default function usePosData(user, appId) {
   const [geminiApiKey, setGeminiApiKey] = useState(import.meta.env.VITE_GEMINI_API_KEY || '');
   const [startingCash, setStartingCash] = useState(DEFAULT_STARTING_CASH);
   const [quickExpenses, setQuickExpenses] = useState([]);
+  const [reviewUrl, setReviewUrl] = useState('');
+  const [cakeSaleEnabled, setCakeSaleEnabled] = useState(false);
+  const [cakeSaleCategories, setCakeSaleCategories] = useState([]);
+  const [cakeSalePercent, setCakeSalePercent] = useState(DEFAULT_CAKE_SALE_PERCENT);
+  const [cakeSaleStart, setCakeSaleStart] = useState(DEFAULT_CAKE_SALE_START);
+  const [cakeSaleEnd, setCakeSaleEnd] = useState(DEFAULT_CAKE_SALE_END);
+  const [comboEnabled, setComboEnabled] = useState(false);
+  const [comboPercent, setComboPercent] = useState(DEFAULT_COMBO_PERCENT);
 
   // Use user UID as dependency instead of user object to prevent
   // re-subscribing all listeners when Firebase refreshes auth token
@@ -36,6 +48,7 @@ export default function usePosData(user, appId) {
 
   useEffect(() => {
     if (!userId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: show loading state while (re)subscribing to Firestore listeners
     setIsSyncing(true);
 
     const handleSnapshotError = (err) => {
@@ -72,11 +85,19 @@ export default function usePosData(user, appId) {
         if (data.ownGlassDiscount != null) setOwnGlassDiscount(Number(data.ownGlassDiscount));
         if (data.geminiApiKey) setGeminiApiKey(String(data.geminiApiKey));
         if (data.startingCash != null) setStartingCash(Number(data.startingCash));
+        if (data.reviewUrl != null) setReviewUrl(String(data.reviewUrl));
+        setCakeSaleEnabled(data.cakeSaleEnabled === true);
+        if (Array.isArray(data.cakeSaleCategories)) setCakeSaleCategories(data.cakeSaleCategories);
+        if (data.cakeSalePercent != null) setCakeSalePercent(Number(data.cakeSalePercent));
+        if (data.cakeSaleStart != null) setCakeSaleStart(String(data.cakeSaleStart));
+        if (data.cakeSaleEnd != null) setCakeSaleEnd(String(data.cakeSaleEnd));
+        setComboEnabled(data.comboEnabled === true);
+        if (data.comboPercent != null) setComboPercent(Number(data.comboPercent));
       }
     }, handleSnapshotError);
 
     return () => { unsubCats(); unsubMenu(); unsubStock(); unsubOrders(); unsubExp(); unsubMem(); unsubBeans(); unsubQuickExp(); unsubQueue(); unsubSettings(); };
   }, [userId, appId]);
 
-  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash };
+  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent };
 }

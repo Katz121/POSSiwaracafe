@@ -16,6 +16,14 @@ export const POINTS_PER_BAHT = 10;                   // ทุก X บาท �
 export const VAT_RATE = 0.07;                        // อัตรา VAT 7%
 export const VAT_PERCENTAGE = 7;                     // สำหรับแสดงผล
 
+// ==================== CAKE CLEARANCE (HAPPY HOUR) ====================
+export const DEFAULT_CAKE_SALE_PERCENT = 20;         // ส่วนลด % ช่วงล้างสต๊อกเค้ก
+export const DEFAULT_CAKE_SALE_START = '17:00';      // เริ่มช่วงลดราคา
+export const DEFAULT_CAKE_SALE_END = '20:00';        // สิ้นสุดช่วงลดราคา
+
+// ==================== CAKE + DRINK COMBO ====================
+export const DEFAULT_COMBO_PERCENT = 10;             // ส่วนลด % เมื่อสั่งเค้ก + เครื่องดื่มคู่กัน
+
 // ==================== STOCK ====================
 export const DEFAULT_STOCK_UNIT = 'ชิ้น';
 export const DEFAULT_MIN_QUANTITY = 5;               // จำนวนขั้นต่ำเตือนสต็อกใกล้หมด

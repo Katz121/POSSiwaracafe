@@ -1,8 +1,17 @@
-import React from 'react'
+import React, { Suspense, lazy } from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
-import { ToastProvider } from './components/ui'
+import { ToastProvider, Spinner } from './components/ui'
 import './index.css'
+
+// Lazy-load the two entry points so the customer ordering page does not pull
+// in the full admin/POS bundle (and vice versa).
+const App = lazy(() => import('./App.jsx'))
+const CustomerOrderApp = lazy(() => import('./customer/CustomerOrderApp.jsx'))
+
+// Simple path-based routing without a router library (project convention: no router).
+// The shop-wide QR code points to "/order" → render the customer self-ordering page.
+const pathname = window.location.pathname.replace(/\/+$/, '') || '/'
+const isCustomerOrder = pathname === '/order'
 
 // Register Service Worker for PWA
 if ('serviceWorker' in navigator) {
@@ -28,10 +37,18 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+const Fallback = (
+  <div className="min-h-screen flex items-center justify-center">
+    <Spinner />
+  </div>
+)
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ToastProvider>
-      <App />
+      <Suspense fallback={Fallback}>
+        {isCustomerOrder ? <CustomerOrderApp /> : <App />}
+      </Suspense>
     </ToastProvider>
   </React.StrictMode>,
 )

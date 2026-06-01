@@ -2,6 +2,7 @@
  * Keyboard Shortcuts Hook
  * Provides keyboard navigation for POS system
  */
+/* eslint-disable react-refresh/only-export-components -- exports useKeyboardShortcuts hook + KeyboardShortcutsHelp component together by design */
 import { useEffect, useCallback } from 'react';
 
 // Default shortcuts configuration

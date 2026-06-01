@@ -9,6 +9,8 @@ import { collection, doc, addDoc, setDoc, updateDoc, increment, serverTimestamp 
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getNameKey } from '../../utils/calculations';
+import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE } from '../../utils/promotions';
+import { bumpMenuSoldCount } from '../../utils/menuSales';
 import useDebounce from '../../hooks/useDebounce';
 import { trackRecommendationsShown, trackRecommendationAccepted } from '../../services/upsellTracker';
 import { Button, Modal, EmptyState, useToast, Skeleton } from '../ui';
@@ -35,6 +37,13 @@ export default function PosView() {
     redeemPointsThreshold,
     redeemDiscountValue,
     ownGlassDiscount,
+    cakeSaleEnabled,
+    cakeSaleCategories,
+    cakeSalePercent,
+    cakeSaleStart,
+    cakeSaleEnd,
+    comboEnabled,
+    comboPercent,
     activePromotion,
     setActivePromotion,
     runDbAction,
@@ -47,6 +56,12 @@ export default function PosView() {
   const REDEEM_POINTS_THRESHOLD = Number(redeemPointsThreshold) || DEFAULT_REDEEM_POINTS_THRESHOLD;
   const REDEEM_DISCOUNT_VALUE = Number(redeemDiscountValue) || DEFAULT_REDEEM_DISCOUNT_VALUE;
   const OWN_GLASS_DISCOUNT = Number(ownGlassDiscount) || DEFAULT_OWN_GLASS_DISCOUNT;
+
+  const saleSettings = { cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd };
+  const comboSettings = useMemo(
+    () => ({ cakeSaleCategories, comboEnabled, comboPercent }),
+    [cakeSaleCategories, comboEnabled, comboPercent]
+  );
 
   const toast = useToast();
 
@@ -71,6 +86,8 @@ export default function PosView() {
 
   const subtotal = useMemo(() => cart.reduce((s, i) => s + (Number(i.price) * Number(i.quantity)), 0), [cart]);
 
+  const combo = useMemo(() => getComboDiscount(cart, comboSettings), [cart, comboSettings]);
+
   const discountAmount = useMemo(() => {
     let d = 0;
     if (usePoints) d += REDEEM_DISCOUNT_VALUE;
@@ -80,8 +97,9 @@ export default function PosView() {
         d += (Number(item.price) * Number(item.quantity) * (activePromotion.discountPercent / 100));
       }
     });
+    d += combo.amount;
     return d;
-  }, [usePoints, bringOwnGlass, activePromotion, cart, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT]);
+  }, [usePoints, bringOwnGlass, activePromotion, cart, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, combo.amount]);
 
   const vatAmount = useMemo(() => vatEnabled ? Math.round(Math.max(0, subtotal - discountAmount) * VAT_RATE) : 0, [subtotal, discountAmount, vatEnabled]);
   const netTotal = useMemo(() => Math.max(0, (subtotal - discountAmount) + vatAmount), [subtotal, discountAmount, vatAmount]);
@@ -163,6 +181,7 @@ export default function PosView() {
       }
     }
     prevEditingIdRef.current = editingOrderId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run only when editingOrderId changes; toast/setEditingOrderId are stable
   }, [editingOrderId]);
 
   const featuredItems = useMemo(() => menu.filter(i => i.isFeatured && i.available !== false), [menu]);
@@ -198,17 +217,26 @@ export default function PosView() {
     };
     window.addEventListener('pos-shortcut', handlePosShortcut);
     return () => window.removeEventListener('pos-shortcut', handlePosShortcut);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once listener; latest values accessed via refs
   }, []);
 
   const addToCart = (p) => {
-    if (p.allowBeanModifier && beanModifiers.length > 0) {
+    if (p.allowBeanModifier && beanModifiers.some(b => b.available !== false)) {
       setPendingBeanItem(p);
       return;
     }
+    const sale = getItemSalePrice(p, saleSettings);
     setCart(prev => {
       const existing = prev.find(item => item.id === p.id && !item.beanModifier);
       if (existing) return prev.map(item => item.id === p.id && !item.beanModifier ? { ...item, quantity: item.quantity + 1 } : item);
-      return [...prev, { ...p, quantity: 1, note: '' }];
+      const noteTag = sale.onSale ? cakeSaleNoteTag(sale.percent) : '';
+      return [...prev, {
+        ...p,
+        price: sale.price,
+        ...(sale.onSale ? { originalPrice: sale.originalPrice } : {}),
+        quantity: 1,
+        note: noteTag
+      }];
     });
   };
 
@@ -279,7 +307,7 @@ export default function PosView() {
         vat: Number(vatAmount), total: Number(netTotal), vatIncluded: vatEnabled,
         isPaid, memberPhone: currentMember?.phone || '', memberNickname,
         status: 'pending',
-        promotionTitle: activePromotion?.title || '',
+        promotionTitle: activePromotion?.title || (combo.applies ? COMBO_PROMO_TITLE : ''),
         promotionDiscountPercent: activePromotion?.discountPercent || 0,
         bringOwnGlass, createdAt: serverTimestamp(), date: getISODate(),
         time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
@@ -329,6 +357,8 @@ export default function PosView() {
         }
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), orderData);
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue'), { current: Number(queueCounter) + 1 });
+        // Best-selling counter (best-effort; never blocks the sale)
+        bumpMenuSoldCount(cart);
       }
       setCart([]); setIsPaid(false); setMemberPhone(''); setMemberNickname(''); setUsePoints(false); setBringOwnGlass(false);
       toast.success(editingOrderId ? 'แก้ไขออเดอร์สำเร็จ' : `บันทึกออเดอร์ #${queueCounter} สำเร็จ`);
@@ -564,6 +594,17 @@ export default function PosView() {
             <span className="font-bold">-฿{REDEEM_DISCOUNT_VALUE}</span>
           </div>
         )}
+        {combo.applies && (
+          <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400">
+            <span>คอมโบเค้ก+เครื่องดื่ม -{combo.percent}%</span>
+            <span className="font-bold">-฿{combo.amount.toLocaleString()}</span>
+          </div>
+        )}
+        {combo.enabled && !combo.applies && combo.hasCake !== combo.hasDrink && cart.length > 0 && (
+          <div className="text-[10px] text-emerald-500 font-bold text-right">
+            เพิ่ม{combo.hasCake ? 'เครื่องดื่ม' : 'เค้ก'}รับส่วนลด {combo.percent}%
+          </div>
+        )}
         {vatAmount > 0 && (
           <div className="flex justify-between text-xs text-[var(--text-secondary)]">
             <span>VAT 7%</span>
@@ -717,7 +758,9 @@ export default function PosView() {
                     <EmptyState icon="search" title="ไม่พบเมนูในหมวดนี้" description="ลองเลือกหมวดหมู่อื่นหรือเพิ่มเมนูใหม่" size="sm" />
                   </div>
                 )}
-                {pagedMenu.map(item => (
+                {pagedMenu.map(item => {
+                  const itemSale = getItemSalePrice(item, saleSettings);
+                  return (
                   <div key={item.id} onClick={() => addToCart(item)}
                     className="group relative rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.97] animate-in zoom-in-95"
                     style={{ background: 'var(--bg-secondary)', boxShadow: '0 1px 0 var(--border-color), 0 8px 24px -12px var(--shadow-color)' }}>
@@ -728,6 +771,11 @@ export default function PosView() {
                         <span>แนะนำ</span>
                       </div>
                     )}
+                    {itemSale.onSale && (
+                      <div className="absolute top-3 right-3 z-10 flex items-center gap-0.5 px-2 py-1 rounded-full text-[10px] font-black bg-red-500 text-white shadow">
+                        Happy Hour -{itemSale.percent}%
+                      </div>
+                    )}
                     <div className="aspect-[4/3] md:aspect-[4/3] bg-[var(--bg-tertiary)] overflow-hidden shrink-0">
                       <img src={item.image || 'https://via.placeholder.com/300x300?text=No+Image'}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
@@ -736,7 +784,16 @@ export default function PosView() {
                     <div className="p-3.5 space-y-1">
                       <div className="text-[13px] leading-tight font-bold line-clamp-2 min-h-[2.4em] text-[var(--text-primary)]">{String(item.name)}</div>
                       <div className="flex items-baseline justify-between pt-1">
-                        <div className="text-xl font-black text-[var(--accent-emerald)]">฿{Number(item.price).toLocaleString()}</div>
+                        <div>
+                          {itemSale.onSale ? (
+                            <>
+                              <div className="text-xl font-black text-red-500">฿{itemSale.price.toLocaleString()}</div>
+                              <div className="text-[11px] font-bold text-[var(--text-muted)] line-through leading-none">฿{itemSale.originalPrice.toLocaleString()}</div>
+                            </>
+                          ) : (
+                            <div className="text-xl font-black text-[var(--accent-emerald)]">฿{Number(item.price).toLocaleString()}</div>
+                          )}
+                        </div>
                         <div className="w-8 h-8 rounded-full flex items-center justify-center transition-all group-hover:scale-110"
                           style={{ background: 'var(--accent-emerald-light)', color: 'var(--accent-emerald)' }}>
                           <Plus size={16} strokeWidth={2.5} />
@@ -744,7 +801,8 @@ export default function PosView() {
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -891,7 +949,7 @@ export default function PosView() {
                 <span className="font-bold text-[var(--text-primary)]">ไม่เพิ่มกาแฟ</span>
                 <span className="font-black text-[var(--accent-emerald)]">฿{Number(pendingBeanItem.price).toLocaleString()}</span>
               </button>
-              {beanModifiers.map(mod => (
+              {beanModifiers.filter(b => b.available !== false).map(mod => (
                 <button key={mod.id} onClick={() => addToCartWithBean(pendingBeanItem, mod)}
                   className="w-full p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 flex items-center justify-between hover:border-amber-500 transition-all">
                   <span className="font-bold text-amber-800 dark:text-amber-400">#{mod.name}</span>

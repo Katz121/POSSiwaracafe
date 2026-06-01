@@ -53,7 +53,7 @@ const FinancialView = () => {
             );
             const snapshot = await getDocs(q);
             setHistory(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-        } catch (err) {
+        } catch {
             // Silent fail for history loading
         }
     };
@@ -134,7 +134,7 @@ const FinancialView = () => {
             } else {
                 toast.error("AI Error: " + result.error);
             }
-        } catch (error) {
+        } catch {
             toast.error("ไม่สามารถสร้างแผนได้");
         } finally {
             setIsAnalyzing(false);
@@ -154,7 +154,7 @@ const FinancialView = () => {
             setSaveStatus('success');
             setTimeout(() => setSaveStatus(''), 3000);
             fetchHistory(); // Refresh history immediately
-        } catch (error) {
+        } catch {
             toast.error('บันทึกแผนไม่สำเร็จ');
             setSaveStatus('error');
         }
@@ -174,7 +174,7 @@ const FinancialView = () => {
             await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'financial_plans', aiPlan.id));
             setAiPlan(null); // Clear current view
             fetchHistory(); // Refresh history
-        } catch (error) {
+        } catch {
             toast.error('ลบแผนไม่สำเร็จ');
         }
     };
@@ -202,7 +202,7 @@ const FinancialView = () => {
                             value={selectedMonth}
                             onChange={(e) => setSelectedMonth(e.target.value)}
                             onClick={(e) => {
-                                try { e.currentTarget.showPicker(); } catch (err) { }
+                                try { e.currentTarget.showPicker(); } catch { /* showPicker not supported */ }
                             }}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                         />

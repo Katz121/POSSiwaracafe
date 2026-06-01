@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- exports context hooks + provider together by design */
 import React, { createContext, useContext } from 'react';
 
 // Split contexts for performance — consumers only re-render when their specific context changes

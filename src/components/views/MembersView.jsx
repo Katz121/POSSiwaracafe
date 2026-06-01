@@ -218,7 +218,7 @@ export default function MembersView() {
       try {
         await syncMemberPoints(m);
         count++;
-      } catch (e) {
+      } catch {
         errorCount++;
       }
     }

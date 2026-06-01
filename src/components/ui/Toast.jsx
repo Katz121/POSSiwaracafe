@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- exports useToast hook + ToastProvider together by design */
 import { createContext, useContext, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';

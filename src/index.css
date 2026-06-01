@@ -1,80 +1,164 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
 
-/* Dark Mode CSS Variables */
+/* Make Tailwind's `dark:` variant follow the `html.dark` class (set by useDarkMode)
+   instead of the OS `prefers-color-scheme`. This keeps the customer QR page (which
+   never sets `.dark`) in light mode even on phones with system dark mode enabled,
+   and aligns the POS app's `dark:` utilities with its own dark-mode toggle. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================
+   SIWARA POS — Glass Morphism Design System v2.0
+   ============================================================ */
+
 :root {
-  /* Warm & Cozy palette (Variant A) */
-  --bg-primary: #FAF6EF;       /* warm cream page bg */
-  --bg-secondary: #FFFDF8;     /* surface — cards, inputs */
-  --bg-tertiary: #F3EDE2;      /* surface2 — options area */
-  --text-primary: #2A221A;
-  --text-secondary: #6B5F50;
-  --text-muted: #A89B87;
-  --border-color: #E8DFCE;
-  --border-light: #F0E8D7;
-  --shadow-color: rgba(42, 34, 26, 0.08);
-  --accent-emerald: #0E9F6E;
-  --accent-emerald-dark: #0B7F58;
-  --accent-emerald-light: #DDF3E8;
-  --accent-orange: #EA6B2B;
-  --accent-orange-light: #FCE6D8;
+  /* === GRADIENT BACKGROUND STOPS === */
+  --bg-grad-1: #effdf6;
+  --bg-grad-2: #ecfdf5;
+  --bg-grad-3: #f0f9ff;
+  --bg-grad-4: #f5fdf9;
 
-  /* AI Feature Accent — violet/fuchsia สำหรับ AI ทั้งหมด */
+  /* === BASE COLORS === */
+  --bg-primary: #effdf6;
+  --bg-secondary: rgba(255, 255, 255, 0.82);
+  --bg-tertiary: rgba(236, 253, 245, 0.72);
+
+  /* === GLASS MORPHISM === */
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-bg-strong: rgba(255, 255, 255, 0.88);
+  --glass-border: rgba(255, 255, 255, 0.90);
+  --glass-border-subtle: rgba(255, 255, 255, 0.50);
+  --glass-shadow: 0 8px 32px rgba(0,0,0,0.07), 0 2px 8px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.80);
+
+  /* === NAV GLASS === */
+  --nav-bg: rgba(255, 255, 255, 0.90);
+  --nav-border: rgba(255, 255, 255, 0.96);
+  --nav-shadow: 0 12px 50px rgba(0,0,0,0.10), 0 3px 14px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.90);
+
+  /* === TEXT === */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+
+  /* === BORDER === */
+  --border-color: rgba(226, 232, 240, 0.80);
+  --border-light: rgba(241, 245, 249, 0.90);
+
+  /* === ACCENT — EMERALD === */
+  --accent-emerald: #059669;
+  --accent-emerald-dark: #047857;
+  --accent-emerald-light: rgba(167, 243, 208, 0.45);
+
+  /* === ACCENT — ORANGE === */
+  --accent-orange: #f97316;
+  --accent-orange-light: rgba(254, 215, 170, 0.45);
+
+  /* === ACCENT — AI VIOLET === */
   --accent-ai: #7c3aed;
   --accent-ai-dark: #5b21b6;
-  --accent-ai-light: #ede9fe;
+  --accent-ai-light: rgba(196, 181, 253, 0.35);
 
-  /* Shadow Scale */
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-nav: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.05);
-  --shadow-modal: 0 20px 60px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.1);
+  /* === SHADOW SCALE === */
+  --shadow-color: rgba(15, 23, 42, 0.07);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.06), 0 1px 6px rgba(0,0,0,0.04);
+  --shadow-nav: var(--nav-shadow);
+  --shadow-modal: 0 24px 80px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.10);
 
-  /* Z-Index Scale — ห้ามใช้ค่าอื่นนอกจากนี้ */
-  --z-dropdown:  100;   /* More menu popup, tooltips */
-  --z-nav:       150;   /* Navigation bar */
-  --z-modal-bg:  200;   /* Modal backdrop */
-  --z-modal:     300;   /* Modal content */
-  --z-toast:     400;   /* Toast notifications */
-  --z-overlay:   500;   /* Full-screen loading overlay */
+  /* === Z-INDEX SCALE === */
+  --z-dropdown: 100;
+  --z-nav: 150;
+  --z-modal-bg: 200;
+  --z-modal: 300;
+  --z-toast: 400;
+  --z-overlay: 500;
 }
 
+/* ============================================================
+   DARK MODE
+   ============================================================ */
 html.dark {
-  /* Warm & Cozy dark (Variant A) */
-  --bg-primary: #15120E;
-  --bg-secondary: #1E1A14;
-  --bg-tertiary: #27221A;
-  --text-primary: #F5EFE4;
-  --text-secondary: #BFB4A0;
-  --text-muted: #8A7E68;
-  --border-color: #34301D;
-  --border-light: #2A2619;
-  --shadow-color: rgba(0, 0, 0, 0.4);
-  --accent-emerald: #34D399;
-  --accent-emerald-dark: #10B981;
-  --accent-emerald-light: #0F2B22;
-  --accent-orange: #F97D3F;
-  --accent-orange-light: #2D1A10;
+  /* === GRADIENT STOPS === */
+  --bg-grad-1: #020817;
+  --bg-grad-2: #0c1322;
+  --bg-grad-3: #071422;
+  --bg-grad-4: #030c18;
+
+  /* === BASE === */
+  --bg-primary: #020817;
+  --bg-secondary: rgba(15, 23, 42, 0.85);
+  --bg-tertiary: rgba(30, 41, 59, 0.70);
+
+  /* === GLASS DARK === */
+  --glass-bg: rgba(15, 23, 42, 0.72);
+  --glass-bg-strong: rgba(15, 23, 42, 0.92);
+  --glass-border: rgba(148, 163, 184, 0.12);
+  --glass-border-subtle: rgba(148, 163, 184, 0.07);
+  --glass-shadow: 0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04);
+
+  /* === NAV DARK === */
+  --nav-bg: rgba(8, 12, 26, 0.95);
+  --nav-border: rgba(148, 163, 184, 0.13);
+  --nav-shadow: 0 12px 50px rgba(0,0,0,0.55), 0 3px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+
+  /* === TEXT === */
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  /* === BORDER === */
+  --border-color: rgba(51, 65, 85, 0.65);
+  --border-light: rgba(30, 41, 59, 0.80);
+
+  /* === ACCENT === */
+  --accent-emerald: #34d399;
+  --accent-emerald-dark: #10b981;
+  --accent-emerald-light: rgba(16, 185, 129, 0.15);
+
+  --accent-orange: #fb923c;
+  --accent-orange-light: rgba(251, 146, 60, 0.15);
+
+  --accent-ai: #a78bfa;
+  --accent-ai-dark: #7c3aed;
+  --accent-ai-light: rgba(139, 92, 246, 0.15);
+
+  /* === SHADOWS === */
+  --shadow-color: rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.30);
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.35), 0 1px 6px rgba(0,0,0,0.20);
+  --shadow-modal: 0 24px 80px rgba(0,0,0,0.55), 0 8px 24px rgba(0,0,0,0.35);
 }
 
+/* ============================================================
+   BASE LAYER — Typography + Body
+   ============================================================ */
 @layer base {
   html {
     font-size: clamp(14px, 1.1vw + 10px, 16px);
     -webkit-tap-highlight-color: transparent;
   }
+
   body {
-    line-height: 1.5;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Helvetica, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    line-height: 1.6;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
-    /* Prevent pull-to-refresh on mobile */
     overscroll-behavior-y: contain;
-    /* Apply CSS variables */
-    background-color: var(--bg-primary);
+    background: linear-gradient(145deg,
+      var(--bg-grad-1) 0%,
+      var(--bg-grad-2) 25%,
+      var(--bg-grad-3) 65%,
+      var(--bg-grad-4) 100%
+    );
+    background-attachment: fixed;
     color: var(--text-primary);
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition: background-color 0.4s ease, color 0.4s ease;
   }
 
   /* Prevent text selection on UI elements */
@@ -86,72 +170,59 @@ html.dark {
   /* Better input styling for iOS */
   input, select, textarea {
     font-size: 16px; /* Prevents zoom on iOS */
+    font-family: inherit;
+  }
+
+  /* Typography scale — cleaner hierarchy */
+  h1, h2, h3, h4, h5, h6 {
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
+    letter-spacing: -0.02em;
   }
 }
 
-/* Hide scrollbar but keep functionality */
+/* ============================================================
+   ROOT ELEMENT — Transparent so body gradient shows
+   ============================================================ */
+[data-app="root"] {
+  background: transparent !important;
+}
+
+/* ============================================================
+   GLASS MORPHISM UTILITIES
+   ============================================================ */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-nav {
+  background: var(--nav-bg);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+  border: 1px solid var(--nav-border);
+  box-shadow: var(--nav-shadow);
+}
+
+/* ============================================================
+   SCROLLBAR UTILITIES
+   ============================================================ */
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
-}
-
-/* Responsive font scaling - Tablet (iPad) */
-@media (max-width: 1024px) {
-  .text-6xl { font-size: clamp(2rem, 6vw, 3.25rem); }
-  .text-5xl { font-size: clamp(1.75rem, 5vw, 3rem); }
-  .text-4xl { font-size: clamp(1.5rem, 4.5vw, 2.25rem); }
-  .text-3xl { font-size: clamp(1.25rem, 3.8vw, 2rem); }
-  .text-2xl { font-size: clamp(1.125rem, 3.2vw, 1.5rem); }
-  .text-xl { font-size: clamp(1rem, 2.6vw, 1.25rem); }
-  .tracking-widest { letter-spacing: 0.2em; }
-  .tracking-\[0\.4em\] { letter-spacing: 0.25em; }
-  .tracking-\[0\.3em\] { letter-spacing: 0.2em; }
-  .tracking-\[0\.2em\] { letter-spacing: 0.14em; }
-}
-
-/* Mobile-specific adjustments */
-@media (max-width: 768px) {
-  .text-6xl { font-size: clamp(1.5rem, 8vw, 2.5rem); }
-  .text-5xl { font-size: clamp(1.35rem, 7vw, 2.25rem); }
-  .text-4xl { font-size: clamp(1.25rem, 6vw, 2rem); }
-  .text-3xl { font-size: clamp(1.1rem, 5vw, 1.75rem); }
-  .text-2xl { font-size: clamp(1rem, 4.5vw, 1.4rem); }
-  .text-xl { font-size: clamp(0.95rem, 4vw, 1.15rem); }
-  .tracking-widest { letter-spacing: 0.12em; }
-  .tracking-\[0\.4em\] { letter-spacing: 0.15em; }
-  .tracking-\[0\.3em\] { letter-spacing: 0.12em; }
-  .tracking-\[0\.2em\] { letter-spacing: 0.08em; }
-}
-
-/* Small mobile (iPhone SE, etc.) */
-@media (max-width: 375px) {
-  html {
-    font-size: 13px;
-  }
-  .text-6xl { font-size: clamp(1.25rem, 7vw, 2rem); }
-  .text-5xl { font-size: clamp(1.15rem, 6vw, 1.75rem); }
-  .text-4xl { font-size: clamp(1.1rem, 5vw, 1.5rem); }
-  .text-3xl { font-size: clamp(1rem, 4.5vw, 1.35rem); }
-}
-
-/* Touch-friendly targets */
-@media (hover: none) and (pointer: coarse) {
-  button, a, input, select {
-    min-height: 44px;
-  }
-
-  /* Larger tap targets for small buttons */
-  button {
-    position: relative;
-  }
-
-  /* Better scrolling on touch devices */
-  .overflow-y-auto, .overflow-x-auto {
-    -webkit-overflow-scrolling: touch;
-  }
 }
 
 /* Horizontal scroll for nav */
@@ -165,76 +236,124 @@ html.dark {
   display: none;
 }
 
-/* iPad landscape optimization */
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+.animate-in {
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes float-blob {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-20px) scale(1.05); }
+}
+
+.animate-blob {
+  animation: float-blob 7s ease-in-out infinite;
+}
+
+.animate-blob-delay {
+  animation: float-blob 9s ease-in-out infinite 2s;
+}
+
+/* ============================================================
+   RESPONSIVE FONT SCALING
+   ============================================================ */
+@media (max-width: 1024px) {
+  .text-6xl { font-size: clamp(2rem, 6vw, 3.25rem); }
+  .text-5xl { font-size: clamp(1.75rem, 5vw, 3rem); }
+  .text-4xl { font-size: clamp(1.5rem, 4.5vw, 2.25rem); }
+  .text-3xl { font-size: clamp(1.25rem, 3.8vw, 2rem); }
+  .text-2xl { font-size: clamp(1.125rem, 3.2vw, 1.5rem); }
+  .text-xl  { font-size: clamp(1rem, 2.6vw, 1.25rem); }
+  .tracking-widest        { letter-spacing: 0.2em; }
+  .tracking-\[0\.4em\]   { letter-spacing: 0.25em; }
+  .tracking-\[0\.3em\]   { letter-spacing: 0.2em; }
+  .tracking-\[0\.2em\]   { letter-spacing: 0.14em; }
+}
+
+@media (max-width: 768px) {
+  .text-6xl { font-size: clamp(1.5rem, 8vw, 2.5rem); }
+  .text-5xl { font-size: clamp(1.35rem, 7vw, 2.25rem); }
+  .text-4xl { font-size: clamp(1.25rem, 6vw, 2rem); }
+  .text-3xl { font-size: clamp(1.1rem, 5vw, 1.75rem); }
+  .text-2xl { font-size: clamp(1rem, 4.5vw, 1.4rem); }
+  .text-xl  { font-size: clamp(0.95rem, 4vw, 1.15rem); }
+  .tracking-widest        { letter-spacing: 0.12em; }
+  .tracking-\[0\.4em\]   { letter-spacing: 0.15em; }
+  .tracking-\[0\.3em\]   { letter-spacing: 0.12em; }
+  .tracking-\[0\.2em\]   { letter-spacing: 0.08em; }
+}
+
+@media (max-width: 375px) {
+  html { font-size: 13px; }
+  .text-6xl { font-size: clamp(1.25rem, 7vw, 2rem); }
+  .text-5xl { font-size: clamp(1.15rem, 6vw, 1.75rem); }
+  .text-4xl { font-size: clamp(1.1rem, 5vw, 1.5rem); }
+  .text-3xl { font-size: clamp(1rem, 4.5vw, 1.35rem); }
+}
+
+/* ============================================================
+   TOUCH TARGETS
+   ============================================================ */
+@media (hover: none) and (pointer: coarse) {
+  button, a, input, select {
+    min-height: 44px;
+  }
+  button {
+    position: relative;
+  }
+  .overflow-y-auto, .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Active states for touch feedback */
+@media (hover: none) {
+  button:active, a:active {
+    opacity: 0.75;
+    transform: scale(0.97);
+  }
+}
+
+/* ============================================================
+   TABLET OVERRIDES
+   ============================================================ */
 @media (min-width: 1024px) and (max-width: 1366px) and (orientation: landscape) {
-  html {
-    font-size: 15px;
-  }
+  html { font-size: 15px; }
 }
 
-/* iPad portrait optimization */
 @media (min-width: 768px) and (max-width: 1024px) and (orientation: portrait) {
-  html {
-    font-size: 14px;
-  }
+  html { font-size: 14px; }
 }
 
-/* ============================== */
-/* TABLET OVERRIDE                */
-/* Force desktop layout on tablets where Safari may report narrow viewport */
-/* Uses min-device-width (physical screen) instead of min-width (viewport) */
-/* ============================== */
 @media (pointer: coarse) and (min-device-width: 768px) {
-  /* App root - tablet bottom padding for nav */
   [data-app="root"] {
     padding-bottom: 5rem !important;
   }
-
-  /* App nav - tablet spacing */
   [data-app="nav"] {
     bottom: 1rem !important;
     padding: 0.5rem !important;
     gap: 0.25rem !important;
     border-radius: 3rem !important;
   }
-
-  /* POS: Main layout → horizontal */
-  [data-pos="main"] {
-    flex-direction: row !important;
-  }
-
-  /* POS: Show category sidebar */
+  [data-pos="main"]        { flex-direction: row !important; }
   [data-pos="sidebar-cat"] {
     display: flex !important;
     width: 5rem !important;
     flex-direction: column !important;
     align-items: center !important;
   }
-
-  /* POS: Hide mobile category bar */
-  [data-pos="mobile-cat"] {
-    display: none !important;
-  }
-
-  /* POS: Show cart sidebar */
+  [data-pos="mobile-cat"]       { display: none !important; }
   [data-pos="sidebar-cart"] {
     display: flex !important;
     width: 18rem !important;
     flex-direction: column !important;
     overflow: hidden !important;
   }
-
-  /* POS: Hide mobile cart button */
-  [data-pos="mobile-cart-btn"] {
-    display: none !important;
-  }
-
-  /* POS: Hide mobile cart drawer */
-  [data-pos="mobile-cart-drawer"] {
-    display: none !important;
-  }
-
-  /* POS: Menu grid → 3 columns on tablet */
+  [data-pos="mobile-cart-btn"]    { display: none !important; }
+  [data-pos="mobile-cart-drawer"] { display: none !important; }
   [data-pos="menu-grid"] {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     padding: 1rem !important;
@@ -243,36 +362,22 @@ html.dark {
   }
 }
 
-/* Prevent content shift when keyboard opens on mobile */
+/* Mobile height */
 @media (max-width: 768px) {
-  body {
-    min-height: 100vh;
-    min-height: -webkit-fill-available;
-  }
-  html {
-    height: -webkit-fill-available;
-  }
+  body  { min-height: 100vh; min-height: -webkit-fill-available; }
+  html  { height: -webkit-fill-available; }
 }
 
-/* Smooth animations for drawers/modals */
-.animate-in {
-  animation-duration: 300ms;
-  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-}
+/* ============================================================
+   DARK MODE CLASS OVERRIDES
+   (Components use Tailwind classes — we remap them to variables)
+   ============================================================ */
 
-/* Active states for touch feedback */
-@media (hover: none) {
-  button:active, a:active {
-    opacity: 0.7;
-    transform: scale(0.98);
-  }
-}
-
-/* ========== DARK MODE STYLES ========== */
-/* Main backgrounds */
+/* Backgrounds */
 html.dark .bg-\[\#f8faf9\],
 html.dark .bg-\[\#fcfdfc\],
-html.dark .bg-\[\#FAF6EF\] {
+html.dark .bg-\[\#FAF6EF\],
+html.dark .bg-\[\#effdf6\] {
   background-color: var(--bg-primary) !important;
 }
 
@@ -287,17 +392,15 @@ html.dark .bg-\[\#F3EDE2\] {
   background-color: var(--bg-tertiary) !important;
 }
 
-/* Text colors */
+/* Text */
 html.dark .text-gray-800,
 html.dark .text-gray-900 {
   color: var(--text-primary) !important;
 }
-
 html.dark .text-gray-600,
 html.dark .text-gray-700 {
   color: var(--text-secondary) !important;
 }
-
 html.dark .text-gray-400,
 html.dark .text-gray-500 {
   color: var(--text-muted) !important;
@@ -308,14 +411,13 @@ html.dark .border-gray-100,
 html.dark .border-gray-200 {
   border-color: var(--border-color) !important;
 }
-
 html.dark .border-white\/20,
 html.dark .border-white\/40,
 html.dark .border-white\/50 {
-  border-color: rgba(148, 163, 184, 0.2) !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
 }
 
-/* Input backgrounds */
+/* Inputs */
 html.dark input,
 html.dark textarea,
 html.dark select {
@@ -323,13 +425,12 @@ html.dark select {
   color: var(--text-primary) !important;
   border-color: var(--border-color) !important;
 }
-
 html.dark input::placeholder,
 html.dark textarea::placeholder {
   color: var(--text-muted) !important;
 }
 
-/* Cards and panels */
+/* Cards & panels */
 html.dark .shadow-sm,
 html.dark .shadow-lg,
 html.dark .shadow-xl,
@@ -339,95 +440,58 @@ html.dark .shadow-2xl {
 
 /* Navigation bar */
 html.dark .bg-white\/95 {
-  background-color: rgba(30, 41, 59, 0.95) !important;
+  background-color: var(--nav-bg) !important;
 }
 
-/* Modals and overlays */
+/* Modals */
 html.dark .bg-black\/60,
 html.dark .bg-black\/70,
 html.dark .bg-black\/80 {
-  background-color: rgba(0, 0, 0, 0.8) !important;
+  background-color: rgba(0, 0, 0, 0.82) !important;
 }
 
 /* Hover states */
-html.dark .hover\:bg-gray-50:hover {
-  background-color: var(--bg-tertiary) !important;
-}
+html.dark .hover\:bg-gray-50:hover  { background-color: var(--bg-tertiary) !important; }
+html.dark .hover\:bg-gray-100:hover { background-color: var(--border-color) !important; }
 
-html.dark .hover\:bg-gray-100:hover {
-  background-color: var(--border-color) !important;
-}
-
-/* Preserve accent colors - they look good in both modes */
-html.dark .bg-emerald-500 {
-  background-color: var(--accent-emerald) !important;
-}
-
-html.dark .bg-emerald-50 {
-  background-color: var(--accent-emerald-light) !important;
-}
-
+/* Emerald accent */
+html.dark .bg-emerald-500      { background-color: var(--accent-emerald) !important; }
+html.dark .bg-emerald-50       { background-color: var(--accent-emerald-light) !important; }
 html.dark .text-emerald-500,
-html.dark .text-emerald-600 {
-  color: var(--accent-emerald) !important;
-}
+html.dark .text-emerald-600    { color: var(--accent-emerald) !important; }
 
-/* Special elements */
+/* Backdrop blur enhancement */
 html.dark .backdrop-blur-sm,
 html.dark .backdrop-blur-md,
 html.dark .backdrop-blur-xl,
+html.dark .backdrop-blur-2xl,
 html.dark .backdrop-blur-3xl {
-  backdrop-filter: blur(12px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(160%);
 }
 
-/* Charts and data visualization - keep visible */
-html.dark .bg-emerald-50\/40 {
-  background-color: rgba(6, 78, 59, 0.4) !important;
-}
+/* Charts */
+html.dark .bg-emerald-50\/40 { background-color: rgba(6, 78, 59, 0.4) !important; }
 
 /* Focus rings */
 html.dark .focus\:ring-emerald-500\/10:focus {
   --tw-ring-color: rgba(52, 211, 153, 0.2) !important;
 }
 
-/* Additional accent color backgrounds for dark mode */
-html.dark .bg-red-50 {
-  background-color: rgba(127, 29, 29, 0.3) !important;
-}
+/* Semantic color backgrounds */
+html.dark .bg-red-50    { background-color: rgba(127, 29, 29, 0.25) !important; }
+html.dark .bg-orange-50 { background-color: rgba(124, 45, 18, 0.25) !important; }
+html.dark .bg-blue-50   { background-color: rgba(30, 58, 138, 0.25) !important; }
+html.dark .bg-violet-50 { background-color: rgba(76, 29, 149, 0.25) !important; }
+html.dark .bg-amber-50  { background-color: rgba(120, 53, 15, 0.25) !important; }
 
-html.dark .bg-orange-50 {
-  background-color: rgba(124, 45, 18, 0.3) !important;
-}
-
-html.dark .bg-blue-50 {
-  background-color: rgba(30, 58, 138, 0.3) !important;
-}
-
-html.dark .bg-violet-50 {
-  background-color: rgba(76, 29, 149, 0.3) !important;
-}
-
-html.dark .bg-amber-50 {
-  background-color: rgba(120, 53, 15, 0.3) !important;
-}
-
-/* Additional text overrides */
+/* Semantic text colors */
 html.dark .text-red-700,
-html.dark .text-red-600 {
-  color: #fca5a5 !important;
-}
-
+html.dark .text-red-600    { color: #fca5a5 !important; }
 html.dark .text-orange-700,
-html.dark .text-orange-600 {
-  color: #fdba74 !important;
-}
-
+html.dark .text-orange-600 { color: #fdba74 !important; }
 html.dark .text-blue-700,
-html.dark .text-blue-600 {
-  color: #93c5fd !important;
-}
-
+html.dark .text-blue-600   { color: #93c5fd !important; }
 html.dark .text-violet-700,
-html.dark .text-violet-600 {
-  color: #c4b5fd !important;
-}
+html.dark .text-violet-600 { color: #c4b5fd !important; }
+html.dark .text-amber-700,
+html.dark .text-amber-600  { color: #fcd34d !important; }

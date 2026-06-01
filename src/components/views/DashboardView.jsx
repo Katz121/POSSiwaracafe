@@ -382,7 +382,7 @@ const DashboardView = () => {
                     : 'ขออภัย AI ไม่พร้อมใช้งานชั่วคราว';
                 setConsultantResponse(errorMsg);
             }
-        } catch (error) {
+        } catch {
             setConsultantResponse('เกิดข้อผิดพลาดในการเชื่อมต่อ');
         } finally {
             setIsConsulting(false);
@@ -633,7 +633,7 @@ const DashboardView = () => {
                             onClick={(e) => {
                                 try {
                                     e.currentTarget.showPicker();
-                                } catch (error) {
+                                } catch {
                                     // ignore
                                 }
                             }}
@@ -994,7 +994,7 @@ const DashboardView = () => {
                             </div>
                         </div>
                         <div className="space-y-3 max-h-[400px] overflow-y-auto scrollbar-hide">
-                            {menuPerformance.needsReview.slice(0, 8).map((item, idx) => (
+                            {menuPerformance.needsReview.slice(0, 8).map((item) => (
                                 <div key={item.name} className={`flex items-center gap-4 p-4 rounded-2xl border ${item.totalSold === 0 ? 'bg-gray-50 border-gray-200' : 'bg-red-50/50 border-red-100'}`}>
                                     <div className="w-10 h-10 bg-[var(--bg-secondary)] rounded-xl overflow-hidden border border-[var(--border-light)] shrink-0">
                                         {item.image ? (

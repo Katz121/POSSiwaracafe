@@ -2,8 +2,10 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   PieChart, Calendar, ChevronUp, ChevronDown, TrendingUp, Zap,
   History, Coffee, Link2, Plus, Trash2, Edit, BarChart3, DollarSign,
-  ChefHat, FileText, Package, RefreshCcw, Banknote, Download, Save, Target, Settings, FolderCog
+  ChefHat, FileText, Package, RefreshCcw, Banknote, Download, Save, Target, Settings, FolderCog,
+  QrCode, Printer, Smartphone, Star, Cake, Clock, Percent, Eye, EyeOff
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 // xlsx loaded dynamically to reduce bundle size (7MB library)
 import { doc, collection, addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
@@ -19,7 +21,11 @@ import {
   DEFAULT_OWN_GLASS_DISCOUNT,
   DEFAULT_STARTING_CASH,
   DEFAULT_EXPENSE_CATEGORY,
-  EXPENSE_CATEGORIES
+  EXPENSE_CATEGORIES,
+  DEFAULT_CAKE_SALE_PERCENT,
+  DEFAULT_CAKE_SALE_START,
+  DEFAULT_CAKE_SALE_END,
+  DEFAULT_COMBO_PERCENT
 } from '../../config/constants';
 
 export default function AdminView() {
@@ -40,6 +46,14 @@ export default function AdminView() {
     ownGlassDiscount,
     geminiApiKey,
     startingCash,
+    reviewUrl,
+    cakeSaleEnabled,
+    cakeSaleCategories,
+    cakeSalePercent,
+    cakeSaleStart,
+    cakeSaleEnd,
+    comboEnabled,
+    comboPercent,
     adminTab,
     setAdminTab,
     runDbAction,
@@ -65,7 +79,15 @@ export default function AdminView() {
     redeemDiscountValue: DEFAULT_REDEEM_DISCOUNT_VALUE,
     ownGlassDiscount: DEFAULT_OWN_GLASS_DISCOUNT,
     geminiApiKey: '',
-    startingCash: DEFAULT_STARTING_CASH
+    startingCash: DEFAULT_STARTING_CASH,
+    reviewUrl: '',
+    cakeSaleEnabled: false,
+    cakeSaleCategories: [],
+    cakeSalePercent: DEFAULT_CAKE_SALE_PERCENT,
+    cakeSaleStart: DEFAULT_CAKE_SALE_START,
+    cakeSaleEnd: DEFAULT_CAKE_SALE_END,
+    comboEnabled: false,
+    comboPercent: DEFAULT_COMBO_PERCENT
   });
   const [adminPanels, setAdminPanels] = useState({
     daily: true,
@@ -97,6 +119,7 @@ export default function AdminView() {
   const [quickExpenseToDelete, setQuickExpenseToDelete] = useState(null);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [showSeedConfirm, setShowSeedConfirm] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const toast = useToast();
 
@@ -108,9 +131,17 @@ export default function AdminView() {
       redeemDiscountValue: REDEEM_DISCOUNT_VALUE,
       ownGlassDiscount: OWN_GLASS_DISCOUNT,
       geminiApiKey: geminiApiKey || '',
-      startingCash: STARTING_CASH
+      startingCash: STARTING_CASH,
+      reviewUrl: reviewUrl || '',
+      cakeSaleEnabled: cakeSaleEnabled === true,
+      cakeSaleCategories: Array.isArray(cakeSaleCategories) ? cakeSaleCategories : [],
+      cakeSalePercent: Number(cakeSalePercent) || DEFAULT_CAKE_SALE_PERCENT,
+      cakeSaleStart: cakeSaleStart || DEFAULT_CAKE_SALE_START,
+      cakeSaleEnd: cakeSaleEnd || DEFAULT_CAKE_SALE_END,
+      comboEnabled: comboEnabled === true,
+      comboPercent: Number(comboPercent) || DEFAULT_COMBO_PERCENT
     });
-  }, [ADMIN_PIN, REDEEM_POINTS_THRESHOLD, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, geminiApiKey, STARTING_CASH]);
+  }, [ADMIN_PIN, REDEEM_POINTS_THRESHOLD, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, geminiApiKey, STARTING_CASH, reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent]);
 
   // Handle deep-linking from other views
   useEffect(() => {
@@ -156,23 +187,6 @@ export default function AdminView() {
   // Handlers
   const toggleAdminPanel = (key) => {
     setAdminPanels((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const saveSettingsDraft = async () => {
-    await runDbAction(async () => {
-      await setDoc(
-        doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'),
-        {
-          adminPin: String(settingsDraft.adminPin || ADMIN_PIN),
-          redeemPointsThreshold: Number(settingsDraft.redeemPointsThreshold) || REDEEM_POINTS_THRESHOLD,
-          redeemDiscountValue: Number(settingsDraft.redeemDiscountValue) || REDEEM_DISCOUNT_VALUE,
-          ownGlassDiscount: Number(settingsDraft.ownGlassDiscount) || OWN_GLASS_DISCOUNT,
-          geminiApiKey: String(settingsDraft.geminiApiKey || ''),
-          startingCash: Number(settingsDraft.startingCash) || 0,
-        },
-        { merge: true }
-      );
-    }, 'บันทึกการตั้งค่าไม่สำเร็จ');
   };
 
   const togglePinSecurity = async () => runDbAction(
@@ -299,6 +313,14 @@ export default function AdminView() {
         redeemDiscountValue: Number(settingsDraft.redeemDiscountValue),
         ownGlassDiscount: Number(settingsDraft.ownGlassDiscount),
         startingCash: Number(settingsDraft.startingCash),
+        reviewUrl: String(settingsDraft.reviewUrl || ''),
+        cakeSaleEnabled: settingsDraft.cakeSaleEnabled === true,
+        cakeSaleCategories: Array.isArray(settingsDraft.cakeSaleCategories) ? settingsDraft.cakeSaleCategories : [],
+        cakeSalePercent: Number(settingsDraft.cakeSalePercent) || 0,
+        cakeSaleStart: String(settingsDraft.cakeSaleStart || DEFAULT_CAKE_SALE_START),
+        cakeSaleEnd: String(settingsDraft.cakeSaleEnd || DEFAULT_CAKE_SALE_END),
+        comboEnabled: settingsDraft.comboEnabled === true,
+        comboPercent: Number(settingsDraft.comboPercent) || 0,
         updatedAt: serverTimestamp()
       }, { merge: true });
       toast.success('บันทึกการตั้งค่าเรียบร้อยแล้ว');
@@ -680,6 +702,247 @@ export default function AdminView() {
             )}
           </div>
 
+          {/* QR Self-Ordering Card */}
+          {(() => {
+            const orderUrl = `${window.location.origin}/order`;
+            const handlePrintQR = () => {
+              const win = window.open('', '_blank', 'width=480,height=600');
+              if (!win) return;
+              const doc = win.document;
+
+              const style = doc.createElement('style');
+              style.textContent = 'body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;background:#fff;padding:32px;box-sizing:border-box;}h1{font-size:22px;font-weight:900;margin-bottom:8px;letter-spacing:0.05em;}p{font-size:13px;color:#555;margin-top:12px;word-break:break-all;text-align:center;}';
+              doc.head.appendChild(style);
+
+              const heading = doc.createElement('h1');
+              heading.textContent = 'Siwara Coffee';
+              doc.body.appendChild(heading);
+
+              const svgEl = document.getElementById('qr-self-order-svg');
+              if (svgEl) {
+                const svgClone = svgEl.cloneNode(true);
+                doc.body.appendChild(svgClone);
+              }
+
+              const caption = doc.createElement('p');
+              caption.textContent = 'สแกนเพื่อสั่งอาหาร';
+              doc.body.appendChild(caption);
+
+              const urlText = doc.createElement('p');
+              urlText.style.cssText = 'font-size:11px;color:#aaa;';
+              urlText.textContent = orderUrl;
+              doc.body.appendChild(urlText);
+
+              win.onload = () => win.print();
+              win.print();
+            };
+            const handleCopyLink = async () => {
+              try {
+                await navigator.clipboard.writeText(orderUrl);
+                setLinkCopied(true);
+                toast.success('คัดลอกลิงก์แล้ว!');
+                setTimeout(() => setLinkCopied(false), 2000);
+              } catch {
+                toast.error('ไม่สามารถคัดลอกได้ กรุณาคัดลอกด้วยตนเอง');
+              }
+            };
+            return (
+              <div className="bg-white rounded-[3rem] p-8 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><QrCode size={22} /></div>
+                  <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">QR สั่งอาหารหน้าร้าน</h2>
+                </div>
+                <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
+                  <Smartphone size={18} className="text-emerald-500 shrink-0 mt-0.5" />
+                  <p className="text-xs font-bold text-emerald-700 leading-relaxed">ให้ลูกค้าสแกนเพื่อสั่งอาหารเองผ่านมือถือ ออเดอร์จะเข้าคิวอัตโนมัติ และชำระเงินที่เคาน์เตอร์</p>
+                </div>
+                <div className="flex flex-col items-center gap-4 py-2">
+                  <div className="bg-white p-4 rounded-3xl border-2 border-emerald-100 shadow-inner">
+                    <QRCodeSVG id="qr-self-order-svg" value={orderUrl} size={220} level="M" includeMargin />
+                  </div>
+                  <p className="text-xs font-mono font-bold text-gray-500 bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 select-all text-center break-all">{orderUrl}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={handlePrintQR}
+                    className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-gray-800 text-white font-black text-xs uppercase tracking-widest shadow-lg hover:bg-gray-900 active:scale-95 transition-all"
+                  >
+                    <Printer size={16} /> พิมพ์ QR
+                  </button>
+                  <button
+                    onClick={handleCopyLink}
+                    className={`flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all ${linkCopied ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white'}`}
+                  >
+                    <QrCode size={16} /> {linkCopied ? 'คัดลอกแล้ว!' : 'คัดลอกลิงก์'}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Review Link Card */}
+          <div className="bg-white rounded-[3rem] p-8 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><Star size={22} /></div>
+              <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">ลิงก์รีวิวร้าน</h2>
+            </div>
+            <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
+              <Star size={18} className="text-emerald-500 shrink-0 mt-0.5" />
+              <p className="text-xs font-bold text-emerald-700 leading-relaxed">วางลิงก์ Google/Facebook/LINE ให้ลูกค้ากดรีวิวท้ายออเดอร์</p>
+            </div>
+            <input
+              type="url"
+              value={settingsDraft.reviewUrl}
+              onChange={(e) => setSettingsDraft({ ...settingsDraft, reviewUrl: e.target.value })}
+              className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold outline-none focus:bg-white focus:border-emerald-200 transition-all"
+              placeholder="https://g.page/..."
+            />
+          </div>
+
+          {/* Cake Clearance (Happy Hour) Card */}
+          <div className="bg-white rounded-[3rem] p-8 border border-amber-100 shadow-sm space-y-6 border-t-4 border-t-amber-400">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-amber-50 rounded-2xl text-amber-500"><Cake size={22} /></div>
+              <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">Happy Hour เค้ก (ลดราคาตามช่วงเวลา)</h2>
+            </div>
+            <div className="flex items-start gap-3 bg-amber-50 rounded-2xl p-4 border border-amber-100">
+              <Cake size={18} className="text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-xs font-bold text-amber-700 leading-relaxed">ในช่วงเวลานี้ เมนูในหมวดที่เลือกจะลดราคาอัตโนมัติทั้งหน้า POS และหน้า QR ลูกค้า</p>
+            </div>
+
+            {/* Enable toggle */}
+            <button
+              type="button"
+              onClick={() => setSettingsDraft({ ...settingsDraft, cakeSaleEnabled: !settingsDraft.cakeSaleEnabled })}
+              className="w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all"
+              style={{
+                background: settingsDraft.cakeSaleEnabled ? '#ecfdf5' : '#f9fafb',
+                border: `2px solid ${settingsDraft.cakeSaleEnabled ? '#6ee7b7' : '#f3f4f6'}`
+              }}
+            >
+              <span className="text-sm font-black text-gray-700">เปิดใช้งานลดราคาช่วงเวลา</span>
+              <div className={`w-12 h-6 rounded-full relative transition-colors ${settingsDraft.cakeSaleEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${settingsDraft.cakeSaleEnabled ? 'right-0.5' : 'left-0.5'}`} />
+              </div>
+            </button>
+
+            {/* Percent + Time */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><Percent size={12} /> ส่วนลด</label>
+                <div className="relative mt-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={settingsDraft.cakeSalePercent}
+                    onChange={(e) => setSettingsDraft({ ...settingsDraft, cakeSalePercent: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 pr-8 text-sm font-black outline-none"
+                    placeholder="20"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-gray-400">%</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><Clock size={12} /> เริ่ม</label>
+                <input
+                  type="time"
+                  value={settingsDraft.cakeSaleStart}
+                  onChange={(e) => setSettingsDraft({ ...settingsDraft, cakeSaleStart: e.target.value })}
+                  className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none cursor-pointer"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><Clock size={12} /> สิ้นสุด</label>
+                <input
+                  type="time"
+                  value={settingsDraft.cakeSaleEnd}
+                  onChange={(e) => setSettingsDraft({ ...settingsDraft, cakeSaleEnd: e.target.value })}
+                  className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* Category checklist */}
+            <div>
+              <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3 block">หมวดหมู่ที่เข้าร่วม</label>
+              {dynamicCategories.length === 0 ? (
+                <p className="text-xs text-gray-400 font-bold italic py-2">ยังไม่มีหมวดหมู่ในระบบ</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {dynamicCategories.map((cat) => {
+                    const isSelected = (settingsDraft.cakeSaleCategories || []).includes(cat.name);
+                    return (
+                      <button
+                        key={cat.id || cat.name}
+                        type="button"
+                        onClick={() => {
+                          const current = settingsDraft.cakeSaleCategories || [];
+                          const next = isSelected
+                            ? current.filter((n) => n !== cat.name)
+                            : [...current, cat.name];
+                          setSettingsDraft({ ...settingsDraft, cakeSaleCategories: next });
+                        }}
+                        className={`px-4 py-2 rounded-2xl text-xs font-black transition-all border ${
+                          isSelected
+                            ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                            : 'bg-gray-50 text-gray-500 border-gray-100 hover:border-amber-300 hover:text-amber-600'
+                        }`}
+                      >
+                        {cat.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Cake + Drink Combo Discount Card */}
+          <div className="bg-white rounded-[3rem] p-8 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><Cake size={22} /></div>
+              <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">คอมโบ เค้ก + เครื่องดื่ม</h2>
+            </div>
+            <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
+              <Percent size={18} className="text-emerald-500 shrink-0 mt-0.5" />
+              <p className="text-xs font-bold text-emerald-700 leading-relaxed">เมื่อลูกค้าสั่งเค้ก + เครื่องดื่มในออเดอร์เดียว ระบบจะลดราคาให้อัตโนมัติ (ทั้งหน้า POS และหน้า QR ลูกค้า) — ช่วยกระตุ้นยอดขาย</p>
+            </div>
+
+            {/* Enable toggle */}
+            <button
+              type="button"
+              onClick={() => setSettingsDraft({ ...settingsDraft, comboEnabled: !settingsDraft.comboEnabled })}
+              className="w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all"
+              style={{
+                background: settingsDraft.comboEnabled ? '#ecfdf5' : '#f9fafb',
+                border: `2px solid ${settingsDraft.comboEnabled ? '#6ee7b7' : '#f3f4f6'}`
+              }}
+            >
+              <span className="text-sm font-black text-gray-700">เปิดใช้งานส่วนลดคอมโบ</span>
+              <div className={`w-12 h-6 rounded-full relative transition-colors ${settingsDraft.comboEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${settingsDraft.comboEnabled ? 'right-0.5' : 'left-0.5'}`} />
+              </div>
+            </button>
+
+            {/* Percent input */}
+            <div>
+              <label className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><Percent size={12} /> ส่วนลดคอมโบ</label>
+              <div className="relative mt-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={settingsDraft.comboPercent}
+                  onChange={(e) => setSettingsDraft({ ...settingsDraft, comboPercent: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 pr-8 text-sm font-black outline-none"
+                  placeholder="10"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-gray-400">%</span>
+              </div>
+            </div>
+          </div>
+
           </>}
 
           {/* ==================== TAB: จัดการ ==================== */}
@@ -882,18 +1145,34 @@ export default function AdminView() {
                   {beanModifiers.length === 0 ? (
                     <p className="text-center text-xs text-gray-400 font-black uppercase tracking-widest py-4">ยังไม่มีแท็ก</p>
                   ) : (
-                    beanModifiers.map(mod => (
-                      <div key={mod.id} className="flex items-center justify-between p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                    beanModifiers.map(mod => {
+                      const isHidden = mod.available === false;
+                      return (
+                      <div key={mod.id} className={`flex items-center justify-between p-4 rounded-2xl border ${isHidden ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-amber-50 border-amber-100'}`}>
                         <div className="flex items-center gap-3">
-                          <span className="font-black text-amber-700">#{mod.name}</span>
+                          <span className={`font-black ${isHidden ? 'text-gray-400 line-through' : 'text-amber-700'}`}>#{mod.name}</span>
                           <span className="text-sm font-bold text-gray-400">฿{Number(mod.price).toLocaleString()}</span>
-                          {(mod.stockLinks || []).length > 0 && (
+                          {isHidden && (
+                            <span className="text-xs font-black text-gray-500 bg-gray-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                              <EyeOff size={10} /> ซ่อน (เมล็ดหมด)
+                            </span>
+                          )}
+                          {!isHidden && (mod.stockLinks || []).length > 0 && (
                             <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 flex items-center gap-1">
                               <Link2 size={10} /> {(mod.stockLinks || []).length} สต็อก
                             </span>
                           )}
                         </div>
                         <div className="flex gap-1">
+                          <button
+                            onClick={() => runDbAction(async () => {
+                              await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'beanModifiers', mod.id), { available: isHidden });
+                            }, 'อัปเดตการแสดงผลไม่สำเร็จ')}
+                            className={`p-2 rounded-xl transition-all ${isHidden ? 'text-gray-400 hover:text-emerald-600 hover:bg-emerald-50' : 'text-amber-500 hover:text-amber-700 hover:bg-amber-100'}`}
+                            title={isHidden ? 'แสดงเมล็ดนี้' : 'ซ่อนเมล็ดนี้ (เมล็ดหมด)'}
+                          >
+                            {isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
                           <button
                             onClick={() => {
                               setNewBeanModifier({
@@ -918,7 +1197,8 @@ export default function AdminView() {
                           </button>
                         </div>
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>

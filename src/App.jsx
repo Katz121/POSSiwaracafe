@@ -1,7 +1,8 @@
 ﻿import React, { useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import {
   User, ChefHat, FileText, Package, DollarSign, ClipboardList, Users,
-  PieChart, LayoutDashboard, Lock, ChevronDown, ChevronUp, Trash2, Moon, Sun, MoreHorizontal, X
+  PieChart, LayoutDashboard, Lock, Trash2, Moon, Sun, MoreHorizontal,
+  Coffee, Sparkles
 } from 'lucide-react';
 
 // UI Components
@@ -32,7 +33,6 @@ import { AppProvider } from './context/AppContext';
 
 // Hooks & Services
 import useKeyboardShortcuts, { KeyboardShortcutsHelp } from './hooks/useKeyboardShortcuts.jsx';
-import { generateSmartAlerts } from './services/alertService';
 import useDarkMode from './hooks/useDarkMode';
 import { getISODate } from './utils/calculations';
 
@@ -59,8 +59,15 @@ export default function App() {
   // Data States from hook
   const {
     isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter,
-    pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash
+    pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
+    reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
+    comboEnabled, comboPercent
   } = usePosData(user, appId);
+
+  // App-level lock state — persisted in sessionStorage so a page refresh within the tab stays unlocked
+  const [appUnlocked, setAppUnlocked] = useState(() => sessionStorage.getItem('pos_unlocked') === '1');
+  const [lockPinInput, setLockPinInput] = useState('');
+  const [lockPinError, setLockPinError] = useState('');
 
   // Shared UI States
   const [errorMessage, setErrorMessage] = useState('');
@@ -77,6 +84,10 @@ export default function App() {
 
   // Constants
   const ADMIN_PIN = adminPin || '';
+
+  // True when the app should show the lock screen instead of the main UI
+  // (computed early so it can be referenced by useKeyboardShortcuts below)
+  const needsLock = pinEnabled && ADMIN_PIN && !appUnlocked;
 
   // Get today's date for alerts
   const today = getISODate();
@@ -123,13 +134,14 @@ export default function App() {
   const protectedViews = useRef(['admin', 'menu_manage']).current;
 
   const handleViewChange = useCallback((newView) => {
-    if (pinEnabled && ADMIN_PIN && protectedViews.includes(newView)) {
+    // If the whole app is already unlocked for this session, skip the per-view PIN prompt
+    if (pinEnabled && ADMIN_PIN && !appUnlocked && protectedViews.includes(newView)) {
       setTargetView(newView);
       setShowPinModal(true);
     } else {
       setView(newView);
     }
-  }, [pinEnabled, ADMIN_PIN, protectedViews]);
+  }, [pinEnabled, ADMIN_PIN, appUnlocked, protectedViews]);
 
   // Keyboard Shortcuts (include handleViewChange in deps to avoid stale closure)
   const keyboardHandlers = useMemo(() => ({
@@ -155,7 +167,7 @@ export default function App() {
   }), [handleViewChange]);
 
   useKeyboardShortcuts(keyboardHandlers, {
-    enabled: !showPinModal && !orderToCancel,
+    enabled: !showPinModal && !orderToCancel && !needsLock,
     currentView: view
   });
 
@@ -220,6 +232,19 @@ export default function App() {
     }
   };
 
+  // Handler for the full-app lock screen
+  const handleLockSubmit = () => {
+    if (lockPinInput === ADMIN_PIN) {
+      setAppUnlocked(true);
+      sessionStorage.setItem('pos_unlocked', '1');
+      setLockPinInput('');
+      setLockPinError('');
+    } else {
+      setLockPinError('รหัสไม่ถูกต้อง');
+      setLockPinInput('');
+    }
+  };
+
   // Split context into 3 parts for performance — consumers only re-render when their part changes
   const dataValue = useMemo(() => ({
     user, orders, menu, stock, expenses, members,
@@ -232,8 +257,12 @@ export default function App() {
     pinEnabled, vatEnabled, adminPin,
     redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount,
     geminiApiKey, startingCash,
+    reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
+    comboEnabled, comboPercent,
   }), [pinEnabled, vatEnabled, adminPin, redeemPointsThreshold,
-    redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash]);
+    redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
+    reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
+    comboEnabled, comboPercent]);
 
   const uiValue = useMemo(() => ({
     errorMessage, setErrorMessage,
@@ -252,15 +281,131 @@ export default function App() {
 
   return (
     <AppProvider dataValue={dataValue} configValue={configValue} uiValue={uiValue}>
-      <div data-app="root" className="h-screen w-screen overflow-hidden bg-[var(--bg-primary)] pb-16 md:pb-20">
-        {/* Loading / Auth State */}
+      <div data-app="root" className="h-screen w-screen overflow-hidden pb-16 md:pb-20">
+        {/* ── Loading / Auth State ── */}
         {(!user || isSyncing) && (
-          <div className="fixed inset-0 z-[500] flex flex-col items-center justify-center bg-white/80 dark:bg-gray-900/80 backdrop-blur-md">
-            <Spinner size="xl" />
-            <h2 className="mt-8 text-xl font-black text-gray-800 dark:text-white uppercase tracking-widest animate-pulse">
-              {!user ? 'กำลังเข้าสู่ระบบ...' : 'กำลังโหลดข้อมูล...'}
-            </h2>
-            <p className="text-gray-400 text-xs font-bold mt-2">Connecting to Cloud Database</p>
+          <div className="fixed inset-0 z-[500] flex items-center justify-center overflow-hidden">
+            {/* Gradient backdrop */}
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950" />
+
+            {/* Animated ambient blobs */}
+            <div className="absolute top-1/4 left-1/3 w-80 h-80 rounded-full blur-3xl animate-blob opacity-60
+              bg-emerald-200/50 dark:bg-emerald-500/10" />
+            <div className="absolute bottom-1/4 right-1/4 w-72 h-72 rounded-full blur-3xl animate-blob-delay opacity-50
+              bg-teal-200/50 dark:bg-teal-500/10" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full blur-3xl opacity-30
+              bg-sky-100/60 dark:bg-sky-900/20" />
+
+            {/* Glass card */}
+            <div className="relative z-10 flex flex-col items-center gap-6 px-12 py-10 rounded-3xl
+              bg-white/70 border border-white/85 shadow-[0_20px_80px_rgba(0,0,0,0.10),0_4px_16px_rgba(0,0,0,0.06)]
+              dark:bg-slate-900/70 dark:border-slate-700/50 dark:shadow-[0_20px_80px_rgba(0,0,0,0.45)]
+              backdrop-blur-2xl">
+
+              {/* Logo mark */}
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center
+                bg-gradient-to-br from-emerald-400 to-emerald-600
+                shadow-[0_8px_24px_rgba(16,185,129,0.40)]">
+                <Coffee size={30} className="text-white" strokeWidth={2} />
+              </div>
+
+              {/* Brand name */}
+              <div className="text-center -mt-1">
+                <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white leading-none">
+                  SIWARA
+                </h1>
+                <p className="text-[11px] font-semibold tracking-[0.22em] text-emerald-500 uppercase mt-1.5">
+                  Point of Sale
+                </p>
+              </div>
+
+              {/* Spinner + status */}
+              <div className="flex flex-col items-center gap-2.5">
+                <Spinner size="md" />
+                <p className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                  {!user ? 'กำลังเข้าสู่ระบบ…' : 'กำลังโหลดข้อมูล…'}
+                </p>
+              </div>
+
+              {/* Bottom tag */}
+              <div className="flex items-center gap-1.5 -mt-1">
+                <Sparkles size={10} className="text-emerald-400" />
+                <span className="text-[10px] font-semibold tracking-widest text-slate-300 dark:text-slate-600 uppercase">
+                  Connecting to Cloud
+                </span>
+                <Sparkles size={10} className="text-emerald-400" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Full-App Lock Screen ── */}
+        {/* Shown only after data has loaded (user && !isSyncing) AND the PIN gate is active */}
+        {user && !isSyncing && needsLock && (
+          <div className="fixed inset-0 z-[490] flex items-center justify-center overflow-hidden">
+            {/* Gradient backdrop */}
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950" />
+
+            {/* Ambient blobs */}
+            <div className="absolute top-1/4 left-1/3 w-80 h-80 rounded-full blur-3xl animate-blob opacity-60
+              bg-emerald-200/50 dark:bg-emerald-500/10" />
+            <div className="absolute bottom-1/4 right-1/4 w-72 h-72 rounded-full blur-3xl animate-blob-delay opacity-50
+              bg-teal-200/50 dark:bg-teal-500/10" />
+
+            {/* Glass card */}
+            <div className="relative z-10 flex flex-col items-center gap-6 px-10 py-10 w-full max-w-sm rounded-3xl
+              bg-white/70 border border-white/85 shadow-[0_20px_80px_rgba(0,0,0,0.10),0_4px_16px_rgba(0,0,0,0.06)]
+              dark:bg-slate-900/70 dark:border-slate-700/50 dark:shadow-[0_20px_80px_rgba(0,0,0,0.45)]
+              backdrop-blur-2xl">
+
+              {/* Logo mark */}
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center
+                bg-gradient-to-br from-emerald-400 to-emerald-600
+                shadow-[0_8px_24px_rgba(16,185,129,0.40)]">
+                <Lock size={28} className="text-white" strokeWidth={2.5} />
+              </div>
+
+              {/* Title */}
+              <div className="text-center -mt-1">
+                <h1 className="text-xl font-black tracking-tight text-slate-900 dark:text-white leading-snug">
+                  🔒 ใส่รหัสเข้าใช้งานระบบ
+                </h1>
+                <p className="text-xs font-semibold tracking-wider text-emerald-500 uppercase mt-1.5">
+                  SIWARA POS
+                </p>
+              </div>
+
+              {/* PIN input */}
+              <div className="w-full">
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  autoFocus
+                  value={lockPinInput}
+                  onChange={(e) => { setLockPinInput(e.target.value); setLockPinError(''); }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleLockSubmit()}
+                  size="lg"
+                  inputClassName="text-4xl font-black tracking-[1em] text-center text-emerald-600 dark:text-emerald-400"
+                  placeholder="••••••"
+                />
+                {lockPinError && (
+                  <p className="mt-2 text-center text-sm font-semibold text-red-500">
+                    {lockPinError}
+                  </p>
+                )}
+              </div>
+
+              {/* Submit button */}
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full"
+                onClick={handleLockSubmit}
+              >
+                เข้าสู่ระบบ
+              </Button>
+            </div>
           </div>
         )}
 
@@ -282,9 +427,9 @@ export default function App() {
         {/* View Router - Lazy Loaded with Suspense + Error Boundary */}
         <ErrorBoundary>
           <Suspense fallback={
-            <div className="h-full flex flex-col items-center justify-center bg-[var(--bg-primary)]">
+            <div className="h-full flex flex-col items-center justify-center gap-3">
               <Spinner size="lg" />
-              <p className="mt-4 text-gray-400 font-bold text-sm uppercase tracking-widest">กำลังโหลด...</p>
+              <p className="text-[var(--text-muted)] font-medium text-sm tracking-wider">กำลังโหลด…</p>
             </div>
           }>
             {view === 'pos' && <PosView />}
@@ -363,63 +508,119 @@ export default function App() {
           </div>
         </Modal>
 
-        {/* Navigation Bar */}
-        <div data-app="nav" className="fixed bottom-2 md:bottom-4 left-1/2 -translate-x-1/2 z-[150] flex items-center bg-white/95 dark:bg-gray-800/95 backdrop-blur-3xl border border-white/40 dark:border-gray-700 p-1 md:p-2 lg:p-3 rounded-2xl md:rounded-[3rem] lg:rounded-[3.5rem] shadow-[0_30px_100px_rgba(0,0,0,0.25)] gap-0.5 md:gap-1 lg:gap-2 transition-all duration-500">
-          {/* Primary Nav Items */}
-          {[
-            { key: 'pos', icon: User, label: 'POS' },
-            { key: 'merchant', icon: ChefHat, label: 'ครัว' },
-            { key: 'bills', icon: FileText, label: 'บิล' },
-            { key: 'stock', icon: Package, label: 'สต็อก' },
-            { key: 'dashboard', icon: PieChart, label: 'สรุป' },
-          ].map(({ key, icon: Icon, label }) => (
-            <button key={key} onClick={() => handleViewChange(key)} className={`flex items-center justify-center gap-1 md:gap-2 px-2.5 md:px-4 lg:px-8 py-2.5 md:py-3 lg:py-4 rounded-xl md:rounded-2xl text-xs md:text-xs lg:text-sm font-black transition-all duration-300 leading-none shrink-0 ${view === key ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'text-gray-400 dark:text-gray-500 hover:text-emerald-500 active:bg-gray-100 dark:active:bg-gray-700'}`}>
-              <Icon size={16} strokeWidth={3} className="md:w-[18px] md:h-[18px] lg:w-5 lg:h-5" />
-              <span className="uppercase tracking-wider leading-none font-black">{label}</span>
-            </button>
-          ))}
+        {/* ── Navigation Bar — Glass Morphism ── */}
+        <div
+          data-app="nav"
+          className="fixed bottom-3 md:bottom-5 left-1/2 -translate-x-1/2 z-[150] transition-all duration-500"
+        >
+          <div className="glass-nav flex items-center p-1.5 rounded-[2.2rem] gap-1">
 
-          {/* More Menu Button */}
-          <div className="relative">
+            {/* Primary Nav Items */}
+            {[
+              { key: 'pos',       icon: User,      label: 'POS'   },
+              { key: 'merchant',  icon: ChefHat,   label: 'ครัว'  },
+              { key: 'bills',     icon: FileText,  label: 'บิล'   },
+              { key: 'stock',     icon: Package,   label: 'สต็อก' },
+              { key: 'dashboard', icon: PieChart,  label: 'สรุป'  },
+            ].map(({ key, icon: Icon, label }) => (
+              <button
+                key={key}
+                onClick={() => handleViewChange(key)}
+                className={[
+                  'relative flex items-center gap-1.5 px-3 md:px-4 lg:px-5 py-2.5 md:py-3',
+                  'rounded-[1.6rem] text-[11px] md:text-xs font-semibold leading-none shrink-0',
+                  'transition-all duration-300',
+                  view === key
+                    ? 'bg-emerald-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.42)]'
+                    : 'text-slate-400 dark:text-slate-500 hover:text-emerald-500 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95',
+                ].join(' ')}
+              >
+                <Icon
+                  size={15}
+                  strokeWidth={view === key ? 2.5 : 1.8}
+                  className="md:w-[17px] md:h-[17px]"
+                />
+                <span className="tracking-wide font-bold leading-none">{label}</span>
+              </button>
+            ))}
+
+            {/* Divider */}
+            <div className="w-px h-5 mx-0.5 rounded-full bg-slate-200/70 dark:bg-slate-700/60 shrink-0" />
+
+            {/* More Menu */}
+            <div className="relative">
+              <button
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                className={[
+                  'flex items-center gap-1.5 px-3 md:px-4 lg:px-5 py-2.5 md:py-3',
+                  'rounded-[1.6rem] text-[11px] md:text-xs font-bold leading-none shrink-0',
+                  'transition-all duration-300',
+                  ['expenses', 'menu_manage', 'members_manage', 'financial', 'admin', 'category_summary'].includes(view)
+                    ? 'bg-emerald-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.42)]'
+                    : 'text-slate-400 dark:text-slate-500 hover:text-emerald-500 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95',
+                ].join(' ')}
+              >
+                <MoreHorizontal size={15} strokeWidth={1.8} className="md:w-[17px] md:h-[17px]" />
+                <span className="tracking-wide font-bold leading-none">เพิ่มเติม</span>
+              </button>
+
+              {/* Popup */}
+              {showMoreMenu && (
+                <>
+                  <div className="fixed inset-0 z-[149]" onClick={() => setShowMoreMenu(false)} />
+                  <div className="absolute bottom-full mb-3 right-0 z-[160]
+                    glass-strong rounded-2xl p-1.5 min-w-[175px]
+                    border border-white/80 dark:border-slate-700/50">
+
+                    {[
+                      { key: 'expenses',         icon: DollarSign,    label: 'รายจ่าย'      },
+                      { key: 'menu_manage',       icon: ClipboardList, label: 'จัดการเมนู'   },
+                      { key: 'members_manage',    icon: Users,         label: 'สมาชิก'       },
+                      { key: 'category_summary',  icon: PieChart,      label: 'ยอดขายหมวด'  },
+                      { key: 'financial',         icon: DollarSign,    label: 'การเงิน'      },
+                      { key: 'admin',             icon: LayoutDashboard, label: 'แอดมิน'    },
+                    ].map(({ key, icon: Icon, label }) => (
+                      <button
+                        key={key}
+                        onClick={() => { handleViewChange(key); setShowMoreMenu(false); }}
+                        className={[
+                          'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl',
+                          'text-xs font-semibold transition-all duration-200',
+                          view === key
+                            ? 'bg-emerald-500 text-white shadow-sm'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-white/5 hover:text-emerald-600',
+                        ].join(' ')}
+                      >
+                        <Icon size={15} strokeWidth={1.8} />
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-5 mx-0.5 rounded-full bg-slate-200/70 dark:bg-slate-700/60 shrink-0" />
+
+            {/* Dark Mode Toggle */}
             <button
-              onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className={`flex items-center justify-center gap-1 md:gap-2 px-2.5 md:px-4 lg:px-8 py-2.5 md:py-3 lg:py-4 rounded-xl md:rounded-2xl text-xs md:text-xs lg:text-sm font-black transition-all duration-300 leading-none shrink-0 ${['expenses', 'menu_manage', 'members_manage', 'financial', 'admin', 'category_summary'].includes(view) ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'text-gray-400 dark:text-gray-500 hover:text-emerald-500 active:bg-gray-100 dark:active:bg-gray-700'}`}
+              onClick={toggleDarkMode}
+              aria-label={isDark ? 'โหมดสว่าง' : 'โหมดมืด'}
+              className={[
+                'flex items-center justify-center w-10 h-10 rounded-2xl shrink-0',
+                'transition-all duration-300 active:scale-90',
+                isDark
+                  ? 'bg-amber-400/20 text-amber-300 hover:bg-amber-400/30'
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700',
+              ].join(' ')}
             >
-              <MoreHorizontal size={16} strokeWidth={3} className="md:w-[18px] md:h-[18px] lg:w-5 lg:h-5" />
-              <span className="uppercase tracking-wider leading-none font-black">อื่นๆ</span>
+              {isDark
+                ? <Sun  size={16} strokeWidth={2} />
+                : <Moon size={16} strokeWidth={1.8} />
+              }
             </button>
-
-            {/* More Menu Popup */}
-            {showMoreMenu && (
-              <>
-                <div className="fixed inset-0 z-[149]" onClick={() => setShowMoreMenu(false)} />
-                <div className="absolute bottom-full mb-3 right-0 bg-white dark:bg-gray-800 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.2)] border border-gray-100 dark:border-gray-700 p-2 min-w-[180px] z-[160]">
-                  {[
-                    { key: 'expenses', icon: DollarSign, label: 'รายจ่าย' },
-                    { key: 'menu_manage', icon: ClipboardList, label: 'เมนู' },
-                    { key: 'members_manage', icon: Users, label: 'สมาชิก' },
-                    { key: 'category_summary', icon: PieChart, label: 'ยอดขายหมวด' },
-                    { key: 'financial', icon: DollarSign, label: 'การเงิน' },
-                    { key: 'admin', icon: LayoutDashboard, label: 'แอดมิน' },
-                  ].map(({ key, icon: Icon, label }) => (
-                    <button
-                      key={key}
-                      onClick={() => { handleViewChange(key); setShowMoreMenu(false); }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-black transition-all duration-200 ${view === key ? 'bg-emerald-500 text-white shadow-md' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
-                    >
-                      <Icon size={18} strokeWidth={2.5} />
-                      <span className="uppercase tracking-wider">{label}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
           </div>
-
-          {/* Dark Mode Toggle */}
-          <button onClick={toggleDarkMode} aria-label={isDark ? 'โหมดสว่าง' : 'โหมดมืด'} className="flex items-center justify-center px-2.5 md:px-3 py-2.5 md:py-3 lg:py-4 rounded-xl md:rounded-2xl transition-all duration-300 shrink-0 bg-gray-800 dark:bg-amber-500 text-white shadow-lg ml-1 border-l border-gray-200 dark:border-gray-600 pl-2">
-            {isDark ? <Sun size={18} strokeWidth={3} className="md:w-5 md:h-5 text-white" /> : <Moon size={18} strokeWidth={3} className="md:w-5 md:h-5" />}
-          </button>
         </div>
 
         {/* Keyboard Shortcuts Help Modal */}

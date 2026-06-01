@@ -15,6 +15,9 @@ dist-ssr
 .env.local
 .env.production
 
+# Local agent / tooling
+.claude/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

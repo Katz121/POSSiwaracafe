@@ -1,0 +1,3 @@
+# Cloudflare Pages SPA fallback — serve index.html for all client-side routes
+# (so /order resolves to the app and is handled by the router in main.jsx)
+/*    /index.html   200

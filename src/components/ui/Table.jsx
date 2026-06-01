@@ -85,10 +85,12 @@ const Table = ({
     }));
   };
 
-  // Reset to page 1 when search changes
-  useMemo(() => {
+  // Reset to page 1 when search changes (adjust state during render — React-recommended)
+  const [prevSearchTerm, setPrevSearchTerm] = useState(searchTerm);
+  if (searchTerm !== prevSearchTerm) {
+    setPrevSearchTerm(searchTerm);
     setCurrentPage(1);
-  }, [searchTerm]);
+  }
 
   const cellPadding = compact ? 'px-3 py-2' : 'px-4 py-3';
 

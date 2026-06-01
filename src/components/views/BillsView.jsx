@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, Calendar, Search, Clock, Receipt, Wallet, CreditCard, Coffee, UserCheck, X, ChevronRight } from 'lucide-react';
+import { ChevronLeft, Calendar, Search, Clock, Receipt, Wallet, CreditCard, Coffee, UserCheck, X, ChevronRight, QrCode } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
@@ -96,7 +96,14 @@ export default function BillsView() {
                   <div className={`w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-base md:text-lg lg:text-xl shrink-0 ${selectedBill?.id === bill.id ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-gray-100 text-gray-500 shadow-sm'}`}>{Number(bill.queueNumber)}</div>
                   <div className="min-w-0">
                     <p className="font-black text-gray-800 text-sm md:text-base mb-1 md:mb-2 uppercase tracking-tighter truncate">#{String(bill.id).slice(-6).toUpperCase()}</p>
-                    <p className="text-xs md:text-xs font-bold text-gray-400 flex items-center gap-1 md:gap-1.5 uppercase"><Clock size={10} className="md:w-3 md:h-3" /> {String(bill.time)} น.</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs md:text-xs font-bold text-gray-400 flex items-center gap-1 md:gap-1.5 uppercase"><Clock size={10} className="md:w-3 md:h-3" /> {String(bill.time)} น.</p>
+                      {bill.source === 'qr' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 text-[9px] md:text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+                          <QrCode size={9} /> QR
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="text-right flex flex-col items-end gap-1 md:gap-1.5">
@@ -117,6 +124,11 @@ export default function BillsView() {
                 <div className="min-w-0">
                   <h2 className="text-xl lg:text-2xl xl:text-3xl font-black text-gray-800 tracking-tighter uppercase flex items-center gap-3 lg:gap-4">
                     <Receipt className="text-emerald-500 shrink-0" size={28} /> <span className="truncate">บิล #{String(selectedBill.id).slice(-8).toUpperCase()}</span>
+                    {selectedBill.source === 'qr' && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-600 text-xs font-black uppercase tracking-wider border border-emerald-200 shrink-0">
+                        <QrCode size={12} /> สั่งผ่าน QR
+                      </span>
+                    )}
                   </h2>
                   <p className="text-xs lg:text-sm font-bold text-gray-400 mt-2 lg:mt-3 uppercase tracking-wider lg:tracking-widest">วันที่ {new Date(selectedHistoryDate).toLocaleDateString('th-TH', { dateStyle: 'long' })} • {String(selectedBill.time)} น.</p>
 
@@ -247,7 +259,14 @@ export default function BillsView() {
                     <ChevronLeft size={24} />
                   </button>
                   <div className="min-w-0">
-                    <h2 className="text-base font-black text-gray-800 truncate">บิล #{String(selectedBill.id).slice(-6).toUpperCase()}</h2>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-base font-black text-gray-800 truncate">บิล #{String(selectedBill.id).slice(-6).toUpperCase()}</h2>
+                      {selectedBill.source === 'qr' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 text-[10px] font-black uppercase tracking-wider border border-emerald-200 shrink-0">
+                          <QrCode size={10} /> QR
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400 font-bold">{String(selectedBill.time)} น.</p>
                   </div>
                 </div>

@@ -8,7 +8,7 @@ import { Button, Modal, Input, Select, Card, Spinner, EmptyState, useToast } fro
 import { EXPENSE_CATEGORIES } from '../../config/constants';
 
 export default function ExpensesView() {
-  const { expenses, orders, quickExpenses, runDbAction, callGeminiAPI, setView, handleViewChange, setAdminTab, stock } = useAppContext();
+  const { expenses, orders, quickExpenses, runDbAction, callGeminiAPI, handleViewChange, setAdminTab, stock } = useAppContext();
   const toast = useToast();
 
   // Local states
@@ -321,7 +321,7 @@ export default function ExpensesView() {
 
       // Reset form
       setNewExpense({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
-    } catch (error) {
+    } catch {
       toast.error('บันทึกรายจ่ายไม่สำเร็จ');
     } finally {
       setIsSyncing(false);
