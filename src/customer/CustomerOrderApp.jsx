@@ -188,7 +188,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
               className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-100 hover:border-emerald-400 hover:bg-emerald-50 transition-all text-left min-h-[56px]"
             >
               <span className="font-semibold text-gray-800">{mod.name}</span>
-              <span className="text-emerald-600 font-bold">{formatCurrency(mod.price)}</span>
+              <span className="text-emerald-600 font-bold">{formatCurrency(Math.max(Number(item.price) || 0, Number(mod.price) || 0))}</span>
             </motion.button>
           ))}
         </div>
@@ -902,7 +902,9 @@ function CustomerOrderApp() {
     let finalPrice;
     let saleFields = {};
     if (modifier) {
-      finalPrice = modifier.price;
+      // Bean price is a floor, not a replacement — never drop below the menu price
+      // (e.g. กาแฟส้ม ฿80 must not become ฿50 just because a shared bean is ฿50).
+      finalPrice = Math.max(Number(item.price) || 0, Number(modifier.price) || 0);
     } else {
       const sale = getItemSalePrice(item, settingsData);
       finalPrice = sale.price;

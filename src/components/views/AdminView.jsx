@@ -1081,7 +1081,7 @@ export default function AdminView() {
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ราคาแทนที่ (บาท)</label>
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ราคาเมล็ดนี้ (บาท)</label>
                       <input
                         type="number"
                         required
@@ -1090,6 +1090,7 @@ export default function AdminView() {
                         className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none"
                         placeholder="80"
                       />
+                      <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">ระบบจะคิด<strong>ราคาที่สูงกว่า</strong>ระหว่างราคาเมนูกับราคาเมล็ด — เมนูที่แพงกว่าจะไม่ถูกลดราคาเพราะเลือกเมล็ด</p>
                     </div>
                   </div>
 

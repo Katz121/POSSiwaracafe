@@ -241,7 +241,9 @@ export default function PosView() {
   };
 
   const addToCartWithBean = (item, modifier) => {
-    const finalPrice = modifier ? modifier.price : item.price;
+    // Bean price is a floor, not a replacement — never drop below the menu price
+    // (e.g. กาแฟส้ม ฿80 must not become ฿50 just because a shared bean is ฿50).
+    const finalPrice = modifier ? Math.max(Number(item.price) || 0, Number(modifier.price) || 0) : item.price;
     const modifierName = modifier ? `#${modifier.name}` : '';
     const cartItemId = modifier ? `${item.id}-${modifier.id}` : item.id;
     const mergedStockLinks = [...(item.stockLinks || [])];
@@ -953,7 +955,7 @@ export default function PosView() {
                 <button key={mod.id} onClick={() => addToCartWithBean(pendingBeanItem, mod)}
                   className="w-full p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 flex items-center justify-between hover:border-amber-500 transition-all">
                   <span className="font-bold text-amber-800 dark:text-amber-400">#{mod.name}</span>
-                  <span className="font-bold text-amber-600">฿{Number(mod.price).toLocaleString()}</span>
+                  <span className="font-bold text-amber-600">฿{Math.max(Number(pendingBeanItem.price) || 0, Number(mod.price) || 0).toLocaleString()}</span>
                 </button>
               ))}
             </div>
