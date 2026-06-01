@@ -830,15 +830,11 @@ function CustomerOrderApp() {
   // Highlights: ขายดี (by soldCount) + แนะนำ (isFeatured)
   // Shown only on the default "ทั้งหมด" view without an active search.
   // ---------------------------------------------------------------------------
-  // Pinned items (admin-curated) show first, then auto-fill by actual sales.
-  const bestSellers = useMemo(() => {
-    const pinned = availableMenu.filter((m) => m.isPinnedBest);
-    const pinnedIds = new Set(pinned.map((m) => m.id));
-    const auto = [...availableMenu]
-      .filter((m) => !pinnedIds.has(m.id) && Number(m.soldCount) > 0)
-      .sort((a, b) => (Number(b.soldCount) || 0) - (Number(a.soldCount) || 0));
-    return [...pinned, ...auto].slice(0, 8);
-  }, [availableMenu]);
+  // Best-sellers = ONLY items the shop manually pins (no auto-fill from sales).
+  const bestSellers = useMemo(
+    () => availableMenu.filter((m) => m.isPinnedBest),
+    [availableMenu],
+  );
   const featuredItems = useMemo(
     () => availableMenu.filter((m) => m.isFeatured),
     [availableMenu],
