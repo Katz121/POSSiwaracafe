@@ -955,7 +955,10 @@ export default function PosView() {
                 <button key={mod.id} onClick={() => addToCartWithBean(pendingBeanItem, mod)}
                   className="w-full p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 flex items-center justify-between hover:border-amber-500 transition-all">
                   <span className="font-bold text-amber-800 dark:text-amber-400">#{mod.name}</span>
-                  <span className="font-bold text-amber-600">฿{Math.max(Number(pendingBeanItem.price) || 0, Number(mod.price) || 0).toLocaleString()}</span>
+                  {/* Show a price only when the bean actually raises the price above the menu price */}
+                  {Number(mod.price) > (Number(pendingBeanItem.price) || 0) && (
+                    <span className="font-bold text-amber-600">฿{Number(mod.price).toLocaleString()}</span>
+                  )}
                 </button>
               ))}
             </div>

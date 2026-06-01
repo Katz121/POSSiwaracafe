@@ -188,7 +188,10 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
               className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-100 hover:border-emerald-400 hover:bg-emerald-50 transition-all text-left min-h-[56px]"
             >
               <span className="font-semibold text-gray-800">{mod.name}</span>
-              <span className="text-emerald-600 font-bold">{formatCurrency(Math.max(Number(item.price) || 0, Number(mod.price) || 0))}</span>
+              {/* Show a price only when the bean actually raises the price above the menu price */}
+              {Number(mod.price) > (Number(item.price) || 0) && (
+                <span className="text-emerald-600 font-bold">{formatCurrency(Number(mod.price))}</span>
+              )}
             </motion.button>
           ))}
         </div>
