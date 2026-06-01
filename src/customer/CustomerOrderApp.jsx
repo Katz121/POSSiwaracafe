@@ -34,6 +34,10 @@ import {
   increment,
   setDoc,
   getDoc,
+  updateDoc,
+  getCountFromServer,
+  query,
+  where,
 } from 'firebase/firestore';
 import { auth, db, appId } from '../services/firebase';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
@@ -536,11 +540,18 @@ function CheckoutStep({
               inputMode="numeric"
               maxLength={10}
             />
-            {/* Member status line */}
+            {/* Member status line + points progress */}
             {member ? (
-              <p className="text-xs text-emerald-600 font-medium mt-1.5">
-                สมาชิก: {member.name || 'ลูกค้า'} • {memberPoints} แต้ม
-              </p>
+              <div className="mt-1.5 space-y-0.5">
+                <p className="text-xs text-emerald-600 font-medium">
+                  สมาชิก: {member.name || 'ลูกค้า'} • {memberPoints} แต้ม
+                </p>
+                <p className="text-xs text-amber-600 font-bold">
+                  {memberPoints >= redeemPointsThreshold
+                    ? `🎉 ครบแล้ว! แลกส่วนลด ฿${redeemDiscountValue} ได้เลย`
+                    : `อีก ${redeemPointsThreshold - memberPoints} แต้ม แลกส่วนลด ฿${redeemDiscountValue}`}
+                </p>
+              </div>
             ) : customerPhone.length >= 9 ? (
               <p className="text-xs text-gray-500 mt-1.5">
                 เบอร์ใหม่ — ระบบจะสมัครสมาชิกให้อัตโนมัติ และเริ่มสะสมแต้ม
@@ -616,8 +627,17 @@ function CheckoutStep({
 // ---------------------------------------------------------------------------
 // Sub-component: SuccessScreen
 // ---------------------------------------------------------------------------
-function SuccessScreen({ queueNumber, customerName, onReset, reviewUrl }) {
+function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, canEarnReviewPoints = false, onReviewClick }) {
   const hasReviewUrl = typeof reviewUrl === 'string' && reviewUrl.trim() !== '';
+  const [reviewDone, setReviewDone] = useState(false);
+
+  const handleReviewClick = () => {
+    window.open(reviewUrl.trim(), '_blank', 'noopener,noreferrer');
+    if (canEarnReviewPoints && !reviewDone) {
+      setReviewDone(true);
+      onReviewClick?.();
+    }
+  };
 
   return (
     <motion.div
@@ -645,11 +665,16 @@ function SuccessScreen({ queueNumber, customerName, onReset, reviewUrl }) {
         <p className="text-gray-500 font-medium text-sm">ออเดอร์ของ</p>
         <h1 className="font-black text-3xl text-gray-900">{customerName}</h1>
 
-        <div className="bg-emerald-500 text-white rounded-3xl px-8 py-5 inline-block shadow-lg shadow-emerald-200 my-4">
-          <p className="text-sm font-medium opacity-80 mb-1">คิวที่</p>
-          <p className="text-5xl font-black tracking-tight">#{queueNumber}</p>
-        </div>
-
+        {queueNumber > 1 ? (
+          <div className="bg-emerald-500 text-white rounded-3xl px-8 py-5 inline-block shadow-lg shadow-emerald-200 my-4">
+            <p className="text-sm font-medium opacity-80 mb-1">มีคิวก่อนหน้า · คิวของคุณ</p>
+            <p className="text-5xl font-black tracking-tight">#{queueNumber}</p>
+          </div>
+        ) : (
+          <p className="text-emerald-600 font-black text-2xl leading-relaxed mt-4">
+            กำลังทำเครื่องดื่มของคุณ ☕
+          </p>
+        )}
         <p className="text-gray-600 font-semibold text-base leading-relaxed">
           กรุณาชำระเงินที่เคาน์เตอร์
         </p>
@@ -666,20 +691,30 @@ function SuccessScreen({ queueNumber, customerName, onReset, reviewUrl }) {
           transition={{ delay: 0.55 }}
           className="mt-8 w-full max-w-xs bg-white rounded-2xl shadow-sm border border-emerald-100 px-5 py-4 text-center"
         >
-          <p className="font-bold text-gray-900 text-base mb-1">ถูกใจร้านเราไหม? 💚</p>
-          <p className="text-gray-500 text-sm mb-4 leading-relaxed">
-            ฝากรีวิวให้เราหน่อยน้า เป็นกำลังใจให้ร้านมากๆ
-          </p>
-          <Button
-            variant="primary"
-            size="md"
-            fullWidth
-            leftIcon={<Star size={16} />}
-            onClick={() => window.open(reviewUrl.trim(), '_blank', 'noopener,noreferrer')}
-            noUppercase
-          >
-            เขียนรีวิว
-          </Button>
+          {reviewDone ? (
+            <p className="font-bold text-emerald-600 text-base py-2">ได้รับ 10 แต้มแล้ว ขอบคุณนะคะ 💚</p>
+          ) : (
+            <>
+              <p className="font-bold text-gray-900 text-base mb-1">
+                {canEarnReviewPoints ? 'เขียนรีวิวรับ 10 แต้ม! 💚' : 'ถูกใจร้านเราไหม? 💚'}
+              </p>
+              <p className="text-gray-500 text-sm mb-4 leading-relaxed">
+                {canEarnReviewPoints
+                  ? 'ฝากรีวิวแล้วรับ 10 แต้มทันที (สะสมแลกส่วนลดได้)'
+                  : 'ฝากรีวิวให้เราหน่อยน้า เป็นกำลังใจให้ร้านมากๆ'}
+              </p>
+              <Button
+                variant="primary"
+                size="md"
+                fullWidth
+                leftIcon={<Star size={16} />}
+                onClick={handleReviewClick}
+                noUppercase
+              >
+                เขียนรีวิว{canEarnReviewPoints ? ' รับ 10 แต้ม' : ''}
+              </Button>
+            </>
+          )}
         </motion.div>
       )}
 
@@ -856,6 +891,20 @@ function CustomerOrderApp() {
     isCakeSaleActive(settingsData) &&
     availableMenu.some((m) => isCakeCategory(m.category, settingsData));
   const happyHourPercent = Math.round(Number(settingsData.cakeSalePercent) || 0);
+  // Minutes left until the sale window ends (recomputed every minute via nowTick).
+  const happyHourLeft = (() => {
+    if (!happyHourActive) return 0;
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(settingsData.cakeSaleEnd || ''));
+    if (!m) return 0;
+    const endMin = Number(m[1]) * 60 + Number(m[2]);
+    const now = new Date();
+    let diff = endMin - (now.getHours() * 60 + now.getMinutes());
+    if (diff < 0) diff += 1440; // window crosses midnight
+    return diff;
+  })();
+  const happyHourLeftText = happyHourLeft >= 60
+    ? `${Math.floor(happyHourLeft / 60)} ชม. ${happyHourLeft % 60} นาที`
+    : `${happyHourLeft} นาที`;
 
   // ---------------------------------------------------------------------------
   // Category list: "ทั้งหมด" + each category that has at least one available item
@@ -1100,7 +1149,16 @@ function CustomerOrderApp() {
         }
       }
 
-      setSuccessQueue(assignedQueue);
+      // Queue shown to the customer = number of orders still pending (real load).
+      // 1 (only this order) → no number, just "preparing". Best-effort; never blocks.
+      try {
+        const snap = await getCountFromServer(
+          query(collection(db, ...base, 'orders'), where('status', '==', 'pending')),
+        );
+        setSuccessQueue(snap.data().count || 0);
+      } catch {
+        setSuccessQueue(0);
+      }
       setView('success');
     } catch (err) {
       // Surface the real cause: 'permission-denied' (rules), 'invalid-argument'
@@ -1126,6 +1184,23 @@ function CustomerOrderApp() {
     setView('menu');
   };
 
+  // Award 10 points for a review — ONCE per member (flag prevents farming).
+  // Trust-based: we can't verify the external review, so we credit on click but
+  // only the first time for that phone.
+  const awardReviewPoints = useCallback(async () => {
+    const phone = customerPhone.trim();
+    if (phone.length < 9) return;
+    try {
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'members', phone);
+      const snap = await getDoc(ref);
+      if (!snap.exists() || snap.data().reviewRewarded) return; // already rewarded
+      await updateDoc(ref, { points: increment(10), reviewRewarded: true });
+      setMember((m) => (m ? { ...m, reviewRewarded: true, points: (Number(m.points) || 0) + 10 } : m));
+    } catch (e) {
+      console.warn('[review points] failed', e);
+    }
+  }, [customerPhone]);
+
   // ---------------------------------------------------------------------------
   // Loading screen
   // ---------------------------------------------------------------------------
@@ -1149,6 +1224,8 @@ function CustomerOrderApp() {
           customerName={customerName}
           onReset={handleReset}
           reviewUrl={settingsData.reviewUrl}
+          canEarnReviewPoints={customerPhone.trim().length >= 9 && !(member && member.reviewRewarded)}
+          onReviewClick={awardReviewPoints}
         />
       </AnimatePresence>
     );
@@ -1258,10 +1335,10 @@ function CustomerOrderApp() {
             className="mx-4 mt-3 rounded-2xl px-4 py-3 bg-gradient-to-r from-amber-400 to-orange-500 shadow-lg flex items-center gap-3"
           >
             <span className="text-2xl">🍰</span>
-            <div className="leading-tight">
-              <p className="text-white font-black text-sm">Happy Hour! เค้กลด {happyHourPercent}%</p>
+            <div className="leading-tight flex-1">
+              <p className="text-white font-black text-sm">Happy Hour! เค้กลด {happyHourPercent}% · เหลืออีก {happyHourLeftText} ⏳</p>
               <p className="text-white/90 font-semibold text-xs">
-                เฉพาะ {settingsData.cakeSaleStart}–{settingsData.cakeSaleEnd} น. · รีบสั่งก่อนหมดเวลา
+                ถึง {settingsData.cakeSaleEnd} น. · รีบสั่งก่อนหมดเวลา!
               </p>
             </div>
           </motion.div>
