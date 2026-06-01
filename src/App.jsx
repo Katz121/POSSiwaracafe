@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+﻿import React, { useState, useCallback, useMemo, useRef, useEffect, lazy, Suspense } from 'react';
 import {
   User, ChefHat, FileText, Package, DollarSign, ClipboardList, Users,
   PieChart, LayoutDashboard, Lock, Trash2, Moon, Sun, MoreHorizontal,
@@ -49,15 +49,32 @@ const MembersView = lazy(() => import('./components/views/MembersView'));
 const AdminView = lazy(() => import('./components/views/AdminView'));
 const FinancialView = lazy(() => import('./components/views/FinancialView'));
 
-// Stable token derived from the PIN. Stored on a "remembered" device so the app
+// One-way token derived from the PIN. Stored on a "remembered" device so the app
 // stays unlocked across restarts — and so that changing the PIN later
 // automatically re-locks every remembered device (the token no longer matches).
+//
+// Uses PBKDF2 (Web Crypto) with a random per-device salt so the stored token
+// cannot be reversed to recover the PIN, even though the PIN itself is
+// low-entropy. The salt lives next to the token; PBKDF2's work factor is what
+// makes offline brute force of the PIN impractical.
 const DEVICE_TOKEN_KEY = 'pos_device_token';
-const pinDeviceToken = (pin) => {
-  let h = 5381;
-  const s = `siwara-pos:${pin}`;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
-  return h.toString(36);
+const DEVICE_SALT_KEY = 'pos_device_salt';
+const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
+
+const pinDeviceToken = async (pin) => {
+  const enc = new TextEncoder();
+  let salt = localStorage.getItem(DEVICE_SALT_KEY);
+  if (!salt) {
+    salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+    localStorage.setItem(DEVICE_SALT_KEY, salt);
+  }
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: enc.encode(salt), iterations: 200000, hash: 'SHA-256' },
+    keyMaterial,
+    256,
+  );
+  return b64(new Uint8Array(bits));
 };
 
 // --- Main App Component ---
@@ -97,9 +114,20 @@ export default function App() {
   // Constants
   const ADMIN_PIN = adminPin || '';
 
-  // This device was previously trusted ("จำอุปกรณ์นี้") for the CURRENT PIN.
-  // Derived (not stored in state) so changing the PIN re-locks it automatically.
-  const deviceRemembered = !!ADMIN_PIN && localStorage.getItem(DEVICE_TOKEN_KEY) === pinDeviceToken(ADMIN_PIN);
+  // Whether this device was previously trusted ("จำอุปกรณ์นี้") for the CURRENT
+  // PIN. Computed async (PBKDF2) once the PIN has loaded; recomputed on change so
+  // changing the PIN re-locks the device automatically.
+  const [deviceRemembered, setDeviceRemembered] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const token = localStorage.getItem(DEVICE_TOKEN_KEY);
+      if (!ADMIN_PIN || !token) { if (!cancelled) setDeviceRemembered(false); return; }
+      const expected = await pinDeviceToken(ADMIN_PIN);
+      if (!cancelled) setDeviceRemembered(token === expected);
+    })();
+    return () => { cancelled = true; };
+  }, [ADMIN_PIN]);
 
   // True when the app should show the lock screen instead of the main UI
   // (computed early so it can be referenced by useKeyboardShortcuts below)
@@ -249,30 +277,32 @@ export default function App() {
   };
 
   // Handler for the full-app lock screen
-  const handleLockSubmit = () => {
-    if (lockPinInput === ADMIN_PIN) {
-      setAppUnlocked(true);
-      sessionStorage.setItem('pos_unlocked', '1');
-      // "Remember this device": persist a PIN-derived token so future visits
-      // skip the lock. Cleared automatically when the PIN changes.
-      if (rememberDevice) {
-        localStorage.setItem(DEVICE_TOKEN_KEY, pinDeviceToken(ADMIN_PIN));
-      } else {
-        localStorage.removeItem(DEVICE_TOKEN_KEY);
-      }
-      setLockPinInput('');
-      setLockPinError('');
-    } else {
+  const handleLockSubmit = async () => {
+    if (lockPinInput !== ADMIN_PIN) {
       setLockPinError('รหัสไม่ถูกต้อง');
       setLockPinInput('');
+      return;
     }
+    // "Remember this device": persist a PIN-derived token so future visits
+    // skip the lock. Cleared automatically when the PIN changes.
+    if (rememberDevice) {
+      localStorage.setItem(DEVICE_TOKEN_KEY, await pinDeviceToken(ADMIN_PIN));
+    } else {
+      localStorage.removeItem(DEVICE_TOKEN_KEY);
+    }
+    setAppUnlocked(true);
+    sessionStorage.setItem('pos_unlocked', '1');
+    setLockPinInput('');
+    setLockPinError('');
   };
 
   // Re-lock the app and forget this device (clears remembered + session unlock).
   const lockApp = useCallback(() => {
     localStorage.removeItem(DEVICE_TOKEN_KEY);
+    localStorage.removeItem(DEVICE_SALT_KEY);
     sessionStorage.removeItem('pos_unlocked');
     setRememberDevice(false);
+    setDeviceRemembered(false);
     setAppUnlocked(false);
     setView('pos');
   }, []);
