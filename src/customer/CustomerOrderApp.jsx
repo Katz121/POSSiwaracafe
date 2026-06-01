@@ -38,7 +38,7 @@ import { auth, db, appId } from '../services/firebase';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
 import { formatCurrency, VAT_RATE } from '../config/constants';
 import { getISODate } from '../utils/calculations';
-import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE } from '../utils/promotions';
+import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
 import { notifyNewOrderToLine } from '../services/lineNotify';
 
@@ -839,6 +839,21 @@ function CustomerOrderApp() {
   const bestSellerIds = useMemo(() => new Set(bestSellers.map((m) => m.id)), [bestSellers]);
   const showHighlights = activeCategory === 'ทั้งหมด' && searchQuery.trim() === '';
 
+  // Re-render every minute so the Happy Hour banner (and sale prices) appear and
+  // disappear automatically as the time window opens/closes during a session.
+  const [, setNowTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNowTick((n) => n + 1), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Happy Hour banner: only when the cake sale window is active AND at least one
+  // cake item is actually available today (some days there's no cake to sell).
+  const happyHourActive =
+    isCakeSaleActive(settingsData) &&
+    availableMenu.some((m) => isCakeCategory(m.category, settingsData));
+  const happyHourPercent = Math.round(Number(settingsData.cakeSalePercent) || 0);
+
   // ---------------------------------------------------------------------------
   // Category list: "ทั้งหมด" + each category that has at least one available item
   // ---------------------------------------------------------------------------
@@ -1190,6 +1205,27 @@ function CustomerOrderApp() {
           ))}
         </div>
       </header>
+
+      {/* ---- Happy Hour banner (only when a cake is actually available) ---- */}
+      <AnimatePresence>
+        {happyHourActive && (
+          <motion.div
+            key="happy-hour"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="mx-4 mt-3 rounded-2xl px-4 py-3 bg-gradient-to-r from-amber-400 to-orange-500 shadow-lg flex items-center gap-3"
+          >
+            <span className="text-2xl">🍰</span>
+            <div className="leading-tight">
+              <p className="text-white font-black text-sm">Happy Hour! เค้กลด {happyHourPercent}%</p>
+              <p className="text-white/90 font-semibold text-xs">
+                เฉพาะ {settingsData.cakeSaleStart}–{settingsData.cakeSaleEnd} น. · รีบสั่งก่อนหมดเวลา
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ---- Combo nudge banner ---- */}
       <AnimatePresence>
