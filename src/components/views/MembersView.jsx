@@ -70,7 +70,10 @@ export default function MembersView() {
           expectedPoints -= REDEEM_POINTS_THRESHOLD;
         }
       });
-      const pointsDiscrepancy = Math.max(0, expectedPoints) !== Number(m.points || 0);
+      // Only flag when points are MISSING (expected > current). Never flag when
+      // current is higher — review/bonus points and imperfect redemption detection
+      // must not cause points to be wiped.
+      const pointsDiscrepancy = Math.max(0, expectedPoints) > Number(m.points || 0);
 
       return { ...m, totalPurchases, totalSpent, expectedPoints: Math.max(0, expectedPoints), pointsDiscrepancy };
     });
@@ -184,7 +187,9 @@ export default function MembersView() {
       if (!memberId) return;
 
       const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
-      await setDoc(memRef, { points: member.expectedPoints }, { merge: true });
+      // Top up only — never reduce below current points (protects review/bonus points).
+      const target = Math.max(Number(member.points) || 0, Number(member.expectedPoints) || 0);
+      await setDoc(memRef, { points: target }, { merge: true });
 
       // Mark orders as processed
       const memberOrders = orders.filter(o => {
@@ -276,7 +281,7 @@ export default function MembersView() {
     const data = {
       name: nextName || currentName || 'ลูกค้าทั่วไป',
       phone: nextPhone || '',
-      points: Number(member?.points || 0),
+      points: formData.points != null && formData.points !== '' ? Number(formData.points) || 0 : Number(member?.points || 0),
       createdAt: member?.createdAt || serverTimestamp(),
     };
 
@@ -700,7 +705,8 @@ export default function MembersView() {
         icon={Edit}
         fields={[
           { name: 'name', label: 'ชื่อสมาชิก', placeholder: 'กรอกชื่อ...', defaultValue: editingMember?.name || '' },
-          { name: 'phone', label: 'เบอร์โทรศัพท์', placeholder: 'กรอกเบอร์โทร (ถ้ามี)', type: 'tel', defaultValue: editingMember?.phone || '' }
+          { name: 'phone', label: 'เบอร์โทรศัพท์', placeholder: 'กรอกเบอร์โทร (ถ้ามี)', type: 'tel', defaultValue: editingMember?.phone || '' },
+          { name: 'points', label: 'แต้มสะสม', placeholder: '0', type: 'number', defaultValue: String(editingMember?.points ?? 0) }
         ]}
         submitText="บันทึก"
       />
