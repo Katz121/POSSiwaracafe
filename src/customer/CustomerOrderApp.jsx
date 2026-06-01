@@ -180,20 +180,25 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
       {item && (
         <div className="space-y-3">
           <p className="text-sm text-gray-500">เลือกเมล็ดกาแฟสำหรับ <strong>{item.name}</strong></p>
-          {modifiers.map((mod) => (
-            <motion.button
-              key={mod.id}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => onSelect(item, mod)}
-              className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-100 hover:border-emerald-400 hover:bg-emerald-50 transition-all text-left min-h-[56px]"
-            >
-              <span className="font-semibold text-gray-800">{mod.name}</span>
-              {/* Show a price only when the bean actually raises the price above the menu price */}
-              {Number(mod.price) > (Number(item.price) || 0) && (
-                <span className="text-emerald-600 font-bold">{formatCurrency(Number(mod.price))}</span>
-              )}
-            </motion.button>
-          ))}
+          {modifiers.map((mod) => {
+            // Real price after combining: max(menu price, bean price + add-on)
+            const effective = Math.max(Number(item.price) || 0, (Number(mod.price) || 0) + (Number(item.beanExtra) || 0));
+            const raisesPrice = effective > (Number(item.price) || 0);
+            return (
+              <motion.button
+                key={mod.id}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => onSelect(item, mod)}
+                className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-100 hover:border-emerald-400 hover:bg-emerald-50 transition-all text-left min-h-[56px]"
+              >
+                <span className="font-semibold text-gray-800">{mod.name}</span>
+                {/* Show the combined price only when this bean raises it above the menu price */}
+                {raisesPrice && (
+                  <span className="text-emerald-600 font-bold">{formatCurrency(effective)}</span>
+                )}
+              </motion.button>
+            );
+          })}
         </div>
       )}
     </Modal>
@@ -905,9 +910,10 @@ function CustomerOrderApp() {
     let finalPrice;
     let saleFields = {};
     if (modifier) {
-      // Bean price is a floor, not a replacement — never drop below the menu price
-      // (e.g. กาแฟส้ม ฿80 must not become ฿50 just because a shared bean is ฿50).
-      finalPrice = Math.max(Number(item.price) || 0, Number(modifier.price) || 0);
+      // Price = max(menu price, chosen bean price + this menu's special add-on).
+      // Floor at menu price (cheaper bean never lowers it) while a premium bean
+      // + add-on can raise it (อเมริกาโน่น้ำช่อ = 120 + 15 = 135).
+      finalPrice = Math.max(Number(item.price) || 0, (Number(modifier.price) || 0) + (Number(item.beanExtra) || 0));
     } else {
       const sale = getItemSalePrice(item, settingsData);
       finalPrice = sale.price;

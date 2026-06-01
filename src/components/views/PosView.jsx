@@ -241,9 +241,12 @@ export default function PosView() {
   };
 
   const addToCartWithBean = (item, modifier) => {
-    // Bean price is a floor, not a replacement — never drop below the menu price
-    // (e.g. กาแฟส้ม ฿80 must not become ฿50 just because a shared bean is ฿50).
-    const finalPrice = modifier ? Math.max(Number(item.price) || 0, Number(modifier.price) || 0) : item.price;
+    // Price = max(menu price, chosen bean price + this menu's special add-on).
+    // Floor at the menu price so a cheaper bean never lowers it (กาแฟส้ม ฿80),
+    // while a premium bean + add-on can raise it (อเมริกาโน่น้ำช่อ = 120 + 15).
+    const finalPrice = modifier
+      ? Math.max(Number(item.price) || 0, (Number(modifier.price) || 0) + (Number(item.beanExtra) || 0))
+      : item.price;
     const modifierName = modifier ? `#${modifier.name}` : '';
     const cartItemId = modifier ? `${item.id}-${modifier.id}` : item.id;
     const mergedStockLinks = [...(item.stockLinks || [])];
@@ -951,16 +954,21 @@ export default function PosView() {
                 <span className="font-bold text-[var(--text-primary)]">ไม่เพิ่มกาแฟ</span>
                 <span className="font-black text-[var(--accent-emerald)]">฿{Number(pendingBeanItem.price).toLocaleString()}</span>
               </button>
-              {beanModifiers.filter(b => b.available !== false).map(mod => (
+              {beanModifiers.filter(b => b.available !== false).map(mod => {
+                // Real price after combining: max(menu price, bean price + add-on)
+                const effective = Math.max(Number(pendingBeanItem.price) || 0, (Number(mod.price) || 0) + (Number(pendingBeanItem.beanExtra) || 0));
+                const raisesPrice = effective > (Number(pendingBeanItem.price) || 0);
+                return (
                 <button key={mod.id} onClick={() => addToCartWithBean(pendingBeanItem, mod)}
                   className="w-full p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 flex items-center justify-between hover:border-amber-500 transition-all">
                   <span className="font-bold text-amber-800 dark:text-amber-400">#{mod.name}</span>
-                  {/* Show a price only when the bean actually raises the price above the menu price */}
-                  {Number(mod.price) > (Number(pendingBeanItem.price) || 0) && (
-                    <span className="font-bold text-amber-600">฿{Number(mod.price).toLocaleString()}</span>
+                  {/* Show the combined price only when this bean raises it above the menu price */}
+                  {raisesPrice && (
+                    <span className="font-bold text-amber-600">฿{effective.toLocaleString()}</span>
                   )}
                 </button>
-              ))}
+                );
+              })}
             </div>
             <Button variant="secondary" fullWidth onClick={() => setPendingBeanItem(null)}>ยกเลิก</Button>
           </div>

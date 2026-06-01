@@ -204,7 +204,7 @@ export default function MenuManageView() {
   const saveMenuItem = async (e) => {
     e.preventDefault();
     const col = collection(db, 'artifacts', appId, 'public', 'data', 'menu');
-    const data = { ...newItem, price: Number(newItem.price) };
+    const data = { ...newItem, price: Number(newItem.price), beanExtra: Number(newItem.beanExtra) || 0 };
     if (!data.category && dynamicCategories.length > 0) data.category = dynamicCategories[0].name;
     await runDbAction(async () => {
       if (editingItem) await updateDoc(doc(col, editingItem.id), data); else await addDoc(col, data);
@@ -764,6 +764,21 @@ export default function MenuManageView() {
                 <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all ${newItem.allowBeanModifier ? 'right-1' : 'left-1'}`}></div>
               </button>
             </div>
+
+            {/* Bean special add-on price (only when bean selection is on) */}
+            {newItem.allowBeanModifier && (
+              <div className="bg-amber-50/30 p-5 rounded-[2rem] border border-amber-100">
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-2">ราคาส่วนเพิ่มเมื่อเลือกเมล็ด (เช่น น้ำช่อ)</label>
+                <input
+                  type="number"
+                  value={newItem.beanExtra ?? ''}
+                  onChange={e => setNewItem({ ...newItem, beanExtra: e.target.value })}
+                  className="w-full bg-white border border-amber-200 rounded-2xl p-4 text-sm font-black outline-none"
+                  placeholder="0"
+                />
+                <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">ราคาที่คิด = <strong>ค่าที่สูงกว่า</strong> ระหว่างราคาเมนู กับ (ราคาเมล็ดที่เลือก + ส่วนเพิ่มนี้)</p>
+              </div>
+            )}
 
             {/* Featured/Recommended Toggle */}
             <div className="flex items-center justify-between bg-yellow-50/50 p-5 rounded-[2rem] border border-yellow-200">
