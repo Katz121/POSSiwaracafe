@@ -824,14 +824,15 @@ function CustomerOrderApp() {
   // Highlights: ขายดี (by soldCount) + แนะนำ (isFeatured)
   // Shown only on the default "ทั้งหมด" view without an active search.
   // ---------------------------------------------------------------------------
-  const bestSellers = useMemo(
-    () =>
-      [...availableMenu]
-        .filter((m) => Number(m.soldCount) > 0)
-        .sort((a, b) => (Number(b.soldCount) || 0) - (Number(a.soldCount) || 0))
-        .slice(0, 8),
-    [availableMenu],
-  );
+  // Pinned items (admin-curated) show first, then auto-fill by actual sales.
+  const bestSellers = useMemo(() => {
+    const pinned = availableMenu.filter((m) => m.isPinnedBest);
+    const pinnedIds = new Set(pinned.map((m) => m.id));
+    const auto = [...availableMenu]
+      .filter((m) => !pinnedIds.has(m.id) && Number(m.soldCount) > 0)
+      .sort((a, b) => (Number(b.soldCount) || 0) - (Number(a.soldCount) || 0));
+    return [...pinned, ...auto].slice(0, 8);
+  }, [availableMenu]);
   const featuredItems = useMemo(
     () => availableMenu.filter((m) => m.isFeatured),
     [availableMenu],
@@ -1002,9 +1003,19 @@ function CustomerOrderApp() {
         tx.set(queueRef, { current: current + 1 }, { merge: true });
       });
 
+      // Strip heavy display-only fields (base64 image, description) so the order
+      // doc stays small — avoids Firestore's 1 MiB limit and speeds up the write.
+      // Views fall back to the menu's own image via the kept item id.
+      const leanItems = cart.map((c) => {
+        const lean = { ...c };
+        delete lean.image;
+        delete lean.description;
+        return lean;
+      });
+
       const orderData = {
         queueNumber: assignedQueue,
-        items: cart,
+        items: leanItems,
         subtotal: Number(subtotal),
         discount: Number(discount),
         vat: Number(vat),
@@ -1034,7 +1045,7 @@ function CustomerOrderApp() {
       notifyNewOrderToLine({
         queueNumber: assignedQueue,
         customerName: customerName.trim(),
-        items: cart,
+        items: leanItems,
         total,
         time: orderData.time,
       });
@@ -1065,8 +1076,12 @@ function CustomerOrderApp() {
 
       setSuccessQueue(assignedQueue);
       setView('success');
-    } catch {
-      setSubmitError('สั่งออเดอร์ไม่สำเร็จ ลองใหม่อีกครั้ง');
+    } catch (err) {
+      // Surface the real cause: 'permission-denied' (rules), 'invalid-argument'
+      // (bad/oversized doc), 'unavailable' (network/offline), etc.
+      console.error('[QR order submit] failed:', err);
+      const code = err?.code || err?.message || 'unknown';
+      setSubmitError(`สั่งออเดอร์ไม่สำเร็จ (${code}) — ลองใหม่อีกครั้ง`);
     } finally {
       setSubmitting(false);
     }

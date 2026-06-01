@@ -30,7 +30,7 @@ export default function MenuManageView() {
 
   // Local states - Menu form
   const [newItem, setNewItem] = useState({
-    name: '', price: '', category: '', image: '', recommended: false, isFeatured: false, available: true,
+    name: '', price: '', category: '', image: '', recommended: false, isFeatured: false, isPinnedBest: false, available: true,
     stockLinks: []
   });
   const [editingItem, setEditingItem] = useState(null);
@@ -210,7 +210,7 @@ export default function MenuManageView() {
       if (editingItem) await updateDoc(doc(col, editingItem.id), data); else await addDoc(col, data);
       toast.success(editingItem ? 'แก้ไขเมนูสำเร็จ' : 'เพิ่มเมนูใหม่สำเร็จ');
       setEditingItem(null);
-      setNewItem({ name: '', price: '', category: '', image: '', recommended: false, isFeatured: false, available: true, stockLinks: [] });
+      setNewItem({ name: '', price: '', category: '', image: '', recommended: false, isFeatured: false, isPinnedBest: false, available: true, stockLinks: [] });
     }, 'บันทึกเมนูไม่สำเร็จ');
   };
 
@@ -655,6 +655,7 @@ export default function MenuManageView() {
                       <div className="flex items-center gap-2 mb-2">
                         <p className="leading-none">{String(i.name)}</p>
                         {(i.isFeatured || i.recommended) && <Star size={18} className="text-yellow-500 fill-yellow-500" />}
+                        {i.isPinnedBest && <TrendingUp size={18} className="text-orange-500" title="ปักหมุดขายดี" />}
                       </div>
                       <div className="flex items-center gap-3">
                         <p className="text-xs text-emerald-500 uppercase bg-emerald-50 w-fit px-4 py-1 rounded-full border border-emerald-100 font-black leading-none">฿{Number(i.price).toLocaleString()} • {String(i.category)}</p>
@@ -777,6 +778,22 @@ export default function MenuManageView() {
                 className={`relative w-14 h-8 rounded-full transition-all ${newItem.isFeatured ? 'bg-yellow-500' : 'bg-gray-200'}`}
               >
                 <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all ${newItem.isFeatured ? 'right-1' : 'left-1'}`}></div>
+              </button>
+            </div>
+
+            {/* Pinned Best-Seller Toggle */}
+            <div className="flex items-center justify-between bg-orange-50/50 p-5 rounded-[2rem] border border-orange-200">
+              <div className="flex items-center gap-3">
+                <TrendingUp size={20} className="text-orange-500" />
+                <span className="text-sm font-black text-gray-700">ปักหมุดขายดี</span>
+                <span className="text-xs font-bold text-gray-400">(แสดงบนสุดหน้า QR)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewItem({ ...newItem, isPinnedBest: !newItem.isPinnedBest })}
+                className={`relative w-14 h-8 rounded-full transition-all ${newItem.isPinnedBest ? 'bg-orange-500' : 'bg-gray-200'}`}
+              >
+                <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all ${newItem.isPinnedBest ? 'right-1' : 'left-1'}`}></div>
               </button>
             </div>
 
