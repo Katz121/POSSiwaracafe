@@ -205,7 +205,7 @@ export default function MenuManageView() {
   const saveMenuItem = async (e) => {
     e.preventDefault();
     const col = collection(db, 'artifacts', appId, 'public', 'data', 'menu');
-    const data = { ...newItem, price: Number(newItem.price), beanExtra: Number(newItem.beanExtra) || 0, baseBeanIds: Array.isArray(newItem.baseBeanIds) ? newItem.baseBeanIds : [] };
+    const data = { ...newItem, price: Number(newItem.price), beanExtra: Number(newItem.beanExtra) || 0, baseBeanIds: Array.isArray(newItem.baseBeanIds) ? newItem.baseBeanIds : [], modifierGroup: newItem.modifierGroup || 'เมล็ดกาแฟ' };
     if (!data.category && dynamicCategories.length > 0) data.category = dynamicCategories[0].name;
     await runDbAction(async () => {
       if (editingItem) await updateDoc(doc(col, editingItem.id), data); else await addDoc(col, data);
@@ -754,7 +754,7 @@ export default function MenuManageView() {
             <div className="flex items-center justify-between bg-amber-50/50 p-5 rounded-[2rem] border border-amber-100">
               <div className="flex items-center gap-3">
                 <Coffee size={20} className="text-amber-500" />
-                <span className="text-sm font-black text-gray-700">เปิดใช้ตัวเลือกเมล็ดกาแฟ</span>
+                <span className="text-sm font-black text-gray-700">เปิดใช้ตัวเลือก (เมล็ด/มัทฉะ)</span>
                 <span className="text-xs font-bold text-gray-400">(#แท็ก)</span>
               </div>
               <button
@@ -769,6 +769,15 @@ export default function MenuManageView() {
             {/* Bean special add-on price (only when bean selection is on) */}
             {newItem.allowBeanModifier && (
               <div className="bg-amber-50/30 p-5 rounded-[2rem] border border-amber-100">
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-2">กลุ่มตัวเลือกที่ใช้ (เมล็ดกาแฟ / มัทฉะ / ...)</label>
+                <select
+                  value={newItem.modifierGroup || 'เมล็ดกาแฟ'}
+                  onChange={e => setNewItem({ ...newItem, modifierGroup: e.target.value, baseBeanIds: [] })}
+                  className="w-full mb-4 bg-white border border-amber-200 rounded-2xl p-4 text-sm font-black outline-none cursor-pointer"
+                >
+                  {[...new Set(['เมล็ดกาแฟ', ...(beanModifiers || []).map(b => b.group || 'เมล็ดกาแฟ')])].map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+
                 <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-2">ราคาส่วนเพิ่มเมื่อเลือกเมล็ด (เช่น น้ำช่อ)</label>
                 <input
                   type="number"
@@ -781,30 +790,34 @@ export default function MenuManageView() {
 
                 {/* Base beans for THIS menu: selecting one keeps the menu price (no surcharge) */}
                 <div className="mt-4">
-                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-2">เมล็ดที่คงราคาเมนู (เบส — ไม่บวกเพิ่ม)</label>
-                  {(!beanModifiers || beanModifiers.length === 0) ? (
-                    <p className="text-xs text-gray-400 italic font-bold">ยังไม่มีเมล็ดในระบบ (เพิ่มที่หน้าแอดมิน)</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {beanModifiers.map(b => {
-                        const selected = (newItem.baseBeanIds || []).includes(b.id);
-                        return (
-                          <button
-                            key={b.id}
-                            type="button"
-                            onClick={() => {
-                              const cur = newItem.baseBeanIds || [];
-                              const next = selected ? cur.filter(x => x !== b.id) : [...cur, b.id];
-                              setNewItem({ ...newItem, baseBeanIds: next });
-                            }}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${selected ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-amber-300 hover:text-amber-600'}`}
-                          >
-                            #{b.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-2">ตัวเลือกที่คงราคาเมนู (เบส — ไม่บวกเพิ่ม)</label>
+                  {(() => {
+                    const group = newItem.modifierGroup || 'เมล็ดกาแฟ';
+                    const groupBeans = (beanModifiers || []).filter(b => (b.group || 'เมล็ดกาแฟ') === group);
+                    return groupBeans.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic font-bold">ยังไม่มีตัวเลือกในกลุ่มนี้ (เพิ่มที่หน้าแอดมิน)</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {groupBeans.map(b => {
+                          const selected = (newItem.baseBeanIds || []).includes(b.id);
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => {
+                                const cur = newItem.baseBeanIds || [];
+                                const next = selected ? cur.filter(x => x !== b.id) : [...cur, b.id];
+                                setNewItem({ ...newItem, baseBeanIds: next });
+                              }}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${selected ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-amber-300 hover:text-amber-600'}`}
+                            >
+                              #{b.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}

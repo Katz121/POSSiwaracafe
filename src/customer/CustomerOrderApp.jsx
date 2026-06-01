@@ -171,7 +171,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="เลือกเมล็ดกาแฟ"
+      title={`เลือก${item?.modifierGroup || 'เมล็ดกาแฟ'}`}
       size="sm"
       footer={
         <Button variant="ghost" fullWidth onClick={onClose} className="text-gray-400">
@@ -181,7 +181,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
     >
       {item && (
         <div className="space-y-3">
-          <p className="text-sm text-gray-500">เลือกเมล็ดกาแฟสำหรับ <strong>{item.name}</strong></p>
+          <p className="text-sm text-gray-500">เลือก{item.modifierGroup || 'เมล็ดกาแฟ'}สำหรับ <strong>{item.name}</strong></p>
           {modifiers.map((mod) => {
             // Base beans use the menu price; others: max(menu, bean + add-on).
             // Rounded up to 5 for coffee.
@@ -970,8 +970,9 @@ function CustomerOrderApp() {
   }, [settingsData]);
 
   const handleMenuItemClick = useCallback((item) => {
-    // Only offer bean choices that are in stock (not hidden by staff)
-    const availableBeans = beanModifiers.filter((b) => b.available !== false);
+    // Only offer options from this menu's group that are in stock (not hidden)
+    const group = item.modifierGroup || 'เมล็ดกาแฟ';
+    const availableBeans = beanModifiers.filter((b) => b.available !== false && (b.group || 'เมล็ดกาแฟ') === group);
     if (item.allowBeanModifier && availableBeans.length > 0) {
       setPendingItem(item);
       setBeanModalOpen(true);
@@ -1387,7 +1388,7 @@ function CustomerOrderApp() {
       <BeanModifierModal
         isOpen={beanModalOpen}
         item={pendingItem}
-        modifiers={beanModifiers.filter((b) => b.available !== false)}
+        modifiers={beanModifiers.filter((b) => b.available !== false && (b.group || 'เมล็ดกาแฟ') === (pendingItem?.modifierGroup || 'เมล็ดกาแฟ'))}
         onSelect={handleBeanSelect}
         onClose={() => {
           setBeanModalOpen(false);

@@ -222,7 +222,8 @@ export default function PosView() {
   }, []);
 
   const addToCart = (p) => {
-    if (p.allowBeanModifier && beanModifiers.some(b => b.available !== false)) {
+    const pGroup = p.modifierGroup || 'เมล็ดกาแฟ';
+    if (p.allowBeanModifier && beanModifiers.some(b => b.available !== false && (b.group || 'เมล็ดกาแฟ') === pGroup)) {
       setPendingBeanItem(p);
       return;
     }
@@ -950,7 +951,7 @@ export default function PosView() {
       )}
 
       {/* Bean Modifier Selection Modal */}
-      <Modal isOpen={!!pendingBeanItem} onClose={() => setPendingBeanItem(null)} title="เลือกเมล็ดกาแฟ" size="sm">
+      <Modal isOpen={!!pendingBeanItem} onClose={() => setPendingBeanItem(null)} title={`เลือก${pendingBeanItem?.modifierGroup || 'เมล็ดกาแฟ'}`} size="sm">
         {pendingBeanItem && (
           <div className="space-y-4">
             <p className="text-center font-medium -mt-2 mb-4 text-[var(--text-secondary)]">{pendingBeanItem.name}</p>
@@ -961,7 +962,7 @@ export default function PosView() {
                 <span className="font-bold text-[var(--text-primary)]">ไม่เพิ่มกาแฟ</span>
                 <span className="font-black text-[var(--accent-emerald)]">฿{Number(pendingBeanItem.price).toLocaleString()}</span>
               </button>
-              {beanModifiers.filter(b => b.available !== false).map(mod => {
+              {beanModifiers.filter(b => b.available !== false && (b.group || 'เมล็ดกาแฟ') === (pendingBeanItem.modifierGroup || 'เมล็ดกาแฟ')).map(mod => {
                 // Base beans use the menu price; others: max(menu, bean + add-on).
                 // Rounded up to 5 for coffee.
                 const isBaseBean = mod.isDefault || (pendingBeanItem.baseBeanIds || []).includes(mod.id);

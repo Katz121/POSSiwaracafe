@@ -106,7 +106,7 @@ export default function AdminView() {
     date: getISODate(),
     note: ''
   });
-  const [newBeanModifier, setNewBeanModifier] = useState({ name: '', price: '', stockLinks: [], isDefault: false });
+  const [newBeanModifier, setNewBeanModifier] = useState({ name: '', price: '', stockLinks: [], isDefault: false, group: 'เมล็ดกาแฟ' });
   const [editingBeanModifierId, setEditingBeanModifierId] = useState(null);
   const [newQuickExpense, setNewQuickExpense] = useState({ label: '', title: '', amount: '', unit: '', category: DEFAULT_EXPENSE_CATEGORY, icon: '💰' });
   const [editingQuickExpenseId, setEditingQuickExpenseId] = useState(null);
@@ -1058,6 +1058,7 @@ export default function AdminView() {
                       price: Number(newBeanModifier.price),
                       stockLinks: newBeanModifier.stockLinks || [],
                       isDefault: newBeanModifier.isDefault === true,
+                      group: String(newBeanModifier.group || 'เมล็ดกาแฟ').trim() || 'เมล็ดกาแฟ',
                       updatedAt: serverTimestamp()
                     };
                     if (editingBeanModifierId) {
@@ -1065,7 +1066,7 @@ export default function AdminView() {
                     } else {
                       await addDoc(col, { ...data, createdAt: serverTimestamp() });
                     }
-                    setNewBeanModifier({ name: '', price: '', stockLinks: [], isDefault: false });
+                    setNewBeanModifier({ name: '', price: '', stockLinks: [], isDefault: false, group: 'เมล็ดกาแฟ' });
                     setEditingBeanModifierId(null);
                   }, editingBeanModifierId ? 'อัปเดตแท็กไม่สำเร็จ' : 'สร้างแท็กไม่สำเร็จ');
                 }} className="space-y-4">
@@ -1093,6 +1094,23 @@ export default function AdminView() {
                       />
                       <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">ระบบจะคิด<strong>ราคาที่สูงกว่า</strong>ระหว่างราคาเมนูกับราคาเมล็ด — เมนูที่แพงกว่าจะไม่ถูกลดราคาเพราะเลือกเมล็ด</p>
                     </div>
+                  </div>
+
+                  {/* Group (เมล็ดกาแฟ / มัทฉะ / ...) */}
+                  <div>
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">กลุ่ม (เช่น เมล็ดกาแฟ, มัทฉะ)</label>
+                    <input
+                      type="text"
+                      value={newBeanModifier.group}
+                      onChange={(e) => setNewBeanModifier({ ...newBeanModifier, group: e.target.value })}
+                      className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none"
+                      placeholder="เมล็ดกาแฟ"
+                      list="modifier-groups"
+                    />
+                    <datalist id="modifier-groups">
+                      {[...new Set((beanModifiers || []).map(b => b.group || 'เมล็ดกาแฟ'))].map(g => <option key={g} value={g} />)}
+                    </datalist>
+                    <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">เมนูจะเลือกได้ว่าจะใช้ตัวเลือกจากกลุ่มไหน (เมนูกาแฟ→เมล็ดกาแฟ, เพียวมัทฉะ→มัทฉะ)</p>
                   </div>
 
                   {/* Default/base bean toggle */}
@@ -1170,7 +1188,7 @@ export default function AdminView() {
                       <button
                         type="button"
                         onClick={() => {
-                          setNewBeanModifier({ name: '', price: '', stockLinks: [], isDefault: false });
+                          setNewBeanModifier({ name: '', price: '', stockLinks: [], isDefault: false, group: 'เมล็ดกาแฟ' });
                           setEditingBeanModifierId(null);
                         }}
                         className="flex-1 bg-gray-100 text-gray-500 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] active:scale-95"
@@ -1207,6 +1225,7 @@ export default function AdminView() {
                           {mod.isDefault && (
                             <span className="text-xs font-black text-amber-700 bg-amber-200 px-2 py-0.5 rounded-lg">เบส</span>
                           )}
+                          <span className="text-xs font-black text-gray-500 bg-gray-100 px-2 py-0.5 rounded-lg">{mod.group || 'เมล็ดกาแฟ'}</span>
                           {isHidden && (
                             <span className="text-xs font-black text-gray-500 bg-gray-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
                               <EyeOff size={10} /> ซ่อน (เมล็ดหมด)
@@ -1234,7 +1253,8 @@ export default function AdminView() {
                                 name: mod.name,
                                 price: mod.price,
                                 stockLinks: mod.stockLinks || [],
-                                isDefault: mod.isDefault === true
+                                isDefault: mod.isDefault === true,
+                                group: mod.group || 'เมล็ดกาแฟ'
                               });
                               setEditingBeanModifierId(mod.id);
                             }}
