@@ -20,7 +20,8 @@ import {
   DEFAULT_OWN_GLASS_DISCOUNT,
   DEFAULT_ITEMS_PER_PAGE,
   VAT_RATE,
-  MENU_PAGE_OPTIONS
+  MENU_PAGE_OPTIONS,
+  roundUpTo5
 } from '../../config/constants';
 
 export default function PosView() {
@@ -226,13 +227,15 @@ export default function PosView() {
       return;
     }
     const sale = getItemSalePrice(p, saleSettings);
+    // Coffee menus: round the charged price up to the nearest 5 baht.
+    const chargedPrice = p.allowBeanModifier ? roundUpTo5(sale.price) : sale.price;
     setCart(prev => {
       const existing = prev.find(item => item.id === p.id && !item.beanModifier);
       if (existing) return prev.map(item => item.id === p.id && !item.beanModifier ? { ...item, quantity: item.quantity + 1 } : item);
       const noteTag = sale.onSale ? cakeSaleNoteTag(sale.percent) : '';
       return [...prev, {
         ...p,
-        price: sale.price,
+        price: chargedPrice,
         ...(sale.onSale ? { originalPrice: sale.originalPrice } : {}),
         quantity: 1,
         note: noteTag
@@ -244,9 +247,13 @@ export default function PosView() {
     // Price = max(menu price, chosen bean price + this menu's special add-on).
     // Floor at the menu price so a cheaper bean never lowers it (กาแฟส้ม ฿80),
     // while a premium bean + add-on can raise it (อเมริกาโน่น้ำช่อ = 120 + 15).
-    const finalPrice = modifier
+    // Base beans (global default คั่วเข้ม, or tagged on this menu) are included in
+    // the menu price — no surcharge. Coffee menus round up to the nearest 5 baht.
+    const isBaseBean = modifier && (modifier.isDefault || (item.baseBeanIds || []).includes(modifier.id));
+    const rawPrice = (modifier && !isBaseBean)
       ? Math.max(Number(item.price) || 0, (Number(modifier.price) || 0) + (Number(item.beanExtra) || 0))
-      : item.price;
+      : Number(item.price) || 0;
+    const finalPrice = roundUpTo5(rawPrice);
     const modifierName = modifier ? `#${modifier.name}` : '';
     const cartItemId = modifier ? `${item.id}-${modifier.id}` : item.id;
     const mergedStockLinks = [...(item.stockLinks || [])];
@@ -955,9 +962,12 @@ export default function PosView() {
                 <span className="font-black text-[var(--accent-emerald)]">฿{Number(pendingBeanItem.price).toLocaleString()}</span>
               </button>
               {beanModifiers.filter(b => b.available !== false).map(mod => {
-                // Real price after combining: max(menu price, bean price + add-on)
-                const effective = Math.max(Number(pendingBeanItem.price) || 0, (Number(mod.price) || 0) + (Number(pendingBeanItem.beanExtra) || 0));
-                const raisesPrice = effective > (Number(pendingBeanItem.price) || 0);
+                // Base beans use the menu price; others: max(menu, bean + add-on).
+                // Rounded up to 5 for coffee.
+                const isBaseBean = mod.isDefault || (pendingBeanItem.baseBeanIds || []).includes(mod.id);
+                const beanBase = Number(pendingBeanItem.price) || 0;
+                const effective = roundUpTo5(isBaseBean ? beanBase : Math.max(beanBase, (Number(mod.price) || 0) + (Number(pendingBeanItem.beanExtra) || 0)));
+                const raisesPrice = effective > roundUpTo5(beanBase);
                 return (
                 <button key={mod.id} onClick={() => addToCartWithBean(pendingBeanItem, mod)}
                   className="w-full p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 flex items-center justify-between hover:border-amber-500 transition-all">

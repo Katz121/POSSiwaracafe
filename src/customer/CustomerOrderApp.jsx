@@ -37,7 +37,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, appId } from '../services/firebase';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
-import { formatCurrency, VAT_RATE } from '../config/constants';
+import { formatCurrency, VAT_RATE, roundUpTo5 } from '../config/constants';
 import { getISODate } from '../utils/calculations';
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
@@ -65,6 +65,8 @@ function mergeStockLinks(itemLinks = [], modifierLinks = []) {
 function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false }) {
   const hasImage = Boolean(item.image);
   const sale = getItemSalePrice(item, settingsData);
+  // Coffee menus display prices rounded up to the nearest 5 baht.
+  const dp = (p) => (item.allowBeanModifier ? roundUpTo5(p) : p);
 
   return (
     <motion.div
@@ -117,15 +119,15 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false }) {
           {sale.onSale ? (
             <div className="flex flex-col gap-0.5">
               <span className="text-gray-400 text-xs line-through leading-none">
-                {item.allowBeanModifier ? 'เริ่มต้น ' : ''}{formatCurrency(sale.originalPrice)}
+                {item.allowBeanModifier ? 'เริ่มต้น ' : ''}{formatCurrency(dp(sale.originalPrice))}
               </span>
               <span className="text-red-500 font-bold text-base leading-none">
-                {item.allowBeanModifier ? 'เริ่มต้น ' : ''}{formatCurrency(sale.price)}
+                {item.allowBeanModifier ? 'เริ่มต้น ' : ''}{formatCurrency(dp(sale.price))}
               </span>
             </div>
           ) : (
             <span className="text-emerald-600 font-bold text-base">
-              {item.allowBeanModifier ? 'เริ่มต้น ' : ''}{formatCurrency(item.price)}
+              {item.allowBeanModifier ? 'เริ่มต้น ' : ''}{formatCurrency(dp(item.price))}
             </span>
           )}
           <div className="w-9 h-9 bg-emerald-500 rounded-full flex items-center justify-center shadow-md">
@@ -181,9 +183,12 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
         <div className="space-y-3">
           <p className="text-sm text-gray-500">เลือกเมล็ดกาแฟสำหรับ <strong>{item.name}</strong></p>
           {modifiers.map((mod) => {
-            // Real price after combining: max(menu price, bean price + add-on)
-            const effective = Math.max(Number(item.price) || 0, (Number(mod.price) || 0) + (Number(item.beanExtra) || 0));
-            const raisesPrice = effective > (Number(item.price) || 0);
+            // Base beans use the menu price; others: max(menu, bean + add-on).
+            // Rounded up to 5 for coffee.
+            const isBaseBean = mod.isDefault || (item.baseBeanIds || []).includes(mod.id);
+            const base = Number(item.price) || 0;
+            const effective = roundUpTo5(isBaseBean ? base : Math.max(base, (Number(mod.price) || 0) + (Number(item.beanExtra) || 0)));
+            const raisesPrice = effective > roundUpTo5(base);
             return (
               <motion.button
                 key={mod.id}
@@ -910,10 +915,13 @@ function CustomerOrderApp() {
     let finalPrice;
     let saleFields = {};
     if (modifier) {
-      // Price = max(menu price, chosen bean price + this menu's special add-on).
-      // Floor at menu price (cheaper bean never lowers it) while a premium bean
-      // + add-on can raise it (อเมริกาโน่น้ำช่อ = 120 + 15 = 135).
-      finalPrice = Math.max(Number(item.price) || 0, (Number(modifier.price) || 0) + (Number(item.beanExtra) || 0));
+      // Base beans (global default คั่วเข้ม, or tagged on this menu) are included
+      // in the menu price — no surcharge. Other beans: max(menu price, bean price
+      // + this menu's special add-on) so a premium bean can raise it (135).
+      const isBaseBean = modifier.isDefault || (item.baseBeanIds || []).includes(modifier.id);
+      finalPrice = isBaseBean
+        ? (Number(item.price) || 0)
+        : Math.max(Number(item.price) || 0, (Number(modifier.price) || 0) + (Number(item.beanExtra) || 0));
     } else {
       const sale = getItemSalePrice(item, settingsData);
       finalPrice = sale.price;
@@ -923,6 +931,9 @@ function CustomerOrderApp() {
         };
       }
     }
+
+    // Coffee menus: round the charged price up to the nearest 5 baht.
+    if (item.allowBeanModifier) finalPrice = roundUpTo5(finalPrice);
 
     setCart((prev) => {
       const existing = prev.find((c) => (c.cartId || c.id) === cartId);

@@ -16,6 +16,7 @@ export default function MenuManageView() {
     menu,
     stock,
     dynamicCategories,
+    beanModifiers,
     orders,
     expenses,
     isSyncing,
@@ -204,7 +205,7 @@ export default function MenuManageView() {
   const saveMenuItem = async (e) => {
     e.preventDefault();
     const col = collection(db, 'artifacts', appId, 'public', 'data', 'menu');
-    const data = { ...newItem, price: Number(newItem.price), beanExtra: Number(newItem.beanExtra) || 0 };
+    const data = { ...newItem, price: Number(newItem.price), beanExtra: Number(newItem.beanExtra) || 0, baseBeanIds: Array.isArray(newItem.baseBeanIds) ? newItem.baseBeanIds : [] };
     if (!data.category && dynamicCategories.length > 0) data.category = dynamicCategories[0].name;
     await runDbAction(async () => {
       if (editingItem) await updateDoc(doc(col, editingItem.id), data); else await addDoc(col, data);
@@ -777,6 +778,34 @@ export default function MenuManageView() {
                   placeholder="0"
                 />
                 <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">ราคาที่คิด = <strong>ค่าที่สูงกว่า</strong> ระหว่างราคาเมนู กับ (ราคาเมล็ดที่เลือก + ส่วนเพิ่มนี้)</p>
+
+                {/* Base beans for THIS menu: selecting one keeps the menu price (no surcharge) */}
+                <div className="mt-4">
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-2">เมล็ดที่คงราคาเมนู (เบส — ไม่บวกเพิ่ม)</label>
+                  {(!beanModifiers || beanModifiers.length === 0) ? (
+                    <p className="text-xs text-gray-400 italic font-bold">ยังไม่มีเมล็ดในระบบ (เพิ่มที่หน้าแอดมิน)</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {beanModifiers.map(b => {
+                        const selected = (newItem.baseBeanIds || []).includes(b.id);
+                        return (
+                          <button
+                            key={b.id}
+                            type="button"
+                            onClick={() => {
+                              const cur = newItem.baseBeanIds || [];
+                              const next = selected ? cur.filter(x => x !== b.id) : [...cur, b.id];
+                              setNewItem({ ...newItem, baseBeanIds: next });
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${selected ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-amber-300 hover:text-amber-600'}`}
+                          >
+                            #{b.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

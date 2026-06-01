@@ -16,6 +16,10 @@ export const POINTS_PER_BAHT = 10;                   // ทุก X บาท �
 export const VAT_RATE = 0.07;                        // อัตรา VAT 7%
 export const VAT_PERCENTAGE = 7;                     // สำหรับแสดงผล
 
+// ==================== PRICE ROUNDING ====================
+// ปัดราคาขึ้นเป็นพหุคูณของ 5 (สำหรับเมนูกาแฟ) เช่น 72→75, 102→105
+export const roundUpTo5 = (n) => Math.ceil((Number(n) || 0) / 5) * 5;
+
 // ==================== CAKE CLEARANCE (HAPPY HOUR) ====================
 export const DEFAULT_CAKE_SALE_PERCENT = 20;         // ส่วนลด % ช่วงล้างสต๊อกเค้ก
 export const DEFAULT_CAKE_SALE_START = '17:00';      // เริ่มช่วงลดราคา

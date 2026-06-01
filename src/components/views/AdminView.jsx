@@ -106,7 +106,7 @@ export default function AdminView() {
     date: getISODate(),
     note: ''
   });
-  const [newBeanModifier, setNewBeanModifier] = useState({ name: '', price: '', stockLinks: [] });
+  const [newBeanModifier, setNewBeanModifier] = useState({ name: '', price: '', stockLinks: [], isDefault: false });
   const [editingBeanModifierId, setEditingBeanModifierId] = useState(null);
   const [newQuickExpense, setNewQuickExpense] = useState({ label: '', title: '', amount: '', unit: '', category: DEFAULT_EXPENSE_CATEGORY, icon: '💰' });
   const [editingQuickExpenseId, setEditingQuickExpenseId] = useState(null);
@@ -1057,6 +1057,7 @@ export default function AdminView() {
                       name: String(newBeanModifier.name).trim(),
                       price: Number(newBeanModifier.price),
                       stockLinks: newBeanModifier.stockLinks || [],
+                      isDefault: newBeanModifier.isDefault === true,
                       updatedAt: serverTimestamp()
                     };
                     if (editingBeanModifierId) {
@@ -1064,7 +1065,7 @@ export default function AdminView() {
                     } else {
                       await addDoc(col, { ...data, createdAt: serverTimestamp() });
                     }
-                    setNewBeanModifier({ name: '', price: '', stockLinks: [] });
+                    setNewBeanModifier({ name: '', price: '', stockLinks: [], isDefault: false });
                     setEditingBeanModifierId(null);
                   }, editingBeanModifierId ? 'อัปเดตแท็กไม่สำเร็จ' : 'สร้างแท็กไม่สำเร็จ');
                 }} className="space-y-4">
@@ -1093,6 +1094,22 @@ export default function AdminView() {
                       <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">ระบบจะคิด<strong>ราคาที่สูงกว่า</strong>ระหว่างราคาเมนูกับราคาเมล็ด — เมนูที่แพงกว่าจะไม่ถูกลดราคาเพราะเลือกเมล็ด</p>
                     </div>
                   </div>
+
+                  {/* Default/base bean toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setNewBeanModifier({ ...newBeanModifier, isDefault: !newBeanModifier.isDefault })}
+                    className="w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all"
+                    style={{
+                      background: newBeanModifier.isDefault ? '#fffbeb' : '#f9fafb',
+                      border: `2px solid ${newBeanModifier.isDefault ? '#fcd34d' : '#f3f4f6'}`
+                    }}
+                  >
+                    <span className="text-sm font-black text-gray-700 text-left">เมล็ดเริ่มต้น (เบส) — เลือกแล้วใช้ราคาเมนู ไม่บวกเพิ่ม</span>
+                    <div className={`w-12 h-6 rounded-full relative transition-colors shrink-0 ${newBeanModifier.isDefault ? 'bg-amber-500' : 'bg-gray-300'}`}>
+                      <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${newBeanModifier.isDefault ? 'right-0.5' : 'left-0.5'}`} />
+                    </div>
+                  </button>
 
                   {/* Bean Stock Linking UI */}
                   <div className="bg-amber-50/50 p-6 rounded-[2rem] border border-amber-100 space-y-4">
@@ -1153,7 +1170,7 @@ export default function AdminView() {
                       <button
                         type="button"
                         onClick={() => {
-                          setNewBeanModifier({ name: '', price: '', stockLinks: [] });
+                          setNewBeanModifier({ name: '', price: '', stockLinks: [], isDefault: false });
                           setEditingBeanModifierId(null);
                         }}
                         className="flex-1 bg-gray-100 text-gray-500 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] active:scale-95"
@@ -1187,6 +1204,9 @@ export default function AdminView() {
                           {beanCost > 0 && (
                             <span className="text-xs font-black text-rose-500 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-100">ทุน ฿{beanCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                           )}
+                          {mod.isDefault && (
+                            <span className="text-xs font-black text-amber-700 bg-amber-200 px-2 py-0.5 rounded-lg">เบส</span>
+                          )}
                           {isHidden && (
                             <span className="text-xs font-black text-gray-500 bg-gray-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
                               <EyeOff size={10} /> ซ่อน (เมล็ดหมด)
@@ -1213,7 +1233,8 @@ export default function AdminView() {
                               setNewBeanModifier({
                                 name: mod.name,
                                 price: mod.price,
-                                stockLinks: mod.stockLinks || []
+                                stockLinks: mod.stockLinks || [],
+                                isDefault: mod.isDefault === true
                               });
                               setEditingBeanModifierId(mod.id);
                             }}
