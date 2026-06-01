@@ -55,6 +55,8 @@ export default function AdminView() {
     cakeSaleEnd,
     comboEnabled,
     comboPercent,
+    spendThreshold,
+    spendDiscount,
     adminTab,
     setAdminTab,
     runDbAction,
@@ -89,7 +91,9 @@ export default function AdminView() {
     cakeSaleStart: DEFAULT_CAKE_SALE_START,
     cakeSaleEnd: DEFAULT_CAKE_SALE_END,
     comboEnabled: false,
-    comboPercent: DEFAULT_COMBO_PERCENT
+    comboPercent: DEFAULT_COMBO_PERCENT,
+    spendThreshold: 0,
+    spendDiscount: 0
   });
   const [adminPanels, setAdminPanels] = useState({
     daily: true,
@@ -141,9 +145,11 @@ export default function AdminView() {
       cakeSaleStart: cakeSaleStart || DEFAULT_CAKE_SALE_START,
       cakeSaleEnd: cakeSaleEnd || DEFAULT_CAKE_SALE_END,
       comboEnabled: comboEnabled === true,
-      comboPercent: Number(comboPercent) || DEFAULT_COMBO_PERCENT
+      comboPercent: Number(comboPercent) || DEFAULT_COMBO_PERCENT,
+      spendThreshold: Number(spendThreshold) || 0,
+      spendDiscount: Number(spendDiscount) || 0
     });
-  }, [ADMIN_PIN, REDEEM_POINTS_THRESHOLD, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, geminiApiKey, STARTING_CASH, reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent]);
+  }, [ADMIN_PIN, REDEEM_POINTS_THRESHOLD, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, geminiApiKey, STARTING_CASH, reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount]);
 
   // Handle deep-linking from other views
   useEffect(() => {
@@ -337,6 +343,8 @@ export default function AdminView() {
         cakeSaleEnd: String(settingsDraft.cakeSaleEnd || DEFAULT_CAKE_SALE_END),
         comboEnabled: settingsDraft.comboEnabled === true,
         comboPercent: Number(settingsDraft.comboPercent) || 0,
+        spendThreshold: Number(settingsDraft.spendThreshold) || 0,
+        spendDiscount: Number(settingsDraft.spendDiscount) || 0,
         updatedAt: serverTimestamp()
       }, { merge: true });
       toast.success('บันทึกการตั้งค่าเรียบร้อยแล้ว');
@@ -965,6 +973,28 @@ export default function AdminView() {
                   placeholder="10"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-gray-400">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Spend threshold discount card */}
+          <div className="bg-white rounded-[3rem] p-8 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><Percent size={22} /></div>
+              <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">ส่วนลดเมื่อสั่งครบยอด (หน้า QR)</h2>
+            </div>
+            <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
+              <Percent size={18} className="text-emerald-500 shrink-0 mt-0.5" />
+              <p className="text-xs font-bold text-emerald-700 leading-relaxed">สั่งครบยอดที่กำหนด รับส่วนลดทันที + มีข้อความกระตุ้น "สั่งอีก ฿X รับส่วนลด" บนหน้า QR (ใส่ 0 = ปิด)</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">สั่งครบ (บาท)</label>
+                <input type="number" value={settingsDraft.spendThreshold} onChange={(e) => setSettingsDraft({ ...settingsDraft, spendThreshold: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ลด (บาท)</label>
+                <input type="number" value={settingsDraft.spendDiscount} onChange={(e) => setSettingsDraft({ ...settingsDraft, spendDiscount: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="0" />
               </div>
             </div>
           </div>

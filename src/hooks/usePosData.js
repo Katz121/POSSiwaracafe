@@ -41,6 +41,8 @@ export default function usePosData(user, appId) {
   const [cakeSaleEnd, setCakeSaleEnd] = useState(DEFAULT_CAKE_SALE_END);
   const [comboEnabled, setComboEnabled] = useState(false);
   const [comboPercent, setComboPercent] = useState(DEFAULT_COMBO_PERCENT);
+  const [spendThreshold, setSpendThreshold] = useState(0);
+  const [spendDiscount, setSpendDiscount] = useState(0);
 
   // Use user UID as dependency instead of user object to prevent
   // re-subscribing all listeners when Firebase refreshes auth token
@@ -93,11 +95,13 @@ export default function usePosData(user, appId) {
         if (data.cakeSaleEnd != null) setCakeSaleEnd(String(data.cakeSaleEnd));
         setComboEnabled(data.comboEnabled === true);
         if (data.comboPercent != null) setComboPercent(Number(data.comboPercent));
+        setSpendThreshold(Number(data.spendThreshold) || 0);
+        setSpendDiscount(Number(data.spendDiscount) || 0);
       }
     }, handleSnapshotError);
 
     return () => { unsubCats(); unsubMenu(); unsubStock(); unsubOrders(); unsubExp(); unsubMem(); unsubBeans(); unsubQuickExp(); unsubQueue(); unsubSettings(); };
   }, [userId, appId]);
 
-  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent };
+  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
 }

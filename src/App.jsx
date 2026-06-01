@@ -89,7 +89,7 @@ export default function App() {
     isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter,
     pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
     reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
-    comboEnabled, comboPercent
+    comboEnabled, comboPercent, spendThreshold, spendDiscount
   } = usePosData(user, appId);
 
   // App-level lock state — persisted in sessionStorage so a page refresh within the tab stays unlocked
@@ -320,11 +320,11 @@ export default function App() {
     redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount,
     geminiApiKey, startingCash,
     reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
-    comboEnabled, comboPercent,
+    comboEnabled, comboPercent, spendThreshold, spendDiscount,
   }), [pinEnabled, vatEnabled, adminPin, redeemPointsThreshold,
     redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
     reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
-    comboEnabled, comboPercent]);
+    comboEnabled, comboPercent, spendThreshold, spendDiscount]);
 
   const uiValue = useMemo(() => ({
     errorMessage, setErrorMessage,

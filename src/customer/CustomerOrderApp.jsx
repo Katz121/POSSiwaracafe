@@ -435,6 +435,7 @@ function CheckoutStep({
   // discount breakdown
   comboDiscount,
   pointsDiscount,
+  spendDiscount,
 }) {
   const itemCount = cart.reduce((s, i) => s + Number(i.quantity), 0);
   const canSubmit = customerName.trim().length > 0 && itemCount > 0 && !submitting;
@@ -504,6 +505,12 @@ function CheckoutStep({
             <div className="flex justify-between text-sm text-emerald-600">
               <span>ส่วนลดแต้มสมาชิก</span>
               <span>-{formatCurrency(pointsDiscount)}</span>
+            </div>
+          )}
+          {spendDiscount > 0 && (
+            <div className="flex justify-between text-sm text-amber-600">
+              <span>ส่วนลดสั่งครบยอด</span>
+              <span>-{formatCurrency(spendDiscount)}</span>
             </div>
           )}
           {vatEnabled && (
@@ -944,7 +951,13 @@ function CustomerOrderApp() {
   const combo = getComboDiscount(cart, settingsData);
   const comboDiscount = combo.applies ? combo.amount : 0;
   const pointsDiscount = (pointsEligible && usePoints) ? redeemDiscountValue : 0;
-  const discount = comboDiscount + pointsDiscount;
+  // Spend-threshold discount: order ≥ X → get ฿Y off (0 = disabled)
+  const spendThreshold = Number(settingsData.spendThreshold) || 0;
+  const spendDiscountValue = Number(settingsData.spendDiscount) || 0;
+  const spendActive = spendThreshold > 0 && spendDiscountValue > 0;
+  const spendDiscount = (spendActive && subtotal >= spendThreshold) ? spendDiscountValue : 0;
+  const spendRemaining = (spendActive && subtotal > 0 && subtotal < spendThreshold) ? (spendThreshold - subtotal) : 0;
+  const discount = comboDiscount + pointsDiscount + spendDiscount;
   const vat = settings.vatEnabled ? Math.round(Math.max(0, subtotal - discount) * VAT_RATE) : 0;
   const total = Math.max(0, subtotal - discount + vat);
 
@@ -1260,6 +1273,7 @@ function CustomerOrderApp() {
           redeemDiscountValue={redeemDiscountValue}
           comboDiscount={comboDiscount}
           pointsDiscount={pointsDiscount}
+          spendDiscount={spendDiscount}
         />
       </AnimatePresence>
     );
@@ -1372,6 +1386,32 @@ function CustomerOrderApp() {
           >
             <span className="text-white font-semibold text-sm">
               🎉 คุณได้รับส่วนลดคอมโบ {combo.percent}% แล้ว
+            </span>
+          </motion.div>
+        )}
+        {spendRemaining > 0 && (
+          <motion.div
+            key="spend-nudge"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center gap-2"
+          >
+            <span className="text-amber-700 font-semibold text-sm">
+              สั่งอีก {formatCurrency(spendRemaining)} รับส่วนลด {formatCurrency(spendDiscountValue)}! 🛒
+            </span>
+          </motion.div>
+        )}
+        {spendDiscount > 0 && (
+          <motion.div
+            key="spend-applied"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="mx-4 mt-3 bg-emerald-500 rounded-2xl px-4 py-3 flex items-center gap-2"
+          >
+            <span className="text-white font-semibold text-sm">
+              🎉 รับส่วนลด {formatCurrency(spendDiscountValue)} แล้ว (สั่งครบ {formatCurrency(spendThreshold)})
             </span>
           </motion.div>
         )}

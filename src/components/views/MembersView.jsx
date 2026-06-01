@@ -171,10 +171,16 @@ export default function MembersView() {
   };
 
   // Handlers
-  const syncMemberPoints = async (member) => {
+  const syncMemberPoints = async (member, silent = false) => {
     await runDbAction(async () => {
       const nameKey = getNameKey(member.name);
-      const memberId = member.phone || (String(member.id).startsWith('name-only:') ? member.id : (nameKey ? `name:${nameKey}` : null));
+      // Use the member's ACTUAL doc id for registered members (writing to
+      // members/{phone} can hit the wrong doc / create a duplicate when the doc
+      // id isn't the phone). name-only rows have no doc yet → create as name:key.
+      const isNameOnly = String(member.id || '').startsWith('name-only:');
+      const memberId = isNameOnly
+        ? (nameKey ? `name:${nameKey}` : null)
+        : (member.id || member.phone || (nameKey ? `name:${nameKey}` : null));
       if (!memberId) return;
 
       const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
@@ -196,7 +202,8 @@ export default function MembersView() {
         });
         await batch.commit();
       }
-    }, `ปรับปรุงแต้มของ ${member.name} เป็น ${member.expectedPoints} แต้มเรียบร้อย`);
+    }, 'ปรับปรุงแต้มไม่สำเร็จ');
+    if (!silent) toast.success(`ปรับปรุงแต้มของ ${member.name} เป็น ${member.expectedPoints} แต้มแล้ว`);
   };
 
   const fixAllPoints = () => {
@@ -216,7 +223,7 @@ export default function MembersView() {
     let errorCount = 0;
     for (const m of fixAllTargets) {
       try {
-        await syncMemberPoints(m);
+        await syncMemberPoints(m, true);
         count++;
       } catch {
         errorCount++;
