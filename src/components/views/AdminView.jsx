@@ -3,7 +3,7 @@ import {
   PieChart, Calendar, ChevronUp, ChevronDown, TrendingUp, Zap,
   History, Coffee, Link2, Plus, Trash2, Edit, BarChart3, DollarSign,
   ChefHat, FileText, Package, RefreshCcw, Banknote, Download, Save, Target, Settings, FolderCog,
-  QrCode, Printer, Smartphone, Star, Cake, Clock, Percent, Eye, EyeOff
+  QrCode, Printer, Smartphone, Star, Cake, Clock, Percent, Eye, EyeOff, Lock
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 // xlsx loaded dynamically to reduce bundle size (7MB library)
@@ -12,6 +12,7 @@ import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate } from '../../utils/calculations';
 import { seedDatabase } from '../../utils/seedData';
+import { recomputeAllSoldCounts } from '../../utils/menuSales';
 import { getUpsellStats, clearUpsellStats, exportUpsellStats } from '../../services/upsellTracker';
 import { Button, Modal, Input, Tabs, Card, Badge, Spinner, ConfirmModal, useToast } from '../ui';
 import {
@@ -58,7 +59,8 @@ export default function AdminView() {
     setAdminTab,
     runDbAction,
     setView,
-    aiUtils
+    aiUtils,
+    lockApp
   } = useAppContext();
 
   // Constants
@@ -292,6 +294,20 @@ export default function AdminView() {
       await seedDatabase(db, appId);
     }, 'กู้คืนข้อมูลไม่สำเร็จ');
     toast.success('กู้คืนข้อมูลเริ่มต้นสำเร็จ');
+  };
+
+  // Backfill best-seller counter from full order history
+  const [isBackfilling, setIsBackfilling] = useState(false);
+  const handleBackfillSoldCount = async () => {
+    setIsBackfilling(true);
+    try {
+      const { updated, total } = await recomputeAllSoldCounts(menu, orders);
+      toast.success(`คำนวณยอดขายย้อนหลังสำเร็จ (${updated}/${total} เมนู)`);
+    } catch (e) {
+      toast.error('คำนวณไม่สำเร็จ: ' + e.message);
+    } finally {
+      setIsBackfilling(false);
+    }
   };
 
   // Bean modifier stock link handlers
@@ -566,6 +582,16 @@ export default function AdminView() {
                   <div>
                     <label className="text-xs font-black text-gray-400 uppercase tracking-widest">PIN แอดมิน</label>
                     <input type="password" maxLength={6} value={settingsDraft.adminPin} onChange={(e) => setSettingsDraft({ ...settingsDraft, adminPin: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="เช่น 1234" />
+                    {lockApp && (
+                      <button
+                        type="button"
+                        onClick={() => { lockApp(); toast.success('ล็อกและลืมอุปกรณ์นี้แล้ว'); }}
+                        className="mt-3 w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gray-100 text-gray-600 font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all"
+                      >
+                        <Lock size={14} /> ล็อก &amp; ลืมอุปกรณ์นี้
+                      </button>
+                    )}
+                    <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">ใช้เมื่ออยากให้เครื่องนี้ถาม PIN ใหม่ — หรือเปลี่ยน PIN แล้วทุกเครื่องที่ "จำไว้" จะถูกล็อกอัตโนมัติ</p>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1444,7 +1470,8 @@ export default function AdminView() {
               document.body.removeChild(link);
             }} className="p-4 md:p-6 lg:p-10 bg-indigo-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-indigo-100 text-indigo-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all shadow-md active:scale-95"><Save size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">Backup JSON</span></button>
             <button onClick={() => setShowResetConfirm(true)} className="p-4 md:p-6 lg:p-10 bg-red-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-red-100 text-red-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all active:scale-95 leading-none"><RefreshCcw size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">ล้างคิวใหม่</span></button>
-            <button onClick={() => setShowSeedConfirm(true)} className="p-4 md:p-6 lg:p-10 bg-gray-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-gray-100 text-gray-400 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all active:scale-95 hover:bg-white hover:text-emerald-500 hover:border-emerald-200 col-span-2 md:col-span-1"><Banknote size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">กู้คืนข้อมูลเริ่มต้น</span></button>
+            <button onClick={() => setShowSeedConfirm(true)} className="p-4 md:p-6 lg:p-10 bg-gray-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-gray-100 text-gray-400 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all active:scale-95 hover:bg-white hover:text-emerald-500 hover:border-emerald-200"><Banknote size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">กู้คืนข้อมูลเริ่มต้น</span></button>
+            <button onClick={handleBackfillSoldCount} disabled={isBackfilling} className="p-4 md:p-6 lg:p-10 bg-amber-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-amber-100 text-amber-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none col-span-2 md:col-span-1"><TrendingUp size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">{isBackfilling ? 'กำลังคำนวณ...' : 'คำนวณยอดขายย้อนหลัง'}</span></button>
           </div>
         </div>
         )}

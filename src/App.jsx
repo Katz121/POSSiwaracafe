@@ -49,6 +49,17 @@ const MembersView = lazy(() => import('./components/views/MembersView'));
 const AdminView = lazy(() => import('./components/views/AdminView'));
 const FinancialView = lazy(() => import('./components/views/FinancialView'));
 
+// Stable token derived from the PIN. Stored on a "remembered" device so the app
+// stays unlocked across restarts — and so that changing the PIN later
+// automatically re-locks every remembered device (the token no longer matches).
+const DEVICE_TOKEN_KEY = 'pos_device_token';
+const pinDeviceToken = (pin) => {
+  let h = 5381;
+  const s = `siwara-pos:${pin}`;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+};
+
 // --- Main App Component ---
 export default function App() {
   // 1. Core States
@@ -68,6 +79,7 @@ export default function App() {
   const [appUnlocked, setAppUnlocked] = useState(() => sessionStorage.getItem('pos_unlocked') === '1');
   const [lockPinInput, setLockPinInput] = useState('');
   const [lockPinError, setLockPinError] = useState('');
+  const [rememberDevice, setRememberDevice] = useState(false);
 
   // Shared UI States
   const [errorMessage, setErrorMessage] = useState('');
@@ -85,9 +97,13 @@ export default function App() {
   // Constants
   const ADMIN_PIN = adminPin || '';
 
+  // This device was previously trusted ("จำอุปกรณ์นี้") for the CURRENT PIN.
+  // Derived (not stored in state) so changing the PIN re-locks it automatically.
+  const deviceRemembered = !!ADMIN_PIN && localStorage.getItem(DEVICE_TOKEN_KEY) === pinDeviceToken(ADMIN_PIN);
+
   // True when the app should show the lock screen instead of the main UI
   // (computed early so it can be referenced by useKeyboardShortcuts below)
-  const needsLock = pinEnabled && ADMIN_PIN && !appUnlocked;
+  const needsLock = pinEnabled && ADMIN_PIN && !appUnlocked && !deviceRemembered;
 
   // Get today's date for alerts
   const today = getISODate();
@@ -135,13 +151,13 @@ export default function App() {
 
   const handleViewChange = useCallback((newView) => {
     // If the whole app is already unlocked for this session, skip the per-view PIN prompt
-    if (pinEnabled && ADMIN_PIN && !appUnlocked && protectedViews.includes(newView)) {
+    if (pinEnabled && ADMIN_PIN && !appUnlocked && !deviceRemembered && protectedViews.includes(newView)) {
       setTargetView(newView);
       setShowPinModal(true);
     } else {
       setView(newView);
     }
-  }, [pinEnabled, ADMIN_PIN, appUnlocked, protectedViews]);
+  }, [pinEnabled, ADMIN_PIN, appUnlocked, deviceRemembered, protectedViews]);
 
   // Keyboard Shortcuts (include handleViewChange in deps to avoid stale closure)
   const keyboardHandlers = useMemo(() => ({
@@ -237,6 +253,13 @@ export default function App() {
     if (lockPinInput === ADMIN_PIN) {
       setAppUnlocked(true);
       sessionStorage.setItem('pos_unlocked', '1');
+      // "Remember this device": persist a PIN-derived token so future visits
+      // skip the lock. Cleared automatically when the PIN changes.
+      if (rememberDevice) {
+        localStorage.setItem(DEVICE_TOKEN_KEY, pinDeviceToken(ADMIN_PIN));
+      } else {
+        localStorage.removeItem(DEVICE_TOKEN_KEY);
+      }
       setLockPinInput('');
       setLockPinError('');
     } else {
@@ -244,6 +267,15 @@ export default function App() {
       setLockPinInput('');
     }
   };
+
+  // Re-lock the app and forget this device (clears remembered + session unlock).
+  const lockApp = useCallback(() => {
+    localStorage.removeItem(DEVICE_TOKEN_KEY);
+    sessionStorage.removeItem('pos_unlocked');
+    setRememberDevice(false);
+    setAppUnlocked(false);
+    setView('pos');
+  }, []);
 
   // Split context into 3 parts for performance — consumers only re-render when their part changes
   const dataValue = useMemo(() => ({
@@ -275,9 +307,10 @@ export default function App() {
     aiUtils, showKeyboardHelp, setShowKeyboardHelp,
     isNavExpanded, setIsNavExpanded,
     isDark, toggleDarkMode,
+    lockApp,
   }), [errorMessage, activePromotion, orderToCancel, editingOrderId, adminTab,
     runDbAction, callGeminiAPI, handleViewChange, updateStatus,
-    aiUtils, showKeyboardHelp, isNavExpanded, isDark, toggleDarkMode]);
+    aiUtils, showKeyboardHelp, isNavExpanded, isDark, toggleDarkMode, lockApp]);
 
   return (
     <AppProvider dataValue={dataValue} configValue={configValue} uiValue={uiValue}>
@@ -395,6 +428,19 @@ export default function App() {
                   </p>
                 )}
               </div>
+
+              {/* Remember this device */}
+              <label className="flex items-center gap-3 w-full px-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberDevice}
+                  onChange={(e) => setRememberDevice(e.target.checked)}
+                  className="w-5 h-5 rounded-md accent-emerald-500 cursor-pointer"
+                />
+                <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                  จำอุปกรณ์นี้ (ไม่ต้องใส่ PIN อีก)
+                </span>
+              </label>
 
               {/* Submit button */}
               <Button
