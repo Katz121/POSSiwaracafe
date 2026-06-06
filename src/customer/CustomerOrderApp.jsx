@@ -148,7 +148,7 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false }) {
 // ---------------------------------------------------------------------------
 // Sub-component: HighlightRail — horizontal carousel of highlighted menu items
 // ---------------------------------------------------------------------------
-function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds }) {
+function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoScroll = false }) {
   const [paused, setPaused] = useState(false);
   if (!items || items.length === 0) return null;
 
@@ -163,8 +163,9 @@ function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds }) {
     </div>
   );
 
-  // Few items already fit on screen — keep the simple static (scrollable) rail.
-  if (items.length <= 2) {
+  // Static (scrollable) rail unless this rail opts into auto-scroll AND has
+  // enough items to overflow. Only the best-seller rail enables autoScroll.
+  if (!autoScroll || items.length <= 2) {
     return (
       <section>
         <h2 className="text-sm font-bold text-gray-700 mb-2 px-4">{title}</h2>
@@ -666,16 +667,13 @@ function CheckoutStep({
 // ---------------------------------------------------------------------------
 // Sub-component: SuccessScreen
 // ---------------------------------------------------------------------------
-function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, canEarnReviewPoints = false, onReviewClick }) {
+function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber }) {
   const hasReviewUrl = typeof reviewUrl === 'string' && reviewUrl.trim() !== '';
   const [reviewDone, setReviewDone] = useState(false);
 
   const handleReviewClick = () => {
     window.open(reviewUrl.trim(), '_blank', 'noopener,noreferrer');
-    if (canEarnReviewPoints && !reviewDone) {
-      setReviewDone(true);
-      onReviewClick?.();
-    }
+    setReviewDone(true);
   };
 
   return (
@@ -731,16 +729,12 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, canEarnR
           className="mt-8 w-full max-w-xs bg-white rounded-2xl shadow-sm border border-emerald-100 px-5 py-4 text-center"
         >
           {reviewDone ? (
-            <p className="font-bold text-emerald-600 text-base py-2">ส่งคำขอแล้ว · รอร้านอนุมัติ 10 แต้ม 💚</p>
+            <p className="font-bold text-emerald-600 text-base py-2">ขอบคุณสำหรับรีวิว 💚</p>
           ) : (
             <>
-              <p className="font-bold text-gray-900 text-base mb-1">
-                {canEarnReviewPoints ? 'เขียนรีวิวรับ 10 แต้ม! 💚' : 'ถูกใจร้านเราไหม? 💚'}
-              </p>
+              <p className="font-bold text-gray-900 text-base mb-1">ถูกใจร้านเราไหม? 💚</p>
               <p className="text-gray-500 text-sm mb-4 leading-relaxed">
-                {canEarnReviewPoints
-                  ? 'ฝากรีวิวแล้วรับ 10 แต้ม (ร้านอนุมัติแล้วแต้มเข้าระบบ)'
-                  : 'ฝากรีวิวให้เราหน่อยน้า เป็นกำลังใจให้ร้านมากๆ'}
+                ฝากรีวิวให้เราหน่อยน้า เป็นกำลังใจให้ร้านมากๆ 🙏
               </p>
               <Button
                 variant="primary"
@@ -750,10 +744,14 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, canEarnR
                 onClick={handleReviewClick}
                 noUppercase
               >
-                เขียนรีวิว{canEarnReviewPoints ? ' รับ 10 แต้ม' : ''}
+                เขียนรีวิว
               </Button>
             </>
           )}
+          {/* Review is verified in person — show the review, then staff applies 5% at payment */}
+          <p className="text-emerald-700 text-sm font-semibold mt-3 leading-relaxed">
+            📣 รีวิวแล้ว แจ้งพนักงานตอนจ่ายเงิน รับส่วนลด 5% ทันที!
+          </p>
         </motion.div>
       )}
 
@@ -1283,20 +1281,6 @@ function CustomerOrderApp() {
 
   // Review reward = 10 points PENDING the shop's approval (we can't verify the
   // external review, so the owner approves it on the members page). Once per phone.
-  const awardReviewPoints = useCallback(async () => {
-    const phone = customerPhone.trim();
-    if (phone.length < 9) return;
-    try {
-      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'members', phone);
-      const snap = await getDoc(ref);
-      if (!snap.exists() || snap.data().reviewRewarded) return; // already requested/rewarded
-      await updateDoc(ref, { pendingPoints: increment(10), pendingReason: 'review', reviewRewarded: true });
-      setMember((m) => (m ? { ...m, reviewRewarded: true } : m));
-    } catch (e) {
-      console.warn('[review points] failed', e);
-    }
-  }, [customerPhone]);
-
   // ---------------------------------------------------------------------------
   // Loading screen
   // ---------------------------------------------------------------------------
@@ -1320,8 +1304,6 @@ function CustomerOrderApp() {
           customerName={customerName}
           onReset={handleReset}
           reviewUrl={settingsData.reviewUrl}
-          canEarnReviewPoints={customerPhone.trim().length >= 9 && !(member && member.reviewRewarded)}
-          onReviewClick={awardReviewPoints}
         />
       </AnimatePresence>
     );
@@ -1509,6 +1491,7 @@ function CustomerOrderApp() {
               items={bestSellers}
               onAdd={handleMenuItemClick}
               settingsData={settingsData}
+              autoScroll
             />
           )}
           {featuredItems.length > 0 && (
