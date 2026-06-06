@@ -959,25 +959,26 @@ export default function PosView() {
               {/* No "ไม่เพิ่มกาแฟ" default — it was confusing for non-coffee groups
                   (e.g. matcha). Staff/customer pick a bean/grade explicitly; the
                   base-price option shows in green among the choices below. */}
-              {beanModifiers.filter(b => b.available !== false && (b.group || 'เมล็ดกาแฟ') === (pendingBeanItem.modifierGroup || 'เมล็ดกาแฟ')).map(mod => {
-                // Base beans use the menu price; others: max(menu, bean + add-on).
-                // Rounded up to 5 for coffee.
-                const isBaseBean = mod.isDefault || (pendingBeanItem.baseBeanIds || []).includes(mod.id);
-                const beanBase = Number(pendingBeanItem.price) || 0;
-                const effective = roundUpTo5(isBaseBean ? beanBase : Math.max(beanBase, (Number(mod.price) || 0) + (Number(pendingBeanItem.beanExtra) || 0)));
-                const raisesPrice = effective > roundUpTo5(beanBase);
-                return (
+              {beanModifiers
+                .filter(b => b.available !== false && (b.group || 'เมล็ดกาแฟ') === (pendingBeanItem.modifierGroup || 'เมล็ดกาแฟ'))
+                .map(mod => {
+                  // Base beans use the menu price; others: max(menu, bean + add-on). Rounded up to 5.
+                  const isBaseBean = mod.isDefault || (pendingBeanItem.baseBeanIds || []).includes(mod.id);
+                  const beanBase = Number(pendingBeanItem.price) || 0;
+                  const effective = roundUpTo5(isBaseBean ? beanBase : Math.max(beanBase, (Number(mod.price) || 0) + (Number(pendingBeanItem.beanExtra) || 0)));
+                  return { mod, effective, raisesPrice: effective > roundUpTo5(beanBase) };
+                })
+                .sort((a, b) => a.effective - b.effective) // cheapest first
+                .map(({ mod, effective, raisesPrice }) => (
                 <button key={mod.id} onClick={() => addToCartWithBean(pendingBeanItem, mod)}
                   className="w-full p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 flex items-center justify-between hover:border-amber-500 transition-all">
                   <span className="font-bold text-amber-800 dark:text-amber-400">#{mod.name}</span>
-                  {/* Always show the price: beans at the base price use the green
-                      "ไม่เพิ่มกาแฟ" colour; beans that cost more are highlighted amber. */}
+                  {/* base-price beans use the green colour; pricier ones amber */}
                   <span className={`font-bold ${raisesPrice ? 'text-amber-600' : 'text-[var(--accent-emerald)]'}`}>
                     ฿{effective.toLocaleString()}
                   </span>
                 </button>
-                );
-              })}
+                ))}
             </div>
             <Button variant="secondary" fullWidth onClick={() => setPendingBeanItem(null)}>ยกเลิก</Button>
           </div>

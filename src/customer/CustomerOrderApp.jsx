@@ -188,14 +188,16 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
       {item && (
         <div className="space-y-3">
           <p className="text-sm text-gray-500">เลือก{item.modifierGroup || 'เมล็ดกาแฟ'}สำหรับ <strong>{item.name}</strong></p>
-          {modifiers.map((mod) => {
-            // Base beans use the menu price; others: max(menu, bean + add-on).
-            // Rounded up to 5 for coffee.
-            const isBaseBean = mod.isDefault || (item.baseBeanIds || []).includes(mod.id);
-            const base = Number(item.price) || 0;
-            const effective = roundUpTo5(isBaseBean ? base : Math.max(base, (Number(mod.price) || 0) + (Number(item.beanExtra) || 0)));
-            const raisesPrice = effective > roundUpTo5(base);
-            return (
+          {modifiers
+            .map((mod) => {
+              // Base beans use the menu price; others: max(menu, bean + add-on). Rounded up to 5.
+              const isBaseBean = mod.isDefault || (item.baseBeanIds || []).includes(mod.id);
+              const base = Number(item.price) || 0;
+              const effective = roundUpTo5(isBaseBean ? base : Math.max(base, (Number(mod.price) || 0) + (Number(item.beanExtra) || 0)));
+              return { mod, effective, raisesPrice: effective > roundUpTo5(base) };
+            })
+            .sort((a, b) => a.effective - b.effective) // cheapest first
+            .map(({ mod, effective, raisesPrice }) => (
               <motion.button
                 key={mod.id}
                 whileTap={{ scale: 0.97 }}
@@ -203,15 +205,12 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
                 className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-100 hover:border-emerald-400 hover:bg-emerald-50 transition-all text-left min-h-[56px]"
               >
                 <span className="font-semibold text-gray-800">{mod.name}</span>
-                {/* Always show the final price for every bean so the customer sees the
-                    full price up front. Beans that cost more than the menu price are
-                    highlighted in orange; normal-priced ones stay emerald. */}
+                {/* base-price beans stay emerald; pricier ones highlighted orange */}
                 <span className={`font-bold ${raisesPrice ? 'text-orange-500' : 'text-emerald-600'}`}>
                   {formatCurrency(effective)}
                 </span>
               </motion.button>
-            );
-          })}
+            ))}
         </div>
       )}
     </Modal>
