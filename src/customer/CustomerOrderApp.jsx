@@ -35,7 +35,6 @@ import {
   setDoc,
   getDoc,
   getDocs,
-  updateDoc,
   getCountFromServer,
   query,
   where,
