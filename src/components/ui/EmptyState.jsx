@@ -1,3 +1,4 @@
+import { isValidElement } from 'react';
 import { motion } from 'framer-motion';
 import { Package, Search, FileX, AlertCircle, ShoppingCart, Users, Receipt } from 'lucide-react';
 import Button from './Button';
@@ -77,7 +78,15 @@ const EmptyState = ({
 
       {(action || (actionLabel && onAction)) && (
         <div className="mt-4">
-          {action || (
+          {isValidElement(action) ? (
+            action
+          ) : action && typeof action === 'object' ? (
+            // Tolerate an { label, onClick } object (a common caller shape) instead
+            // of crashing with React error #31 "objects are not valid as a child".
+            <Button variant="primary" size="sm" onClick={action.onClick}>
+              {action.label}
+            </Button>
+          ) : (
             <Button variant="primary" size="sm" onClick={onAction}>
               {actionLabel}
             </Button>
