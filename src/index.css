@@ -257,6 +257,20 @@ html.dark {
   animation: float-blob 9s ease-in-out infinite 2s;
 }
 
+/* Horizontal auto-scroll (marquee) for the best-seller rail. Content is
+   duplicated, so translating -50% loops seamlessly. Duration + play-state are
+   set inline per-rail. Disabled when the user prefers reduced motion. */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee { animation: none; }
+}
+
 /* ============================================================
    RESPONSIVE FONT SCALING
    ============================================================ */

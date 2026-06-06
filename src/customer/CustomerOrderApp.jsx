@@ -149,21 +149,50 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false }) {
 // Sub-component: HighlightRail — horizontal carousel of highlighted menu items
 // ---------------------------------------------------------------------------
 function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds }) {
+  const [paused, setPaused] = useState(false);
   if (!items || items.length === 0) return null;
+
+  const card = (item, key, extra = '') => (
+    <div key={key} className={`w-40 flex-shrink-0 ${extra}`}>
+      <MenuItemCard
+        item={item}
+        onAdd={onAdd}
+        settingsData={settingsData}
+        isBestSeller={bestSellerIds ? bestSellerIds.has(item.id) : true}
+      />
+    </div>
+  );
+
+  // Few items already fit on screen — keep the simple static (scrollable) rail.
+  if (items.length <= 2) {
+    return (
+      <section>
+        <h2 className="text-sm font-bold text-gray-700 mb-2 px-4">{title}</h2>
+        <div className="flex gap-3 overflow-x-auto px-4 pb-1 scrollbar-hide">
+          {items.map((item) => card(item, item.id))}
+        </div>
+      </section>
+    );
+  }
+
+  // Auto-scrolling marquee: the items are duplicated so translating -50% loops
+  // seamlessly; it pauses while the customer hovers/touches so they can tap.
   return (
     <section>
       <h2 className="text-sm font-bold text-gray-700 mb-2 px-4">{title}</h2>
-      <div className="flex gap-3 overflow-x-auto px-4 pb-1 scrollbar-hide">
-        {items.map((item) => (
-          <div key={item.id} className="w-40 flex-shrink-0">
-            <MenuItemCard
-              item={item}
-              onAdd={onAdd}
-              settingsData={settingsData}
-              isBestSeller={bestSellerIds ? bestSellerIds.has(item.id) : true}
-            />
-          </div>
-        ))}
+      <div className="overflow-hidden pb-1">
+        <div
+          className="flex w-max animate-marquee"
+          style={{
+            animationDuration: `${items.length * 4}s`,
+            animationPlayState: paused ? 'paused' : 'running',
+          }}
+          onPointerEnter={() => setPaused(true)}
+          onPointerLeave={() => setPaused(false)}
+          onPointerCancel={() => setPaused(false)}
+        >
+          {[...items, ...items].map((item, i) => card(item, `${item.id}-${i}`, 'mr-3'))}
+        </div>
       </div>
     </section>
   );
