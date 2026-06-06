@@ -9,7 +9,6 @@ import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate, compressImage } from '../../utils/calculations';
 import { generateMenuImage } from '../../services/aiService';
-import { uploadImageToR2, isBase64Image } from '../../services/imageUpload';
 import { Button, Modal, EmptyState, useToast, ConfirmModal, InputModal, Skeleton } from '../ui';
 
 export default function MenuManageView() {
@@ -231,64 +230,19 @@ export default function MenuManageView() {
     return { ...p, stockLinks: next };
   });
 
-  // Image upload — compress, then push to R2 and store the public URL (not base64)
-  // so menu docs stay small and the customer publicMenu bundle fits Firestore.
+  // Image upload
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
       setIsUploading(true);
       const reader = new FileReader();
       reader.onloadend = async () => {
-        try {
-          const compressed = await compressImage(reader.result);
-          let image;
-          try {
-            image = await uploadImageToR2(compressed); // CDN URL (small)
-          } catch {
-            image = compressed; // image host not configured yet → keep base64 so upload still works
-          }
-          setNewItem((prev) => ({ ...prev, image }));
-        } finally {
-          setIsUploading(false);
-        }
+        const compressed = await compressImage(reader.result);
+        setNewItem({ ...newItem, image: compressed });
+        setIsUploading(false);
       };
       reader.readAsDataURL(file);
     }
-  };
-
-  // One-time migration: move existing inline base64 menu images to R2. Until this
-  // runs, the publicMenu bundle stays oversized and customers fall back to slower
-  // per-collection reads. Safe to re-run — it only touches items still on base64.
-  const [isMigratingImages, setIsMigratingImages] = useState(false);
-  const [migrateProgress, setMigrateProgress] = useState(0);
-  const pendingImageMigration = useMemo(
-    () => menu.filter((m) => isBase64Image(m.image)).length,
-    [menu],
-  );
-
-  const migrateImagesToR2 = async () => {
-    const targets = menu.filter((m) => isBase64Image(m.image));
-    if (targets.length === 0) {
-      toast.success('ทุกรูปอยู่บน R2 แล้ว ✓');
-      return;
-    }
-    setIsMigratingImages(true);
-    setMigrateProgress(0);
-    let done = 0;
-    let failed = 0;
-    for (const item of targets) {
-      try {
-        const url = await uploadImageToR2(item.image);
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menu', item.id), { image: url });
-        done++;
-      } catch (err) {
-        failed++;
-        console.error('[migrate] failed for', item.id, err);
-      }
-      setMigrateProgress(done + failed);
-    }
-    setIsMigratingImages(false);
-    toast[failed ? 'warning' : 'success'](`ย้ายรูปเสร็จ: สำเร็จ ${done}${failed ? ` · ล้มเหลว ${failed}` : ''}`);
   };
 
   // Category Management Handlers
@@ -670,22 +624,8 @@ export default function MenuManageView() {
 
       <div className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 lg:gap-8 p-4 md:p-6 lg:p-8 overflow-hidden text-gray-800">
         <div className="flex-1 bg-white rounded-2xl md:rounded-[3rem] lg:rounded-[4rem] shadow-sm border border-gray-100 overflow-hidden flex flex-col animate-in slide-in-from-left shadow-emerald-500/5">
-          <div className="p-4 md:p-6 lg:p-8 bg-gray-50/50 border-b font-black text-gray-400 text-xs md:text-xs uppercase flex justify-between items-center px-4 md:px-8 lg:px-10 tracking-[0.2em] leading-none">
+          <div className="p-4 md:p-6 lg:p-8 bg-gray-50/50 border-b font-black text-gray-400 text-xs md:text-xs uppercase flex justify-between px-4 md:px-8 lg:px-10 tracking-[0.2em] leading-none">
             <span>รายการเมนูอาหารทั้งหมด ({menu.length})</span>
-            {pendingImageMigration > 0 && (
-              <button
-                type="button"
-                onClick={migrateImagesToR2}
-                disabled={isMigratingImages}
-                title="ย้ายรูป base64 เดิมขึ้น R2 เพื่อให้เมนูลูกค้าโหลดเร็วและประหยัด Firestore read"
-                className="normal-case tracking-normal bg-amber-50 text-amber-700 border-2 border-amber-200 px-4 py-2 rounded-xl font-bold hover:bg-amber-100 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
-              >
-                <Upload size={14} />
-                {isMigratingImages
-                  ? `กำลังย้าย ${migrateProgress}/${pendingImageMigration}...`
-                  : `ย้ายรูปขึ้น R2 (${pendingImageMigration})`}
-              </button>
-            )}
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-gray-50 scrollbar-hide px-6">
             {isSyncing && (
@@ -1086,13 +1026,7 @@ Return [] if no stock items match.`;
                         const result = await generateMenuImage(geminiApiKey, newItem.name, newItem.category);
                         if (result.success && result.imageBase64) {
                           const compressed = await compressImage(result.imageBase64);
-                          let image;
-                          try {
-                            image = await uploadImageToR2(compressed); // CDN URL (small)
-                          } catch {
-                            image = compressed; // image host not configured yet → keep base64
-                          }
-                          setNewItem(prev => ({ ...prev, image }));
+                          setNewItem(prev => ({ ...prev, image: compressed }));
                           toast.success('AI สร้างรูปภาพสำเร็จ!');
                         } else {
                           toast.error(result.error || 'ไม่สามารถสร้างรูปภาพได้');
