@@ -1003,9 +1003,9 @@ function CustomerOrderApp() {
   const pointsDiscount = (pointsEligible && usePoints) ? redeemDiscountValue : 0;
   // Spend-threshold discount: order ≥ X → get ฿Y off (0 = disabled)
   const spendThreshold = Number(settingsData.spendThreshold) || 0;
-  const spendDiscountValue = Number(settingsData.spendDiscount) || 0;
-  const spendActive = spendThreshold > 0 && spendDiscountValue > 0;
-  const spendDiscount = (spendActive && subtotal >= spendThreshold) ? spendDiscountValue : 0;
+  const spendDiscountPercent = Number(settingsData.spendDiscount) || 0; // a % off once the threshold is reached
+  const spendActive = spendThreshold > 0 && spendDiscountPercent > 0;
+  const spendDiscount = (spendActive && subtotal >= spendThreshold) ? Math.round(subtotal * spendDiscountPercent / 100) : 0;
   const spendRemaining = (spendActive && subtotal > 0 && subtotal < spendThreshold) ? (spendThreshold - subtotal) : 0;
   const discount = comboDiscount + pointsDiscount + spendDiscount;
   const vat = settings.vatEnabled ? Math.round(Math.max(0, subtotal - discount) * VAT_RATE) : 0;
@@ -1462,7 +1462,7 @@ function CustomerOrderApp() {
             className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center gap-2"
           >
             <span className="text-amber-700 font-semibold text-sm">
-              สั่งอีก {formatCurrency(spendRemaining)} รับส่วนลด {formatCurrency(spendDiscountValue)}! 🛒
+              สั่งอีก {formatCurrency(spendRemaining)} รับส่วนลด {spendDiscountPercent}%! 🛒
             </span>
           </motion.div>
         )}
@@ -1475,7 +1475,7 @@ function CustomerOrderApp() {
             className="mx-4 mt-3 bg-emerald-500 rounded-2xl px-4 py-3 flex items-center gap-2"
           >
             <span className="text-white font-semibold text-sm">
-              🎉 รับส่วนลด {formatCurrency(spendDiscountValue)} แล้ว (สั่งครบ {formatCurrency(spendThreshold)})
+              🎉 รับส่วนลด {spendDiscountPercent}% แล้ว (สั่งครบ {formatCurrency(spendThreshold)})
             </span>
           </motion.div>
         )}

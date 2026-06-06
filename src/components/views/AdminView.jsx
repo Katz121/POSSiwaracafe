@@ -985,7 +985,7 @@ export default function AdminView() {
             </div>
             <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
               <Percent size={18} className="text-emerald-500 shrink-0 mt-0.5" />
-              <p className="text-xs font-bold text-emerald-700 leading-relaxed">สั่งครบยอดที่กำหนด รับส่วนลดทันที + มีข้อความกระตุ้น "สั่งอีก ฿X รับส่วนลด" บนหน้า QR (ใส่ 0 = ปิด)</p>
+              <p className="text-xs font-bold text-emerald-700 leading-relaxed">สั่งครบยอดที่กำหนด รับส่วนลด % ทันที + มีข้อความกระตุ้น "สั่งอีก ฿X รับส่วนลด Y%" บนหน้า QR (ใส่ 0 = ปิด)</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -993,7 +993,7 @@ export default function AdminView() {
                 <input type="number" value={settingsDraft.spendThreshold} onChange={(e) => setSettingsDraft({ ...settingsDraft, spendThreshold: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="0" />
               </div>
               <div>
-                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ลด (บาท)</label>
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ลด (%)</label>
                 <input type="number" value={settingsDraft.spendDiscount} onChange={(e) => setSettingsDraft({ ...settingsDraft, spendDiscount: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="0" />
               </div>
             </div>
