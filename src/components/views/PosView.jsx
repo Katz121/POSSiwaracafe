@@ -956,12 +956,9 @@ export default function PosView() {
           <div className="space-y-4">
             <p className="text-center font-medium -mt-2 mb-4 text-[var(--text-secondary)]">{pendingBeanItem.name}</p>
             <div className="space-y-3">
-              <button onClick={() => addToCartWithBean(pendingBeanItem, null)}
-                className="w-full p-4 rounded-xl border flex items-center justify-between hover:border-[var(--accent-emerald)] transition-all"
-                style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}>
-                <span className="font-bold text-[var(--text-primary)]">ไม่เพิ่มกาแฟ</span>
-                <span className="font-black text-[var(--accent-emerald)]">฿{Number(pendingBeanItem.price).toLocaleString()}</span>
-              </button>
+              {/* No "ไม่เพิ่มกาแฟ" default — it was confusing for non-coffee groups
+                  (e.g. matcha). Staff/customer pick a bean/grade explicitly; the
+                  base-price option shows in green among the choices below. */}
               {beanModifiers.filter(b => b.available !== false && (b.group || 'เมล็ดกาแฟ') === (pendingBeanItem.modifierGroup || 'เมล็ดกาแฟ')).map(mod => {
                 // Base beans use the menu price; others: max(menu, bean + add-on).
                 // Rounded up to 5 for coffee.
