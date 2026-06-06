@@ -819,6 +819,11 @@ function CustomerOrderApp() {
   // --- UI state ---
   const [activeCategory, setActiveCategory] = useState('ทั้งหมด');
   const [searchQuery, setSearchQuery] = useState('');
+  // Show a curated short list per category first (less choice paralysis); the
+  // customer expands to the full list on demand. Resets when the view changes.
+  const [showAllItems, setShowAllItems] = useState(false);
+  useEffect(() => { setShowAllItems(false); }, [activeCategory, searchQuery]);
+  const MENU_PREVIEW_COUNT = 8;
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [beanModalOpen, setBeanModalOpen] = useState(false);
   const [pendingItem, setPendingItem] = useState(null);
@@ -1483,43 +1488,34 @@ function CustomerOrderApp() {
             </span>
           </motion.div>
         )}
-        {spendActive && subtotal === 0 && (
+        {spendActive && (
           <motion.div
-            key="spend-promo"
+            key="spend-progress"
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center gap-2"
+            className={`mx-4 mt-3 rounded-2xl px-4 py-3 border ${spendDiscount > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}
           >
-            <span className="text-amber-700 font-semibold text-sm">
-              🛍️ สั่งครบ {formatCurrency(spendThreshold)} รับส่วนลด {spendDiscountPercent}%!
-            </span>
-          </motion.div>
-        )}
-        {spendRemaining > 0 && (
-          <motion.div
-            key="spend-nudge"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center gap-2"
-          >
-            <span className="text-amber-700 font-semibold text-sm">
-              สั่งอีก {formatCurrency(spendRemaining)} รับส่วนลด {spendDiscountPercent}%! 🛒
-            </span>
-          </motion.div>
-        )}
-        {spendDiscount > 0 && (
-          <motion.div
-            key="spend-applied"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="mx-4 mt-3 bg-emerald-500 rounded-2xl px-4 py-3 flex items-center gap-2"
-          >
-            <span className="text-white font-semibold text-sm">
-              🎉 รับส่วนลด {spendDiscountPercent}% แล้ว (สั่งครบ {formatCurrency(spendThreshold)})
-            </span>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className={`font-bold text-sm ${spendDiscount > 0 ? 'text-emerald-600' : 'text-amber-700'}`}>
+                {spendDiscount > 0
+                  ? `🎉 ได้ส่วนลด ${spendDiscountPercent}% แล้ว!`
+                  : subtotal === 0
+                    ? `🛍️ สั่งครบ ${formatCurrency(spendThreshold)} รับส่วนลด ${spendDiscountPercent}%`
+                    : `🎁 อีกแค่ ${formatCurrency(spendRemaining)} รับส่วนลด ${spendDiscountPercent}%!`}
+              </span>
+              <span className="text-[11px] font-bold text-gray-400 shrink-0">
+                {formatCurrency(Math.min(subtotal, spendThreshold))}/{formatCurrency(spendThreshold)}
+              </span>
+            </div>
+            <div className="h-2 bg-black/5 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-amber-400 to-emerald-500"
+                initial={false}
+                animate={{ width: `${Math.min(100, spendThreshold > 0 ? (subtotal / spendThreshold) * 100 : 0)}%` }}
+                transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+              />
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1560,22 +1556,32 @@ function CustomerOrderApp() {
             description={searchQuery ? `ไม่พบ "${searchQuery}" ลองค้นหาคำอื่น` : 'กรุณารอสักครู่'}
           />
         ) : (
-          <motion.div
-            layout
-            className="grid grid-cols-2 gap-3"
-          >
-            <AnimatePresence>
-              {filteredMenu.map((item) => (
-                <MenuItemCard
-                  key={item.id}
-                  item={item}
-                  onAdd={handleMenuItemClick}
-                  settingsData={settingsData}
-                  isBestSeller={bestSellerIds.has(item.id)}
-                />
-              ))}
-            </AnimatePresence>
-          </motion.div>
+          <>
+            <motion.div
+              layout
+              className="grid grid-cols-2 gap-3"
+            >
+              <AnimatePresence>
+                {(showAllItems || searchQuery.trim() ? filteredMenu : filteredMenu.slice(0, MENU_PREVIEW_COUNT)).map((item) => (
+                  <MenuItemCard
+                    key={item.id}
+                    item={item}
+                    onAdd={handleMenuItemClick}
+                    settingsData={settingsData}
+                    isBestSeller={bestSellerIds.has(item.id)}
+                  />
+                ))}
+              </AnimatePresence>
+            </motion.div>
+            {!showAllItems && !searchQuery.trim() && filteredMenu.length > MENU_PREVIEW_COUNT && (
+              <button
+                onClick={() => setShowAllItems(true)}
+                className="mt-4 w-full py-3 rounded-2xl border-2 border-emerald-200 text-emerald-600 font-bold text-sm bg-white hover:bg-emerald-50 transition-colors active:scale-[0.98]"
+              >
+                ดูเมนูทั้งหมด (+{filteredMenu.length - MENU_PREVIEW_COUNT}) ▾
+              </button>
+            )}
+          </>
         )}
       </main>
 
