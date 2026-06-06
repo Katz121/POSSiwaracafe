@@ -1,0 +1,22 @@
+# Cloudflare Pages configuration.
+#
+# Binds the R2 bucket that stores menu images to the Pages Functions runtime so
+# functions/api/upload-image.js can write to it via `env.MENU_BUCKET`, and
+# exposes the bucket's public base URL + Firebase project id to the function.
+#
+# If a MENU_BUCKET R2 binding also exists in the Pages dashboard, remove it so
+# this file is the single source of truth (avoids a duplicate-binding conflict).
+
+name = "possiwaracafe"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Firebase project id — verifies caller ID tokens on the upload endpoint.
+FIREBASE_PROJECT_ID = "siwarapos"
+# Public base URL of the R2 bucket (public r2.dev subdomain). Not a secret.
+PUBLIC_R2_BASE = "https://pub-d463619a014848819bdac456d1d599a2.r2.dev"
+
+[[r2_buckets]]
+binding = "MENU_BUCKET"
+bucket_name = "possiwaracafe-menu"
