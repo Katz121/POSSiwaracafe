@@ -671,7 +671,20 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber }) {
   const [reviewDone, setReviewDone] = useState(false);
 
   const handleReviewClick = () => {
-    window.open(reviewUrl.trim(), '_blank', 'noopener,noreferrer');
+    const url = reviewUrl.trim();
+    // Many customers aren't signed into Google in their (in-app) browser, which
+    // makes leaving a review painful. On Android, force the link into the Google
+    // Maps app — where they're usually already signed in — and fall back to the
+    // browser if Maps isn't installed. iOS/desktop open normally (a Maps
+    // universal link still opens the app when it's installed).
+    if (/Android/i.test(navigator.userAgent || '')) {
+      const noScheme = url.replace(/^https?:\/\//, '');
+      window.location.href =
+        `intent://${noScheme}#Intent;scheme=https;package=com.google.android.apps.maps;` +
+        `S.browser_fallback_url=${encodeURIComponent(url)};end`;
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
     setReviewDone(true);
   };
 
