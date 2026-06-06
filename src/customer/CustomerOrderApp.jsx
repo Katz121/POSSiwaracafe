@@ -1007,7 +1007,10 @@ function CustomerOrderApp() {
   const spendActive = spendThreshold > 0 && spendDiscountPercent > 0;
   const spendDiscount = (spendActive && subtotal >= spendThreshold) ? Math.round(subtotal * spendDiscountPercent / 100) : 0;
   const spendRemaining = (spendActive && subtotal > 0 && subtotal < spendThreshold) ? (spendThreshold - subtotal) : 0;
-  const discount = comboDiscount + pointsDiscount + spendDiscount;
+  // Combine all discounts (happy-hour is already in the item prices/subtotal;
+  // combo % + spend % + points stack additively on the same subtotal base) and
+  // cap at the subtotal so they can never exceed 100% / make the total negative.
+  const discount = Math.min(subtotal, comboDiscount + pointsDiscount + spendDiscount);
   const vat = settings.vatEnabled ? Math.round(Math.max(0, subtotal - discount) * VAT_RATE) : 0;
   const total = Math.max(0, subtotal - discount + vat);
 

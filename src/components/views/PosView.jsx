@@ -72,6 +72,7 @@ export default function PosView() {
   const [isPaid, setIsPaid] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
   const [bringOwnGlass, setBringOwnGlass] = useState(false);
+  const [reviewDiscount, setReviewDiscount] = useState(false); // staff applies 5% for a verified review
   const [pendingBeanItem, setPendingBeanItem] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
   const [isRecommending, setIsRecommending] = useState(false);
@@ -89,6 +90,11 @@ export default function PosView() {
 
   const combo = useMemo(() => getComboDiscount(cart, comboSettings), [cart, comboSettings]);
 
+  const reviewDiscountAmount = useMemo(
+    () => (reviewDiscount ? Math.round(subtotal * 0.05) : 0),
+    [reviewDiscount, subtotal],
+  );
+
   const discountAmount = useMemo(() => {
     let d = 0;
     if (usePoints) d += REDEEM_DISCOUNT_VALUE;
@@ -98,9 +104,11 @@ export default function PosView() {
         d += (Number(item.price) * Number(item.quantity) * (activePromotion.discountPercent / 100));
       }
     });
-    d += combo.amount;
-    return d;
-  }, [usePoints, bringOwnGlass, activePromotion, cart, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, combo.amount]);
+    d += combo.amount;          // คอมโบ % (บน subtotal หลัง happy-hour)
+    d += reviewDiscountAmount;  // รีวิว 5%
+    // Cap at the subtotal so combined discounts can never exceed 100% / go negative.
+    return Math.min(subtotal, d);
+  }, [usePoints, bringOwnGlass, activePromotion, cart, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, combo.amount, reviewDiscountAmount, subtotal]);
 
   const vatAmount = useMemo(() => vatEnabled ? Math.round(Math.max(0, subtotal - discountAmount) * VAT_RATE) : 0, [subtotal, discountAmount, vatEnabled]);
   const netTotal = useMemo(() => Math.max(0, (subtotal - discountAmount) + vatAmount), [subtotal, discountAmount, vatAmount]);
@@ -173,6 +181,7 @@ export default function PosView() {
         setCart(orderToEdit.items || []);
         setIsPaid(orderToEdit.isPaid || false);
         setBringOwnGlass(orderToEdit.bringOwnGlass || false);
+        setReviewDiscount(orderToEdit.reviewDiscount || false);
         setUsePoints(false);
         if (orderToEdit.memberPhone) setMemberPhone(orderToEdit.memberPhone);
         if (orderToEdit.memberNickname) setMemberNickname(orderToEdit.memberNickname);
@@ -322,7 +331,7 @@ export default function PosView() {
         status: 'pending',
         promotionTitle: activePromotion?.title || (combo.applies ? COMBO_PROMO_TITLE : ''),
         promotionDiscountPercent: activePromotion?.discountPercent || 0,
-        bringOwnGlass, createdAt: serverTimestamp(), date: getISODate(),
+        bringOwnGlass, reviewDiscount, createdAt: serverTimestamp(), date: getISODate(),
         time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
         table: 'Walk-in'
       };
@@ -373,7 +382,7 @@ export default function PosView() {
         // Best-selling counter (best-effort; never blocks the sale)
         bumpMenuSoldCount(cart);
       }
-      setCart([]); setIsPaid(false); setMemberPhone(''); setMemberNickname(''); setUsePoints(false); setBringOwnGlass(false);
+      setCart([]); setIsPaid(false); setMemberPhone(''); setMemberNickname(''); setUsePoints(false); setBringOwnGlass(false); setReviewDiscount(false);
       toast.success(editingOrderId ? 'แก้ไขออเดอร์สำเร็จ' : `บันทึกออเดอร์ #${queueCounter} สำเร็จ`);
     }, 'บันทึกออเดอร์ไม่สำเร็จ');
   };
@@ -534,6 +543,24 @@ export default function PosView() {
         </div>
       </button>
 
+      {/* Review-discount toggle — staff applies 5% once they've seen the customer's review */}
+      <button onClick={() => setReviewDiscount(!reviewDiscount)}
+        className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[var(--bg-secondary)] transition-all active:scale-[0.98]"
+        style={{ border: `1.5px solid ${reviewDiscount ? 'var(--accent-emerald)' : 'var(--border-color)'}` }}>
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)]">
+            <Star size={16} strokeWidth={2} />
+          </div>
+          <div className="text-left">
+            <div className="text-[13px] font-bold text-[var(--text-primary)]">รีวิวร้าน</div>
+            <div className="text-[10px] text-[var(--text-muted)]">ลด 5% (ลูกค้ารีวิวแล้ว)</div>
+          </div>
+        </div>
+        <div className={`w-10 h-6 rounded-full relative transition-colors ${reviewDiscount ? 'bg-[var(--accent-emerald)]' : 'bg-[var(--border-color)]'}`}>
+          <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${reviewDiscount ? 'right-0.5' : 'left-0.5'}`} />
+        </div>
+      </button>
+
       {/* Points card */}
       <div className="p-3 rounded-2xl bg-[var(--bg-secondary)] space-y-2">
         <div className="flex items-center justify-between">
@@ -599,6 +626,12 @@ export default function PosView() {
           <div className="flex justify-between text-xs text-[var(--accent-emerald)]">
             <span>ส่วนลดแก้วส่วนตัว</span>
             <span className="font-bold">-฿{OWN_GLASS_DISCOUNT}</span>
+          </div>
+        )}
+        {reviewDiscount && (
+          <div className="flex justify-between text-xs text-[var(--accent-emerald)]">
+            <span>ส่วนลดรีวิว (5%)</span>
+            <span className="font-bold">-฿{reviewDiscountAmount.toLocaleString()}</span>
           </div>
         )}
         {usePoints && (
