@@ -1032,6 +1032,12 @@ function CustomerOrderApp() {
   // Cart totals
   // ---------------------------------------------------------------------------
   const subtotal = cart.reduce((s, i) => s + Number(i.price) * Number(i.quantity), 0);
+  // Cakes only ever get the Happy-Hour discount; order-level promos (combo/spend)
+  // are computed on the non-cake (drinks) portion so cakes aren't discounted twice.
+  const nonCakeSubtotal = cart.reduce(
+    (s, i) => (isCakeCategory(i.category, settingsData) ? s : s + Number(i.price) * Number(i.quantity)),
+    0,
+  );
   const combo = getComboDiscount(cart, settingsData);
   const rawComboDiscount = combo.applies ? combo.amount : 0;
   const pointsDiscount = (pointsEligible && usePoints) ? redeemDiscountValue : 0;
@@ -1039,7 +1045,7 @@ function CustomerOrderApp() {
   const spendThreshold = Number(settingsData.spendThreshold) || 0;
   const spendDiscountPercent = Number(settingsData.spendDiscount) || 0; // a % off once the threshold is reached
   const spendActive = spendThreshold > 0 && spendDiscountPercent > 0;
-  const rawSpendDiscount = (spendActive && subtotal >= spendThreshold) ? Math.round(subtotal * spendDiscountPercent / 100) : 0;
+  const rawSpendDiscount = (spendActive && subtotal >= spendThreshold) ? Math.round(nonCakeSubtotal * spendDiscountPercent / 100) : 0;
   const spendRemaining = (spendActive && subtotal > 0 && subtotal < spendThreshold) ? (spendThreshold - subtotal) : 0;
   // Combo and spend-threshold do NOT stack — keep only the bigger of the two so the
   // order-level discount can't balloon. Happy-hour is already in item prices; points
@@ -1465,7 +1471,7 @@ function CustomerOrderApp() {
 
       {/* ---- Combo nudge banner ---- */}
       <AnimatePresence>
-        {combo.enabled && combo.percent > 0 && (combo.hasCake !== combo.hasDrink) && (
+        {combo.enabled && combo.percent > 0 && (combo.hasCake !== combo.hasDrink) && !happyHourActive && !(spendActive && subtotal >= spendThreshold) && (
           <motion.div
             key="combo-nudge"
             initial={{ opacity: 0, y: -8 }}
@@ -1499,12 +1505,14 @@ function CustomerOrderApp() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className={`mx-4 mt-3 rounded-2xl px-4 py-3 border ${spendDiscount > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}
+            className={`mx-4 mt-3 rounded-2xl px-4 py-3 border ${subtotal >= spendThreshold ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}
           >
             <div className="flex items-center justify-between gap-2 mb-2">
-              <span className={`font-bold text-sm ${spendDiscount > 0 ? 'text-emerald-600' : 'text-amber-700'}`}>
-                {spendDiscount > 0
-                  ? `🎉 ได้ส่วนลด ${spendDiscountPercent}% แล้ว!`
+              <span className={`font-bold text-sm ${subtotal >= spendThreshold ? 'text-emerald-600' : 'text-amber-700'}`}>
+                {subtotal >= spendThreshold
+                  ? (spendDiscount > 0
+                      ? `🎉 ได้ส่วนลด ${spendDiscountPercent}% แล้ว!`
+                      : `🎉 สั่งครบ ${formatCurrency(spendThreshold)} แล้ว!`)
                   : subtotal === 0
                     ? `🛍️ สั่งครบ ${formatCurrency(spendThreshold)} รับส่วนลด ${spendDiscountPercent}%`
                     : `🎁 อีกแค่ ${formatCurrency(spendRemaining)} รับส่วนลด ${spendDiscountPercent}%!`}

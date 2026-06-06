@@ -87,8 +87,15 @@ export const getComboDiscount = (cart, settings) => {
   const items = cart || [];
   const hasCake = items.some((i) => isCakeCategory(i.category, settings));
   const hasDrink = items.some((i) => !isCakeCategory(i.category, settings));
-  const applies = enabled && percent > 0 && hasCake && hasDrink && items.length > 0;
-  const amount = applies ? Math.round(cartSubtotal(items) * (percent / 100)) : 0;
+  // Combo is OFF while Happy Hour is running — both promos exist to move cakes,
+  // so running them together would double up on the same goal.
+  const applies = enabled && percent > 0 && hasCake && hasDrink && items.length > 0 && !isCakeSaleActive(settings);
+  // Discount applies to the NON-cake portion only — cakes are excluded from
+  // order-level promos so a Happy-Hour cake can't be discounted twice.
+  const nonCakeSubtotal = items
+    .filter((i) => !isCakeCategory(i.category, settings))
+    .reduce((s, i) => s + Number(i.price || 0) * Number(i.quantity || 0), 0);
+  const amount = applies ? Math.round(nonCakeSubtotal * (percent / 100)) : 0;
   return { enabled, applies, percent, amount, hasCake, hasDrink };
 };
 
