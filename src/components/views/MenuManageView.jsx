@@ -241,10 +241,13 @@ export default function MenuManageView() {
       reader.onloadend = async () => {
         try {
           const compressed = await compressImage(reader.result);
-          const url = await uploadImageToR2(compressed);
-          setNewItem((prev) => ({ ...prev, image: url }));
-        } catch (err) {
-          toast.error(err.message || 'อัปโหลดรูปไม่สำเร็จ');
+          let image;
+          try {
+            image = await uploadImageToR2(compressed); // CDN URL (small)
+          } catch {
+            image = compressed; // image host not configured yet → keep base64 so upload still works
+          }
+          setNewItem((prev) => ({ ...prev, image }));
         } finally {
           setIsUploading(false);
         }
@@ -1083,8 +1086,13 @@ Return [] if no stock items match.`;
                         const result = await generateMenuImage(geminiApiKey, newItem.name, newItem.category);
                         if (result.success && result.imageBase64) {
                           const compressed = await compressImage(result.imageBase64);
-                          const url = await uploadImageToR2(compressed);
-                          setNewItem(prev => ({ ...prev, image: url }));
+                          let image;
+                          try {
+                            image = await uploadImageToR2(compressed); // CDN URL (small)
+                          } catch {
+                            image = compressed; // image host not configured yet → keep base64
+                          }
+                          setNewItem(prev => ({ ...prev, image }));
                           toast.success('AI สร้างรูปภาพสำเร็จ!');
                         } else {
                           toast.error(result.error || 'ไม่สามารถสร้างรูปภาพได้');
