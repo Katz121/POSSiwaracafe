@@ -1483,6 +1483,19 @@ function CustomerOrderApp() {
             </span>
           </motion.div>
         )}
+        {spendActive && subtotal === 0 && (
+          <motion.div
+            key="spend-promo"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center gap-2"
+          >
+            <span className="text-amber-700 font-semibold text-sm">
+              🛍️ สั่งครบ {formatCurrency(spendThreshold)} รับส่วนลด {spendDiscountPercent}%!
+            </span>
+          </motion.div>
+        )}
         {spendRemaining > 0 && (
           <motion.div
             key="spend-nudge"
