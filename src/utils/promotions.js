@@ -74,8 +74,6 @@ export const cakeSaleNoteTag = (percent) => `[Happy Hour เค้ก -${percent
 // When the cart has at least one cake AND one non-cake item, a % discount applies.
 // Settings keys: comboEnabled (bool), comboPercent (number 0-100).
 // ---------------------------------------------------------------------------
-const cartSubtotal = (cart) =>
-  (cart || []).reduce((s, i) => s + Number(i.price || 0) * Number(i.quantity || 0), 0);
 
 /**
  * Evaluate the cake+drink combo for a cart.
