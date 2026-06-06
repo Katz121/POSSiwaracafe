@@ -15,7 +15,9 @@
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 // Fields in config/settings that must NEVER be exposed to customers.
-export const SENSITIVE_SETTINGS_KEYS = ['adminPin', 'geminiApiKey'];
+// (The customer page only needs display + promo config — never the admin PIN,
+//  API key, or the cash float.)
+export const SENSITIVE_SETTINGS_KEYS = ['adminPin', 'geminiApiKey', 'startingCash'];
 
 export function publicMenuDocRef(db, appId) {
   return doc(db, 'artifacts', appId, 'public', 'data', 'config', 'publicMenu');

@@ -203,10 +203,12 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
                 className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-100 hover:border-emerald-400 hover:bg-emerald-50 transition-all text-left min-h-[56px]"
               >
                 <span className="font-semibold text-gray-800">{mod.name}</span>
-                {/* Show the combined price only when this bean raises it above the menu price */}
-                {raisesPrice && (
-                  <span className="text-emerald-600 font-bold">{formatCurrency(effective)}</span>
-                )}
+                {/* Always show the final price for every bean so the customer sees the
+                    full price up front. Beans that cost more than the menu price are
+                    highlighted in orange; normal-priced ones stay emerald. */}
+                <span className={`font-bold ${raisesPrice ? 'text-orange-500' : 'text-emerald-600'}`}>
+                  {formatCurrency(effective)}
+                </span>
               </motion.button>
             );
           })}
@@ -836,16 +838,23 @@ function CustomerOrderApp() {
 
     // 2) Refresh from the single bundle doc (1 read). When we already painted
     //    from a stale cache this happens in the background with no spinner.
+    let bundle = null;
     try {
-      const bundle = await fetchPublicMenu(db, appId);
-      if (cancelledRef.current) return;
+      bundle = await fetchPublicMenu(db, appId);
+    } catch {
+      // Read failed (e.g. rules not deployed yet / transient) — fall through to
+      // the source-collection fallback below instead of showing an empty menu.
+      bundle = null;
+    }
+    if (cancelledRef.current) return;
 
-      if (bundle) {
-        applyBundle(bundle);
-        writeCachedPublicMenu(appId, bundle);
-      } else if (!cached) {
-        // Bundle not published yet and nothing cached — fall back to the 4
-        // sources once so the page still works during the transition.
+    if (bundle) {
+      applyBundle(bundle);
+      writeCachedPublicMenu(appId, bundle);
+    } else if (!cached) {
+      // No bundle and nothing cached — fall back to the 4 sources once so the
+      // page still works (bundle not published yet, or the read above failed).
+      try {
         const [menuSnap, catsSnap, beansSnap, settingsSnap] = await Promise.all([
           getDocs(collection(db, ...base, 'menu')),
           getDocs(collection(db, ...base, 'categories')),
@@ -857,12 +866,11 @@ function CustomerOrderApp() {
         setCategories(catsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setBeanModifiers(beansSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         applySettings(settingsSnap.exists() ? settingsSnap.data() : {});
+      } catch {
+        // Both paths failed — keep whatever defaults we have so the page renders.
       }
-    } catch {
-      // Swallow — keep the cache/defaults we already painted so the page renders.
-    } finally {
-      if (!cancelledRef.current) setLoading(false);
     }
+    if (!cancelledRef.current) setLoading(false);
   }, [applyBundle, applySettings]);
 
   useEffect(() => {
