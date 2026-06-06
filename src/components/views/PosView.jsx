@@ -973,10 +973,11 @@ export default function PosView() {
                 <button key={mod.id} onClick={() => addToCartWithBean(pendingBeanItem, mod)}
                   className="w-full p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 flex items-center justify-between hover:border-amber-500 transition-all">
                   <span className="font-bold text-amber-800 dark:text-amber-400">#{mod.name}</span>
-                  {/* Show the combined price only when this bean raises it above the menu price */}
-                  {raisesPrice && (
-                    <span className="font-bold text-amber-600">฿{effective.toLocaleString()}</span>
-                  )}
+                  {/* Always show the price: beans at the base price use the green
+                      "ไม่เพิ่มกาแฟ" colour; beans that cost more are highlighted amber. */}
+                  <span className={`font-bold ${raisesPrice ? 'text-amber-600' : 'text-[var(--accent-emerald)]'}`}>
+                    ฿{effective.toLocaleString()}
+                  </span>
                 </button>
                 );
               })}
