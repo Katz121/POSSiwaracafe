@@ -64,12 +64,17 @@ export default function usePosData(user, appId) {
       setIsSyncing(false);
     };
 
-    const unsubCats = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'categories'), (s) => setDynamicCategories(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
+    const unsubCats = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'categories'), (s) => {
+      setDynamicCategories(s.docs.map(d => ({ id: d.id, ...d.data() })));
+      // Unblock the full-screen loader as soon as the first (tiny) collection
+      // arrives. Don't wait for the 887-doc orders + multi-MB base64 menu — each
+      // view shows its own skeleton while its data streams in behind the shell.
+      setIsSyncing(false);
+    }, handleSnapshotError);
     const unsubMenu = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'menu'), (s) => setMenu(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
     const unsubStock = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'stock'), (s) => setStock(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
     const unsubOrders = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), (s) => {
       setOrders(s.docs.map(d => ({ id: d.id, ...d.data() })));
-      setIsSyncing(false);
     }, handleSnapshotError);
     const unsubExp = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'), (s) => setExpenses(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
     const unsubMem = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'members'), (s) => setMembers(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);

@@ -3,9 +3,10 @@
  * Provides offline caching and faster loading
  */
 
-const CACHE_NAME = 'pos-app-v1';
-const STATIC_CACHE = 'pos-static-v1';
-const DYNAMIC_CACHE = 'pos-dynamic-v1';
+// Bump these version suffixes on each deploy that must invalidate cached assets.
+const CACHE_NAME = 'pos-app-v2';
+const STATIC_CACHE = 'pos-static-v2';
+const DYNAMIC_CACHE = 'pos-dynamic-v2';
 
 // Files to cache immediately on install
 const STATIC_ASSETS = [
