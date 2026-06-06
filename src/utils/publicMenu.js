@@ -42,15 +42,35 @@ export function buildPublicMenuBundle({ menu = [], categories = [], beanModifier
   };
 }
 
+// Stay under Firestore's 1 MiB per-document hard limit (with headroom for field
+// names + overhead). Menu images are stored inline as base64, so a big menu can
+// realistically approach this.
+export const PUBLIC_MENU_SAFE_BYTES = 1_000_000;
+
 /**
  * Admin side: publish the bundle if it changed.
- * @param prevSerialized JSON string of the last bundle this device wrote.
- * @returns the new serialized bundle if written, or null if skipped (unchanged).
+ * @param prevSerialized JSON string of the last bundle this device processed.
+ * @returns the serialized bundle to remember as last-processed (whether it was
+ *          written OR skipped for being oversize — so we don't re-warn every
+ *          snapshot), or null if the content was unchanged.
  */
 export async function publishPublicMenu(db, appId, input, prevSerialized) {
   const bundle = buildPublicMenuBundle(input);
   const serialized = JSON.stringify(bundle);
   if (serialized === prevSerialized) return null; // unchanged → no write
+
+  if (serialized.length > PUBLIC_MENU_SAFE_BYTES) {
+    // Almost certainly base64 menu images pushing the doc over 1 MiB. Writing
+    // would throw, so skip and make the cause obvious. Customers keep working
+    // via the per-collection fallback. Fix: shrink menu images or move them to
+    // Firebase Storage / a CDN and store URLs instead of base64.
+    console.warn(
+      `[publicMenu] bundle is ${(serialized.length / 1024).toFixed(0)} KB — exceeds the ` +
+      `single-document budget; skipping publish (customers fall back to per-collection reads).`,
+    );
+    return serialized; // remember it so we don't warn again until the menu changes
+  }
+
   await setDoc(publicMenuDocRef(db, appId), { ...bundle, updatedAt: serverTimestamp() });
   return serialized;
 }
