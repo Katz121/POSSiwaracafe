@@ -15,6 +15,11 @@ name = "possiwaracafe"
 pages_build_output_dir = "dist"
 compatibility_date = "2025-01-01"
 
+# Firebase project id — used to verify caller ID tokens on the upload endpoint.
+# Public info (also in the client config), safe to commit.
+[vars]
+FIREBASE_PROJECT_ID = "siwarapos"
+
 [[r2_buckets]]
 binding = "MENU_BUCKET"
 bucket_name = "possiwaracafe-menu"
