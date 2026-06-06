@@ -27,7 +27,6 @@ import {
 import {
   collection,
   doc,
-  onSnapshot,
   addDoc,
   runTransaction,
   serverTimestamp,
@@ -35,12 +34,14 @@ import {
   arrayUnion,
   setDoc,
   getDoc,
+  getDocs,
   updateDoc,
   getCountFromServer,
   query,
   where,
 } from 'firebase/firestore';
 import { auth, db, appId } from '../services/firebase';
+import { fetchPublicMenu } from '../utils/publicMenu';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
 import { formatCurrency, VAT_RATE, roundUpTo5 } from '../config/constants';
 import { getISODate } from '../utils/calculations';
@@ -778,9 +779,6 @@ function CustomerOrderApp() {
   const [submitError, setSubmitError] = useState('');
   const [successQueue, setSuccessQueue] = useState(null);
 
-  // Cleanup listeners refs
-  const unsubs = useRef([]);
-
   // ---------------------------------------------------------------------------
   // Anonymous sign-in
   // ---------------------------------------------------------------------------
@@ -799,63 +797,62 @@ function CustomerOrderApp() {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Firestore subscriptions (start only after auth)
+  // Menu data — single one-time read from the prebuilt config/publicMenu bundle
+  // (1 Firestore read) instead of realtime listeners on 4 sources. Falls back to
+  // reading the 4 sources once if the bundle has not been published yet.
   // ---------------------------------------------------------------------------
+  // `cancelledRef` lets a re-trigger (load()) ignore stale results from a prior run.
+  const cancelledRef = useRef(false);
+
+  const applySettings = useCallback((data = {}) => {
+    setSettings({
+      shopName: data.shopName || 'ร้านกาแฟ',
+      vatEnabled: data.vatEnabled !== false,
+    });
+    setSettingsData(data || {});
+  }, []);
+
+  const load = useCallback(async () => {
+    const base = ['artifacts', appId, 'public', 'data'];
+    cancelledRef.current = false;
+    setLoading(true);
+    try {
+      const bundle = await fetchPublicMenu(db, appId);
+
+      if (bundle) {
+        if (cancelledRef.current) return;
+        setMenu(bundle.menu || []);
+        setCategories(bundle.categories || []);
+        setBeanModifiers(bundle.beanModifiers || []);
+        applySettings(bundle.settings || {});
+      } else {
+        // Bundle not published yet — fall back to reading the 4 sources once.
+        const [menuSnap, catsSnap, beansSnap, settingsSnap] = await Promise.all([
+          getDocs(collection(db, ...base, 'menu')),
+          getDocs(collection(db, ...base, 'categories')),
+          getDocs(collection(db, ...base, 'beanModifiers')),
+          getDoc(doc(db, ...base, 'config', 'settings')),
+        ]);
+        if (cancelledRef.current) return;
+        setMenu(menuSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setCategories(catsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setBeanModifiers(beansSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        applySettings(settingsSnap.exists() ? settingsSnap.data() : {});
+      }
+    } catch {
+      // Swallow — keep whatever defaults we have so the page still renders.
+    } finally {
+      if (!cancelledRef.current) setLoading(false);
+    }
+  }, [applySettings]);
+
   useEffect(() => {
     if (!authed) return;
-
-    const base = ['artifacts', appId, 'public', 'data'];
-
-    // Menu
-    const unsubMenu = onSnapshot(
-      collection(db, ...base, 'menu'),
-      (snap) => {
-        setMenu(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      },
-    );
-
-    // Categories
-    const unsubCats = onSnapshot(
-      collection(db, ...base, 'categories'),
-      (snap) => {
-        setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      },
-    );
-
-    // Bean modifiers
-    const unsubBeans = onSnapshot(
-      collection(db, ...base, 'beanModifiers'),
-      (snap) => {
-        setBeanModifiers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      },
-    );
-
-    // Settings (single doc)
-    const unsubSettings = onSnapshot(
-      doc(db, ...base, 'config', 'settings'),
-      (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          setSettings({
-            shopName: data.shopName || 'ร้านกาแฟ',
-            vatEnabled: data.vatEnabled !== false,
-          });
-          setSettingsData(data);
-        }
-        setLoading(false);
-      },
-      () => {
-        // settings doc may not exist
-        setLoading(false);
-      },
-    );
-
-    unsubs.current = [unsubMenu, unsubCats, unsubBeans, unsubSettings];
+    load();
     return () => {
-      unsubs.current.forEach((fn) => fn());
-      unsubs.current = [];
+      cancelledRef.current = true;
     };
-  }, [authed]);
+  }, [authed, load]);
 
   // ---------------------------------------------------------------------------
   // Derived: filtered menu

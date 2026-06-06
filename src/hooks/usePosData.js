@@ -1,6 +1,7 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { useEffect, useState, useRef } from 'react';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { publishPublicMenu } from '../utils/publicMenu';
 import {
   DEFAULT_ADMIN_PIN,
   DEFAULT_REDEEM_POINTS_THRESHOLD,
@@ -43,6 +44,10 @@ export default function usePosData(user, appId) {
   const [comboPercent, setComboPercent] = useState(DEFAULT_COMBO_PERCENT);
   const [spendThreshold, setSpendThreshold] = useState(0);
   const [spendDiscount, setSpendDiscount] = useState(0);
+  const [settingsRaw, setSettingsRaw] = useState(null);
+
+  // Serialized bundle this device last published to config/publicMenu (skip no-op writes).
+  const lastPublishedRef = useRef(null);
 
   // Use user UID as dependency instead of user object to prevent
   // re-subscribing all listeners when Firebase refreshes auth token
@@ -79,6 +84,7 @@ export default function usePosData(user, appId) {
     const unsubSettings = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), (d) => {
       if (d.exists()) {
         const data = d.data();
+        setSettingsRaw(data);
         setPinEnabled(data.pinEnabled !== false);
         setVatEnabled(data.vatEnabled !== false);
         if (data.adminPin) setAdminPin(String(data.adminPin));
@@ -102,6 +108,28 @@ export default function usePosData(user, appId) {
 
     return () => { unsubCats(); unsubMenu(); unsubStock(); unsubOrders(); unsubExp(); unsubMem(); unsubBeans(); unsubQuickExp(); unsubQueue(); unsubSettings(); };
   }, [userId, appId]);
+
+  // (Re)publish the single-doc customer menu bundle whenever the source data changes.
+  // Debounced so the initial burst of separate snapshot callbacks coalesces into one write.
+  useEffect(() => {
+    if (isSyncing || !appId) return; // don't publish a half-loaded/empty bundle
+
+    const timeout = setTimeout(async () => {
+      try {
+        const written = await publishPublicMenu(
+          db,
+          appId,
+          { menu, categories: dynamicCategories, beanModifiers, settings: settingsRaw || {} },
+          lastPublishedRef.current
+        );
+        if (written) lastPublishedRef.current = written;
+      } catch (err) {
+        console.error('publishPublicMenu failed:', err);
+      }
+    }, 800);
+
+    return () => clearTimeout(timeout);
+  }, [menu, dynamicCategories, beanModifiers, settingsRaw, appId, isSyncing]);
 
   return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
 }
