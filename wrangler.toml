@@ -1,0 +1,20 @@
+# Cloudflare Pages configuration.
+#
+# Binds the R2 bucket that stores menu images to the Pages Functions runtime so
+# functions/api/upload-image.js can write to it via `env.MENU_BUCKET`.
+#
+# NOTE: the public base URL of the bucket is set as a plain env var, NOT here,
+# because it's only known after you enable public access on the bucket:
+#   Cloudflare dashboard → Pages → possiwaracafe → Settings → Variables and Secrets
+#     PUBLIC_R2_BASE = https://pub-XXXXXXXX.r2.dev   (your bucket's public URL)
+#
+# The R2 binding below must also be confirmed in:
+#   Pages → possiwaracafe → Settings → Functions → R2 bucket bindings
+
+name = "possiwaracafe"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-01-01"
+
+[[r2_buckets]]
+binding = "MENU_BUCKET"
+bucket_name = "possiwaracafe-menu"
