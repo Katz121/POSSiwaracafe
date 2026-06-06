@@ -41,7 +41,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { auth, db, appId } from '../services/firebase';
-import { fetchPublicMenu } from '../utils/publicMenu';
+import { fetchPublicMenu, readCachedPublicMenu, writeCachedPublicMenu } from '../utils/publicMenu';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
 import { formatCurrency, VAT_RATE, roundUpTo5 } from '../config/constants';
 import { getISODate } from '../utils/calculations';
@@ -812,21 +812,40 @@ function CustomerOrderApp() {
     setSettingsData(data || {});
   }, []);
 
+  const applyBundle = useCallback((bundle) => {
+    setMenu(bundle.menu || []);
+    setCategories(bundle.categories || []);
+    setBeanModifiers(bundle.beanModifiers || []);
+    applySettings(bundle.settings || {});
+  }, [applySettings]);
+
   const load = useCallback(async () => {
     const base = ['artifacts', appId, 'public', 'data'];
     cancelledRef.current = false;
-    setLoading(true);
+
+    // 1) Paint instantly from the per-device cache (0 reads). If it's still
+    //    fresh, skip the network entirely — a returning customer costs nothing.
+    const cached = readCachedPublicMenu(appId);
+    if (cached) {
+      applyBundle(cached.bundle);
+      setLoading(false);
+      if (cached.fresh) return;
+    } else {
+      setLoading(true);
+    }
+
+    // 2) Refresh from the single bundle doc (1 read). When we already painted
+    //    from a stale cache this happens in the background with no spinner.
     try {
       const bundle = await fetchPublicMenu(db, appId);
+      if (cancelledRef.current) return;
 
       if (bundle) {
-        if (cancelledRef.current) return;
-        setMenu(bundle.menu || []);
-        setCategories(bundle.categories || []);
-        setBeanModifiers(bundle.beanModifiers || []);
-        applySettings(bundle.settings || {});
-      } else {
-        // Bundle not published yet — fall back to reading the 4 sources once.
+        applyBundle(bundle);
+        writeCachedPublicMenu(appId, bundle);
+      } else if (!cached) {
+        // Bundle not published yet and nothing cached — fall back to the 4
+        // sources once so the page still works during the transition.
         const [menuSnap, catsSnap, beansSnap, settingsSnap] = await Promise.all([
           getDocs(collection(db, ...base, 'menu')),
           getDocs(collection(db, ...base, 'categories')),
@@ -840,11 +859,11 @@ function CustomerOrderApp() {
         applySettings(settingsSnap.exists() ? settingsSnap.data() : {});
       }
     } catch {
-      // Swallow — keep whatever defaults we have so the page still renders.
+      // Swallow — keep the cache/defaults we already painted so the page renders.
     } finally {
       if (!cancelledRef.current) setLoading(false);
     }
-  }, [applySettings]);
+  }, [applyBundle, applySettings]);
 
   useEffect(() => {
     if (!authed) return;

@@ -63,3 +63,38 @@ export async function fetchPublicMenu(db, appId) {
   if (!snap.exists()) return null;
   return snap.data();
 }
+
+// ---------------------------------------------------------------------------
+// localStorage cache (per device) — lets a returning customer paint the menu
+// instantly with ZERO Firestore reads, and skip the network entirely while the
+// cache is still fresh. A coffee-shop menu barely changes intra-day, so a few
+// minutes of staleness is a fine trade for cutting reads on refreshes/re-scans.
+// ---------------------------------------------------------------------------
+export const PUBLIC_MENU_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+const cacheKey = (appId) => `publicMenu:${appId}`;
+
+/**
+ * @returns { bundle, fresh } where `fresh` means the cache is within TTL and the
+ *          caller may skip the network read, or null if there is no usable cache.
+ */
+export function readCachedPublicMenu(appId) {
+  try {
+    const raw = localStorage.getItem(cacheKey(appId));
+    if (!raw) return null;
+    const { bundle, cachedAt } = JSON.parse(raw);
+    if (!bundle) return null;
+    const age = Date.now() - (cachedAt || 0);
+    return { bundle, fresh: age >= 0 && age < PUBLIC_MENU_CACHE_TTL_MS };
+  } catch {
+    return null; // corrupt entry / disabled storage → behave as no cache
+  }
+}
+
+export function writeCachedPublicMenu(appId, bundle) {
+  try {
+    localStorage.setItem(cacheKey(appId), JSON.stringify({ bundle, cachedAt: Date.now() }));
+  } catch {
+    // quota exceeded / private mode — caching is best-effort, ignore.
+  }
+}
