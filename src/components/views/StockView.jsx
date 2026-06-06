@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ChevronLeft, Box, Plus, Minus, Edit, Trash2, Package, AlertTriangle, AlertCircle } from 'lucide-react';
 import { collection, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
@@ -10,6 +10,17 @@ import { DEFAULT_STOCK_UNIT, DEFAULT_MIN_QUANTITY } from '../../config/constants
 export default function StockView() {
   const { stock, isSyncing, runDbAction, handleViewChange } = useAppContext();
   const toast = useToast();
+
+  // Show the most-depleted items first (furthest below their reorder point) so
+  // anything near/out of stock surfaces at the top for quick action.
+  const sortedStock = useMemo(
+    () => [...stock].sort(
+      (a, b) =>
+        (Number(b.minQuantity) - Number(b.quantity)) -
+        (Number(a.minQuantity) - Number(a.quantity)),
+    ),
+    [stock],
+  );
 
   // Local states
   const [newStockItem, setNewStockItem] = useState({ name: '', quantity: 0, unit: DEFAULT_STOCK_UNIT, minQuantity: DEFAULT_MIN_QUANTITY, unitCost: 0 });
@@ -116,7 +127,7 @@ export default function StockView() {
                   onAction={() => setNewStockItem({ name: '', quantity: 0, unit: DEFAULT_STOCK_UNIT, minQuantity: DEFAULT_MIN_QUANTITY, unitCost: 0 })}
                 />
               )}
-              {stock.map(item => (
+              {sortedStock.map(item => (
                 <div
                   key={item.id}
                   className={`p-3 md:p-4 lg:p-5 xl:p-8 flex flex-col sm:flex-row items-center gap-3 md:gap-4 lg:gap-6 xl:gap-8 group rounded-2xl md:rounded-[2rem] xl:rounded-[2.5rem] transition-all my-2 md:my-3 border shadow-sm ${Number(item.quantity) <= Number(item.minQuantity)
