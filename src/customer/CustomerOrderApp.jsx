@@ -882,13 +882,15 @@ function CustomerOrderApp() {
     const base = ['artifacts', appId, 'public', 'data'];
     cancelledRef.current = false;
 
-    // 1) Paint instantly from the per-device cache (0 reads). If it's still
-    //    fresh, skip the network entirely — a returning customer costs nothing.
+    // 1) Paint instantly from the per-device cache for a fast first frame, then
+    //    ALWAYS revalidate against the latest bundle below (step 2). This way shop
+    //    setting changes (Happy Hour on/off, prices, spend threshold) show on the
+    //    next load instead of being stuck behind a cache TTL. The bundle is tiny
+    //    (image URLs, not base64) so the extra read is cheap.
     const cached = readCachedPublicMenu(appId);
     if (cached) {
       applyBundle(cached.bundle);
       setLoading(false);
-      if (cached.fresh) return;
     } else {
       setLoading(true);
     }

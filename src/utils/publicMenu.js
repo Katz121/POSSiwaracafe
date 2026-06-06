@@ -96,7 +96,10 @@ export async function fetchPublicMenu(db, appId) {
 // cache is still fresh. A coffee-shop menu barely changes intra-day, so a few
 // minutes of staleness is a fine trade for cutting reads on refreshes/re-scans.
 // ---------------------------------------------------------------------------
-export const PUBLIC_MENU_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+// Short TTL so shop setting changes (Happy Hour on/off, spend threshold, prices)
+// reach customers within ~a minute. The bundle is tiny (image URLs, not base64),
+// so a fresh read is cheap; the cache mainly de-dupes rapid reloads/re-scans.
+export const PUBLIC_MENU_CACHE_TTL_MS = 60 * 1000; // 60 seconds
 
 const cacheKey = (appId) => `publicMenu:${appId}`;
 
