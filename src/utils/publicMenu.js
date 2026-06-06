@@ -12,7 +12,7 @@
  * Bonus: this strips admin-only secrets (adminPin, geminiApiKey) that the old
  * full-settings read was leaking to every customer device.
  */
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
 // Fields in config/settings that must NEVER be exposed to customers.
 // (The customer page only needs display + promo config — never the admin PIN,
@@ -68,7 +68,11 @@ export async function publishPublicMenu(db, appId, input, prevSerialized) {
       `[publicMenu] bundle is ${(serialized.length / 1024).toFixed(0)} KB — exceeds the ` +
       `single-document budget; skipping publish (customers fall back to per-collection reads).`,
     );
-    return serialized; // remember it so we don't warn again until the menu changes
+    // Remove any previously-published (now-stale) bundle, otherwise customers
+    // would keep reading the old smaller doc forever and never see updates —
+    // deleting it forces them onto the live per-collection fallback instead.
+    try { await deleteDoc(publicMenuDocRef(db, appId)); } catch { /* already gone / no perms */ }
+    return serialized; // remember it so we don't warn + delete again until the menu changes
   }
 
   await setDoc(publicMenuDocRef(db, appId), { ...bundle, updatedAt: serverTimestamp() });

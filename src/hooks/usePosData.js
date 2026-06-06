@@ -112,7 +112,10 @@ export default function usePosData(user, appId) {
   // (Re)publish the single-doc customer menu bundle whenever the source data changes.
   // Debounced so the initial burst of separate snapshot callbacks coalesces into one write.
   useEffect(() => {
-    if (isSyncing || !appId) return; // don't publish a half-loaded/empty bundle
+    // Don't publish a half-loaded bundle. `isSyncing` only clears from the orders
+    // snapshot, which can resolve before the menu snapshot — so also require menu
+    // to have loaded, otherwise an empty `menu` could overwrite a good bundle.
+    if (isSyncing || !appId || menu.length === 0) return;
 
     const timeout = setTimeout(async () => {
       try {

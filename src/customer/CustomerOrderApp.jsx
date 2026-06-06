@@ -1108,6 +1108,31 @@ function CustomerOrderApp() {
       const queueRef = doc(db, ...base, 'config', 'queue');
       const phone = customerPhone.trim();
 
+      // Re-validate availability against a fresh menu snapshot (1 read) before we
+      // burn a queue number — the customer's menu may be up to the cache TTL stale,
+      // so an item could have been marked sold-out since they added it. Fail-open:
+      // any error here must NOT block a legitimate order.
+      try {
+        const fresh = await fetchPublicMenu(db, appId);
+        if (fresh && Array.isArray(fresh.menu)) {
+          const availableIds = new Set(
+            fresh.menu.filter((m) => m.available !== false).map((m) => m.id),
+          );
+          const soldOut = cart.filter((c) => !availableIds.has(c.id));
+          if (soldOut.length > 0) {
+            const names = [...new Set(soldOut.map((c) => c.name))].join(', ');
+            setSubmitError(`ขออภัย "${names}" เพิ่งหมด กรุณานำออกจากตะกร้าแล้วลองใหม่อีกครั้ง`);
+            applyBundle(fresh);              // refresh the menu so the UI matches reality
+            writeCachedPublicMenu(appId, fresh);
+            setSubmitting(false);
+            return;
+          }
+          writeCachedPublicMenu(appId, fresh); // menu still valid — keep cache current
+        }
+      } catch {
+        // Fresh read failed (network / rules) — proceed rather than block the order.
+      }
+
       let assignedQueue;
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(queueRef);
