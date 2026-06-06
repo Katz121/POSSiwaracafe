@@ -1033,17 +1033,20 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   const subtotal = cart.reduce((s, i) => s + Number(i.price) * Number(i.quantity), 0);
   const combo = getComboDiscount(cart, settingsData);
-  const comboDiscount = combo.applies ? combo.amount : 0;
+  const rawComboDiscount = combo.applies ? combo.amount : 0;
   const pointsDiscount = (pointsEligible && usePoints) ? redeemDiscountValue : 0;
-  // Spend-threshold discount: order ≥ X → get ฿Y off (0 = disabled)
+  // Spend-threshold discount: order ≥ X → get Y% off (0 = disabled)
   const spendThreshold = Number(settingsData.spendThreshold) || 0;
   const spendDiscountPercent = Number(settingsData.spendDiscount) || 0; // a % off once the threshold is reached
   const spendActive = spendThreshold > 0 && spendDiscountPercent > 0;
-  const spendDiscount = (spendActive && subtotal >= spendThreshold) ? Math.round(subtotal * spendDiscountPercent / 100) : 0;
+  const rawSpendDiscount = (spendActive && subtotal >= spendThreshold) ? Math.round(subtotal * spendDiscountPercent / 100) : 0;
   const spendRemaining = (spendActive && subtotal > 0 && subtotal < spendThreshold) ? (spendThreshold - subtotal) : 0;
-  // Combine all discounts (happy-hour is already in the item prices/subtotal;
-  // combo % + spend % + points stack additively on the same subtotal base) and
-  // cap at the subtotal so they can never exceed 100% / make the total negative.
+  // Combo and spend-threshold do NOT stack — keep only the bigger of the two so the
+  // order-level discount can't balloon. Happy-hour is already in item prices; points
+  // (a redeemed member reward) still stacks. These effective values also drive the UI.
+  const comboWins = rawComboDiscount >= rawSpendDiscount;
+  const comboDiscount = comboWins ? rawComboDiscount : 0;
+  const spendDiscount = comboWins ? 0 : rawSpendDiscount;
   const discount = Math.min(subtotal, comboDiscount + pointsDiscount + spendDiscount);
   const vat = settings.vatEnabled ? Math.round(Math.max(0, subtotal - discount) * VAT_RATE) : 0;
   const total = Math.max(0, subtotal - discount + vat);
@@ -1477,7 +1480,7 @@ function CustomerOrderApp() {
             </span>
           </motion.div>
         )}
-        {combo.applies && (
+        {comboDiscount > 0 && (
           <motion.div
             key="combo-applied"
             initial={{ opacity: 0, y: -8 }}
@@ -1490,7 +1493,7 @@ function CustomerOrderApp() {
             </span>
           </motion.div>
         )}
-        {spendActive && (
+        {spendActive && comboDiscount === 0 && (
           <motion.div
             key="spend-progress"
             initial={{ opacity: 0, y: -8 }}
