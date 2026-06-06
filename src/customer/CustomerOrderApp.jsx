@@ -670,6 +670,10 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber }) {
   const hasReviewUrl = typeof reviewUrl === 'string' && reviewUrl.trim() !== '';
   const [reviewDone, setReviewDone] = useState(false);
 
+  // Hosts we'll hand off to the Google Maps app. reviewUrl is admin-set but the
+  // settings doc is writable by any anonymous client, so treat it as untrusted.
+  const MAPS_HOSTS = ['maps.app.goo.gl', 'g.page', 'goo.gl', 'maps.google.com', 'www.google.com', 'search.google.com'];
+
   const handleReviewClick = () => {
     const url = reviewUrl.trim();
     // Many customers aren't signed into Google in their (in-app) browser, which
@@ -678,13 +682,23 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber }) {
     // browser if Maps isn't installed. iOS/desktop open normally (a Maps
     // universal link still opens the app when it's installed).
     if (/Android/i.test(navigator.userAgent || '')) {
-      const noScheme = url.replace(/^https?:\/\//, '');
-      window.location.href =
-        `intent://${noScheme}#Intent;scheme=https;package=com.google.android.apps.maps;` +
-        `S.browser_fallback_url=${encodeURIComponent(url)};end`;
-    } else {
-      window.open(url, '_blank', 'noopener,noreferrer');
+      try {
+        const u = new URL(url);
+        if (u.protocol === 'https:' && MAPS_HOSTS.includes(u.host)) {
+          // Rebuild from parsed pieces (no hash / userinfo) so the untrusted URL
+          // can't inject extra intent params, and confine it to Google Maps.
+          const safeHostPath = u.host + u.pathname + u.search;
+          window.location.href =
+            `intent://${safeHostPath}#Intent;scheme=https;package=com.google.android.apps.maps;` +
+            `S.browser_fallback_url=${encodeURIComponent(u.toString())};end`;
+          setReviewDone(true);
+          return;
+        }
+      } catch {
+        // invalid URL — fall through to opening a normal tab
+      }
     }
+    window.open(url, '_blank', 'noopener,noreferrer');
     setReviewDone(true);
   };
 
