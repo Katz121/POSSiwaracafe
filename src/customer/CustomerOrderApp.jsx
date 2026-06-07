@@ -1032,9 +1032,10 @@ function CustomerOrderApp() {
   // Cart totals
   // ---------------------------------------------------------------------------
   const subtotal = cart.reduce((s, i) => s + Number(i.price) * Number(i.quantity), 0);
-  // The combo "set" promo discounts the whole cart as one bundle (see getComboDiscount).
-  // The spend-threshold promo still applies to the non-cake (drinks) portion only, so a
-  // Happy-Hour cake can't be discounted twice by it.
+  // Both the combo "set" promo (see getComboDiscount) and the spend-threshold promo
+  // discount the whole cart as one bundle (cake + drink together). The only exception is
+  // while Happy Hour is running: cakes already carry a per-item discount in their price,
+  // so the spend promo falls back to the non-cake (drinks) portion to avoid double-discount.
   const nonCakeSubtotal = cart.reduce(
     (s, i) => (isCakeCategory(i.category, settingsData) ? s : s + Number(i.price) * Number(i.quantity)),
     0,
@@ -1046,7 +1047,8 @@ function CustomerOrderApp() {
   const spendThreshold = Number(settingsData.spendThreshold) || 0;
   const spendDiscountPercent = Number(settingsData.spendDiscount) || 0; // a % off once the threshold is reached
   const spendActive = spendThreshold > 0 && spendDiscountPercent > 0;
-  const rawSpendDiscount = (spendActive && subtotal >= spendThreshold) ? Math.round(nonCakeSubtotal * spendDiscountPercent / 100) : 0;
+  const spendBase = isCakeSaleActive(settingsData) ? nonCakeSubtotal : subtotal;
+  const rawSpendDiscount = (spendActive && subtotal >= spendThreshold) ? Math.round(spendBase * spendDiscountPercent / 100) : 0;
   const spendRemaining = (spendActive && subtotal > 0 && subtotal < spendThreshold) ? (spendThreshold - subtotal) : 0;
   // Combo and spend-threshold do NOT stack — keep only the bigger of the two so the
   // order-level discount can't balloon. Happy-hour is already in item prices; points

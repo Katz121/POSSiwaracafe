@@ -9,7 +9,7 @@ import { collection, doc, addDoc, setDoc, updateDoc, increment, serverTimestamp 
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getNameKey } from '../../utils/calculations';
-import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeCategory } from '../../utils/promotions';
+import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeCategory, isCakeSaleActive } from '../../utils/promotions';
 import { bumpMenuSoldCount } from '../../utils/menuSales';
 import useDebounce from '../../hooks/useDebounce';
 import { trackRecommendationsShown, trackRecommendationAccepted } from '../../services/upsellTracker';
@@ -108,8 +108,12 @@ export default function PosView() {
     ),
     [cart, saleSettings],
   );
+  // Discount the WHOLE order (cake + drink) as one block — but while Happy Hour is
+  // running, cakes already carry a per-item discount in their cart price, so fall back
+  // to the non-cake portion to avoid discounting a cake twice.
+  const spendBase = isCakeSaleActive(saleSettings) ? nonCakeSubtotal : subtotal;
   const rawSpendDiscount = (spendActive && subtotal >= SPEND_THRESHOLD)
-    ? Math.round(nonCakeSubtotal * SPEND_DISCOUNT_PERCENT / 100)
+    ? Math.round(spendBase * SPEND_DISCOUNT_PERCENT / 100)
     : 0;
   // Combo and spend-threshold do NOT stack — keep only the bigger of the two so the
   // order-level discount can't balloon (same rule as the customer page).
@@ -683,7 +687,7 @@ export default function PosView() {
             <span className="font-bold">-฿{effectiveSpendDiscount.toLocaleString()}</span>
           </div>
         )}
-        {combo.enabled && !combo.applies && combo.hasCake !== combo.hasDrink && cart.length > 0 && (
+        {combo.enabled && !combo.applies && combo.hasCake !== combo.hasDrink && cart.length > 0 && effectiveSpendDiscount === 0 && (
           <div className="text-[10px] text-emerald-500 font-bold text-right">
             เพิ่ม{combo.hasCake ? 'เครื่องดื่ม' : 'เค้ก'}รับส่วนลด {combo.percent}%
           </div>
