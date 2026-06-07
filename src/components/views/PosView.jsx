@@ -9,7 +9,7 @@ import { collection, doc, addDoc, setDoc, updateDoc, increment, serverTimestamp 
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getNameKey } from '../../utils/calculations';
-import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE } from '../../utils/promotions';
+import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeCategory } from '../../utils/promotions';
 import { bumpMenuSoldCount } from '../../utils/menuSales';
 import useDebounce from '../../hooks/useDebounce';
 import { trackRecommendationsShown, trackRecommendationAccepted } from '../../services/upsellTracker';
@@ -45,6 +45,8 @@ export default function PosView() {
     cakeSaleEnd,
     comboEnabled,
     comboPercent,
+    spendThreshold,
+    spendDiscount,
     activePromotion,
     setActivePromotion,
     runDbAction,
@@ -58,7 +60,10 @@ export default function PosView() {
   const REDEEM_DISCOUNT_VALUE = Number(redeemDiscountValue) || DEFAULT_REDEEM_DISCOUNT_VALUE;
   const OWN_GLASS_DISCOUNT = Number(ownGlassDiscount) || DEFAULT_OWN_GLASS_DISCOUNT;
 
-  const saleSettings = { cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd };
+  const saleSettings = useMemo(
+    () => ({ cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd }),
+    [cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd]
+  );
   const comboSettings = useMemo(
     () => ({ cakeSaleCategories, comboEnabled, comboPercent }),
     [cakeSaleCategories, comboEnabled, comboPercent]
@@ -90,6 +95,29 @@ export default function PosView() {
 
   const combo = useMemo(() => getComboDiscount(cart, comboSettings), [cart, comboSettings]);
 
+  // Spend-threshold promo ("โปร 199"): order ≥ X → get Y% off. Applies to the non-cake
+  // (drinks) portion only, so a Happy-Hour cake isn't discounted twice by it. Mirrors
+  // the customer QR page so staff and customer orders price identically.
+  const SPEND_THRESHOLD = Number(spendThreshold) || 0;
+  const SPEND_DISCOUNT_PERCENT = Number(spendDiscount) || 0;
+  const spendActive = SPEND_THRESHOLD > 0 && SPEND_DISCOUNT_PERCENT > 0;
+  const nonCakeSubtotal = useMemo(
+    () => cart.reduce(
+      (s, i) => (isCakeCategory(i.category, saleSettings) ? s : s + Number(i.price) * Number(i.quantity)),
+      0,
+    ),
+    [cart, saleSettings],
+  );
+  const rawSpendDiscount = (spendActive && subtotal >= SPEND_THRESHOLD)
+    ? Math.round(nonCakeSubtotal * SPEND_DISCOUNT_PERCENT / 100)
+    : 0;
+  // Combo and spend-threshold do NOT stack — keep only the bigger of the two so the
+  // order-level discount can't balloon (same rule as the customer page).
+  const rawComboDiscount = combo.applies ? combo.amount : 0;
+  const comboWins = rawComboDiscount >= rawSpendDiscount;
+  const effectiveComboDiscount = comboWins ? rawComboDiscount : 0;
+  const effectiveSpendDiscount = comboWins ? 0 : rawSpendDiscount;
+
   const reviewDiscountAmount = useMemo(
     () => (reviewDiscount ? Math.round(subtotal * 0.05) : 0),
     [reviewDiscount, subtotal],
@@ -104,11 +132,12 @@ export default function PosView() {
         d += (Number(item.price) * Number(item.quantity) * (activePromotion.discountPercent / 100));
       }
     });
-    d += combo.amount;          // คอมโบ % (บน subtotal หลัง happy-hour)
-    d += reviewDiscountAmount;  // รีวิว 5%
+    d += effectiveComboDiscount;  // คอมโบ % (เลือกตัวที่มากกว่าระหว่างคอมโบ/โปรยอดซื้อ)
+    d += effectiveSpendDiscount;  // โปรยอดซื้อถึงเกณฑ์ % (เช่น สั่งครบ 199)
+    d += reviewDiscountAmount;    // รีวิว 5%
     // Cap at the subtotal so combined discounts can never exceed 100% / go negative.
     return Math.min(subtotal, d);
-  }, [usePoints, bringOwnGlass, activePromotion, cart, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, combo.amount, reviewDiscountAmount, subtotal]);
+  }, [usePoints, bringOwnGlass, activePromotion, cart, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, effectiveComboDiscount, effectiveSpendDiscount, reviewDiscountAmount, subtotal]);
 
   const vatAmount = useMemo(() => vatEnabled ? Math.round(Math.max(0, subtotal - discountAmount) * VAT_RATE) : 0, [subtotal, discountAmount, vatEnabled]);
   const netTotal = useMemo(() => Math.max(0, (subtotal - discountAmount) + vatAmount), [subtotal, discountAmount, vatAmount]);
@@ -329,7 +358,9 @@ export default function PosView() {
         vat: Number(vatAmount), total: Number(netTotal), vatIncluded: vatEnabled,
         isPaid, memberPhone: currentMember?.phone || '', memberNickname,
         status: 'pending',
-        promotionTitle: activePromotion?.title || (combo.applies ? COMBO_PROMO_TITLE : ''),
+        promotionTitle: activePromotion?.title
+          || (effectiveComboDiscount > 0 ? COMBO_PROMO_TITLE : '')
+          || (effectiveSpendDiscount > 0 ? `สั่งครบ ฿${SPEND_THRESHOLD.toLocaleString()} -${SPEND_DISCOUNT_PERCENT}%` : ''),
         promotionDiscountPercent: activePromotion?.discountPercent || 0,
         bringOwnGlass, reviewDiscount, createdAt: serverTimestamp(), date: getISODate(),
         time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
@@ -640,15 +671,26 @@ export default function PosView() {
             <span className="font-bold">-฿{REDEEM_DISCOUNT_VALUE}</span>
           </div>
         )}
-        {combo.applies && (
+        {effectiveComboDiscount > 0 && (
           <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400">
             <span>คอมโบเค้ก+เครื่องดื่ม -{combo.percent}%</span>
-            <span className="font-bold">-฿{combo.amount.toLocaleString()}</span>
+            <span className="font-bold">-฿{effectiveComboDiscount.toLocaleString()}</span>
+          </div>
+        )}
+        {effectiveSpendDiscount > 0 && (
+          <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400">
+            <span>โปรสั่งครบ ฿{SPEND_THRESHOLD.toLocaleString()} -{SPEND_DISCOUNT_PERCENT}%</span>
+            <span className="font-bold">-฿{effectiveSpendDiscount.toLocaleString()}</span>
           </div>
         )}
         {combo.enabled && !combo.applies && combo.hasCake !== combo.hasDrink && cart.length > 0 && (
           <div className="text-[10px] text-emerald-500 font-bold text-right">
             เพิ่ม{combo.hasCake ? 'เครื่องดื่ม' : 'เค้ก'}รับส่วนลด {combo.percent}%
+          </div>
+        )}
+        {spendActive && effectiveSpendDiscount === 0 && effectiveComboDiscount === 0 && subtotal > 0 && subtotal < SPEND_THRESHOLD && (
+          <div className="text-[10px] text-emerald-500 font-bold text-right">
+            สั่งอีก ฿{(SPEND_THRESHOLD - subtotal).toLocaleString()} รับส่วนลด {SPEND_DISCOUNT_PERCENT}%
           </div>
         )}
         {vatAmount > 0 && (
