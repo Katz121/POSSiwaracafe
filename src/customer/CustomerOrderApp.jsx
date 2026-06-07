@@ -1032,8 +1032,9 @@ function CustomerOrderApp() {
   // Cart totals
   // ---------------------------------------------------------------------------
   const subtotal = cart.reduce((s, i) => s + Number(i.price) * Number(i.quantity), 0);
-  // Cakes only ever get the Happy-Hour discount; order-level promos (combo/spend)
-  // are computed on the non-cake (drinks) portion so cakes aren't discounted twice.
+  // The combo "set" promo discounts the whole cart as one bundle (see getComboDiscount).
+  // The spend-threshold promo still applies to the non-cake (drinks) portion only, so a
+  // Happy-Hour cake can't be discounted twice by it.
   const nonCakeSubtotal = cart.reduce(
     (s, i) => (isCakeCategory(i.category, settingsData) ? s : s + Number(i.price) * Number(i.quantity)),
     0,
