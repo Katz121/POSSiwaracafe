@@ -82,7 +82,13 @@ export default function MenuManageView() {
       return a.localeCompare(b);
     }).map(cat => ({
       name: cat,
-      items: groups[cat]
+      // Items currently on sale (available) bubble to the top for easy management;
+      // out-of-stock items sink to the bottom of their category.
+      items: groups[cat].slice().sort((a, b) => {
+        const aOut = a.available === false ? 1 : 0;
+        const bOut = b.available === false ? 1 : 0;
+        return aOut - bOut;
+      })
     }));
   }, [menu]);
 
@@ -737,7 +743,7 @@ export default function MenuManageView() {
                         })()}
                       </div>
                     </div>
-                    <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-3">
                       <button onClick={() => toggleAvailability(i)} className={`p-4 rounded-2xl transition-all shadow-sm active:scale-90 ${i.available !== false ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>{i.available !== false ? <Eye size={22} /> : <EyeOff size={22} />}</button>
                       <button onClick={() => { setEditingItem(i); setNewItem(i); }} aria-label="แก้ไขเมนู" className="p-4 bg-blue-50 text-blue-500 rounded-2xl transition-all shadow-sm border border-blue-100 active:scale-90"><Edit size={22} /></button>
                       <button onClick={() => {
