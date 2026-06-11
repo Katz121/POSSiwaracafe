@@ -77,6 +77,22 @@ const pinDeviceToken = async (pin) => {
   return b64(new Uint8Array(bits));
 };
 
+// Aggregate total stock consumption for an order as { stockId: totalUnits }.
+// Each line item carries its own merged recipe (base menu + chosen bean
+// modifier) in stockLinks, captured at order time — so this reflects exactly
+// what was sold. Used both to deduct on completion and to restore on delete.
+function computeOrderStockUsage(order) {
+  const usage = {};
+  (order?.items || []).forEach(item => {
+    const qty = Number(item.quantity) || 0;
+    (item.stockLinks || []).forEach(link => {
+      if (!link?.stockId) return;
+      usage[link.stockId] = (usage[link.stockId] || 0) + qty * (Number(link.usage) || 0);
+    });
+  });
+  return usage;
+}
+
 // --- Main App Component ---
 export default function App() {
   // 1. Core States
@@ -170,14 +186,7 @@ export default function App() {
       // modifier) in stockLinks, captured at order time.
       const order = orders.find(o => o.id === id);
       if (newStatus === 'completed' && order && !order.stockDeducted) {
-        const usageByStock = {};
-        (order.items || []).forEach(item => {
-          const qty = Number(item.quantity) || 0;
-          (item.stockLinks || []).forEach(link => {
-            if (!link?.stockId) return;
-            usageByStock[link.stockId] = (usageByStock[link.stockId] || 0) + qty * (Number(link.usage) || 0);
-          });
-        });
+        const usageByStock = computeOrderStockUsage(order);
 
         const batch = writeBatch(db);
         Object.entries(usageByStock).forEach(([stockId, used]) => {
@@ -200,7 +209,28 @@ export default function App() {
   const executeDeleteOrder = async () => {
     if (!orderToCancel) return;
     await runDbAction(async () => {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderToCancel));
+      const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderToCancel);
+      const order = orders.find(o => o.id === orderToCancel);
+
+      // If this order already deducted stock (was completed), add the consumed
+      // amounts back before deleting — otherwise cancelling silently loses
+      // inventory. Done in one batch with the delete so they can't diverge.
+      if (order?.stockDeducted) {
+        const usageByStock = computeOrderStockUsage(order);
+        const batch = writeBatch(db);
+        Object.entries(usageByStock).forEach(([stockId, used]) => {
+          if (used <= 0) return;
+          const stockItem = stock.find(s => s.id === stockId);
+          if (!stockItem) return; // linked stock was deleted — nothing to restore
+          batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), {
+            quantity: (Number(stockItem.quantity) || 0) + used
+          });
+        });
+        batch.delete(orderRef);
+        await batch.commit();
+      } else {
+        await deleteDoc(orderRef);
+      }
       setOrderToCancel(null);
     }, 'ลบออเดอร์ไม่สำเร็จ');
   };
