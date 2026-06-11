@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   ClipboardList, RefreshCcw, Zap, CheckCircle2, Trash2,
   ChevronDown, ChevronUp, Star, Eye, EyeOff, Edit, PackagePlus,
-  Coffee, Link2, Plus, Upload, TrendingUp, Store, AlertTriangle, FolderCog
+  Coffee, Link2, Plus, Upload, TrendingUp, Store, AlertTriangle, FolderCog, Clock
 } from 'lucide-react';
 import { doc, collection, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
@@ -225,6 +225,14 @@ export default function MenuManageView() {
   const toggleAvailability = async (item) => {
     await runDbAction(async () => {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menu', item.id), { available: !item.available });
+    }, 'อัปเดตเมนูไม่สำเร็จ');
+  };
+
+  // Quick toggle a cake's Happy Hour exclusion straight from the list — new
+  // cakes can be kept at full price with one tap, no need to open the editor.
+  const toggleExcludeFromSale = async (item) => {
+    await runDbAction(async () => {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menu', item.id), { excludeFromSale: !item.excludeFromSale });
     }, 'อัปเดตเมนูไม่สำเร็จ');
   };
 
@@ -723,6 +731,7 @@ export default function MenuManageView() {
                         <p className="leading-none">{String(i.name)}</p>
                         {(i.isFeatured || i.recommended) && <Star size={18} className="text-yellow-500 fill-yellow-500" />}
                         {i.isPinnedBest && <TrendingUp size={18} className="text-orange-500" title="ปักหมุดขายดี" />}
+                        {i.excludeFromSale && <Clock size={18} className="text-indigo-500" title="ยกเว้นลด Happy Hour" />}
                       </div>
                       <div className="flex items-center gap-3">
                         <p className="text-xs text-emerald-500 uppercase bg-emerald-50 w-fit px-4 py-1 rounded-full border border-emerald-100 font-black leading-none">฿{Number(i.price).toLocaleString()} • {String(i.category)}</p>
@@ -744,6 +753,7 @@ export default function MenuManageView() {
                       </div>
                     </div>
                     <div className="flex gap-3">
+                      <button onClick={() => toggleExcludeFromSale(i)} title={i.excludeFromSale ? 'ยกเว้นลด Happy Hour (กดเพื่อให้ร่วมลด)' : 'ร่วมลด Happy Hour (กดเพื่อยกเว้น เช่น เค้กใหม่)'} className={`p-4 rounded-2xl transition-all shadow-sm active:scale-90 ${i.excludeFromSale ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}><Clock size={22} /></button>
                       <button onClick={() => toggleAvailability(i)} className={`p-4 rounded-2xl transition-all shadow-sm active:scale-90 ${i.available !== false ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>{i.available !== false ? <Eye size={22} /> : <EyeOff size={22} />}</button>
                       <button onClick={() => { setEditingItem(i); setNewItem(i); }} aria-label="แก้ไขเมนู" className="p-4 bg-blue-50 text-blue-500 rounded-2xl transition-all shadow-sm border border-blue-100 active:scale-90"><Edit size={22} /></button>
                       <button onClick={() => {
@@ -935,6 +945,22 @@ export default function MenuManageView() {
                 className={`relative w-14 h-8 rounded-full transition-all ${newItem.available !== false ? 'bg-emerald-500' : 'bg-gray-300'}`}
               >
                 <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all ${newItem.available !== false ? 'right-1' : 'left-1'}`}></div>
+              </button>
+            </div>
+
+            {/* Exclude from Happy Hour cake sale Toggle */}
+            <div className="flex items-center justify-between bg-indigo-50/50 p-5 rounded-[2rem] border border-indigo-200">
+              <div className="flex items-center gap-3">
+                <Clock size={20} className="text-indigo-500" />
+                <span className="text-sm font-black text-gray-700">ยกเว้นลด Happy Hour</span>
+                <span className="text-xs font-bold text-gray-400">(เค้กใหม่/พึ่งทำ ไม่ลดราคา)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewItem({ ...newItem, excludeFromSale: !newItem.excludeFromSale })}
+                className={`relative w-14 h-8 rounded-full transition-all ${newItem.excludeFromSale ? 'bg-indigo-500' : 'bg-gray-200'}`}
+              >
+                <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all ${newItem.excludeFromSale ? 'right-1' : 'left-1'}`}></div>
               </button>
             </div>
 

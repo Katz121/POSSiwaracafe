@@ -56,6 +56,11 @@ export const isCakeCategory = (category, settings) => {
  */
 export const getItemSalePrice = (item, settings, now = new Date()) => {
   const originalPrice = Number(item && item.price) || 0;
+  // Per-item opt-out: a cake flagged excludeFromSale (e.g. just-made/new) stays
+  // at full price even during the Happy Hour window.
+  if (item && item.excludeFromSale) {
+    return { onSale: false, percent: 0, originalPrice, price: originalPrice };
+  }
   if (isCakeSaleActive(settings, now) && isCakeCategory(item && item.category, settings)) {
     const percent = Math.max(0, Math.min(100, Number(settings.cakeSalePercent) || 0));
     const price = Math.max(0, Math.round(originalPrice * (1 - percent / 100)));
