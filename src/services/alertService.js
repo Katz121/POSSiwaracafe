@@ -127,10 +127,13 @@ export const generateSmartAlerts = (data) => {
   const todayExpenses = expenses.filter(e => e.date === today);
   const todayExpenseTotal = todayExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
-  // Get monthly average daily expense
+  // Get monthly average daily expense — divide by the number of days that
+  // actually have expense records, not a hardcoded 30. Using days-with-activity
+  // keeps the average meaningful for short months (Feb) and early in the month.
   const monthExpenses = expenses.filter(e => (e.date || '').startsWith(currentMonth));
-  const avgDailyExpense = monthExpenses.length > 0
-    ? monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0) / 30
+  const activeDays = new Set(monthExpenses.map(e => e.date)).size;
+  const avgDailyExpense = activeDays > 0
+    ? monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0) / activeDays
     : 0;
 
   if (avgDailyExpense > 0 && todayExpenseTotal > avgDailyExpense * 2) {

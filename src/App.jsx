@@ -10,7 +10,7 @@ import { Modal, Button, Spinner, IconButton, Input, ErrorBoundary } from './comp
 
 // Firebase Imports
 import {
-  doc, updateDoc, deleteDoc
+  doc, updateDoc, deleteDoc, writeBatch
 } from 'firebase/firestore';
 import { db, appId } from './services/firebase';
 import useAuth from './hooks/useAuth';
@@ -161,9 +161,40 @@ export default function App() {
   // Order status update (memoized)
   const updateStatus = useCallback(async (id, newStatus) => {
     await runDbAction(async () => {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', id), { status: newStatus });
+      const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', id);
+
+      // Deduct stock the first time an order is completed. Idempotent via the
+      // stockDeducted flag (mirrors how loyalty points use pointsProcessed) so
+      // reverting and re-completing an order never double-counts. Each line
+      // item already carries its merged recipe (base menu + chosen bean
+      // modifier) in stockLinks, captured at order time.
+      const order = orders.find(o => o.id === id);
+      if (newStatus === 'completed' && order && !order.stockDeducted) {
+        const usageByStock = {};
+        (order.items || []).forEach(item => {
+          const qty = Number(item.quantity) || 0;
+          (item.stockLinks || []).forEach(link => {
+            if (!link?.stockId) return;
+            usageByStock[link.stockId] = (usageByStock[link.stockId] || 0) + qty * (Number(link.usage) || 0);
+          });
+        });
+
+        const batch = writeBatch(db);
+        Object.entries(usageByStock).forEach(([stockId, used]) => {
+          if (used <= 0) return;
+          const stockItem = stock.find(s => s.id === stockId);
+          if (!stockItem) return; // linked stock was deleted — skip silently
+          const newQty = Math.max(0, (Number(stockItem.quantity) || 0) - used);
+          batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), { quantity: newQty });
+        });
+        batch.update(orderRef, { status: newStatus, stockDeducted: true });
+        await batch.commit();
+        return;
+      }
+
+      await updateDoc(orderRef, { status: newStatus });
     }, 'อัปเดตสถานะไม่สำเร็จ');
-  }, [runDbAction]);
+  }, [runDbAction, orders, stock]);
 
   // Delete order
   const executeDeleteOrder = async () => {

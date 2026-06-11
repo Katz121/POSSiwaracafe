@@ -138,7 +138,7 @@ const DashboardView = () => {
         // Let's assume there's a category map or check titles.
         const wasteExpenses = expenses.filter(e =>
             String(e.date || '').startsWith(currentMonth) &&
-            (String(e.category).toLowerCase().includes('waste') || String(e.title).includes('waste') || String(e.title).includes('ทิ้ง'))
+            (String(e.category).toLowerCase().includes('waste') || String(e.title).toLowerCase().includes('waste') || String(e.title).includes('ทิ้ง'))
         );
         const totalWasteCost = wasteExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
