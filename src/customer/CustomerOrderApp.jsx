@@ -199,6 +199,119 @@ function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoS
 }
 
 // ---------------------------------------------------------------------------
+// Sub-component: WelcomePopup — auto-running showcase of best-seller + featured
+// menus. Pure display (no add-to-cart); appears once per session on entry so
+// every visitor immediately sees what the shop is known for. Pulls straight
+// from the live menu (isPinnedBest = ขายดี, isFeatured = แนะนำ).
+// ---------------------------------------------------------------------------
+function WelcomePopup({ isOpen, items, settingsData, onClose }) {
+  const [paused, setPaused] = useState(false);
+
+  // Price shown follows the same rules as MenuItemCard (sale + 5-baht rounding
+  // for coffee menus) so the popup never contradicts the grid below.
+  const priceOf = (item) => {
+    const sale = getItemSalePrice(item, settingsData);
+    const dp = (p) => (item.allowBeanModifier ? roundUpTo5(p) : p);
+    return { display: dp(sale.price), onSale: sale.onSale, original: dp(sale.originalPrice) };
+  };
+
+  const card = (item, key) => {
+    const p = priceOf(item);
+    const badge = item.isPinnedBest ? { text: '🔥 ขายดี', cls: 'bg-orange-500' } : { text: '⭐ แนะนำ', cls: 'bg-emerald-500' };
+    return (
+      <div key={key} className="w-36 flex-shrink-0 mr-3 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="relative w-full aspect-[4/3] bg-emerald-50 flex items-center justify-center overflow-hidden">
+          {item.image ? (
+            <img src={item.image} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
+          ) : (
+            <Coffee size={32} className="text-emerald-300" strokeWidth={1.5} />
+          )}
+          <span className={`absolute top-1.5 left-1.5 text-white text-[10px] font-bold px-2 py-0.5 rounded-full ${badge.cls}`}>
+            {badge.text}
+          </span>
+        </div>
+        <div className="p-2.5">
+          <p className="font-semibold text-gray-900 text-xs leading-tight line-clamp-2 min-h-[2rem]">{item.name}</p>
+          <div className="mt-1">
+            {p.onSale ? (
+              <div className="flex items-baseline gap-1">
+                <span className="text-gray-400 text-[10px] line-through">{formatCurrency(p.original)}</span>
+                <span className="text-red-500 font-bold text-sm">{formatCurrency(p.display)}</span>
+              </div>
+            ) : (
+              <span className="text-emerald-600 font-bold text-sm">
+                {item.allowBeanModifier ? 'เริ่ม ' : ''}{formatCurrency(p.display)}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && items.length > 0 && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 24 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 16 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+            className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[61] mx-auto max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden"
+          >
+            {/* Header */}
+            <div className="relative px-5 pt-5 pb-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white">
+              <button
+                onClick={onClose}
+                aria-label="ปิด"
+                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+              >
+                <X size={18} />
+              </button>
+              <p className="text-white/80 text-xs font-semibold">ยินดีต้อนรับ ☕</p>
+              <h2 className="font-black text-xl leading-tight">เมนูแนะนำ & ขายดี</h2>
+              <p className="text-white/85 text-xs mt-0.5">ที่ลูกค้าสั่งบ่อยที่สุด — ลองดูก่อนสั่งได้เลย</p>
+            </div>
+
+            {/* Auto-running marquee */}
+            <div className="py-4 overflow-hidden">
+              <div
+                className="flex w-max animate-marquee"
+                style={{
+                  paddingLeft: '1rem',
+                  animationDuration: `${Math.max(items.length, 4) * 4}s`,
+                  animationPlayState: paused ? 'paused' : 'running',
+                }}
+                onPointerEnter={() => setPaused(true)}
+                onPointerLeave={() => setPaused(false)}
+                onPointerCancel={() => setPaused(false)}
+              >
+                {[...items, ...items].map((item, i) => card(item, `${item.id}-${i}`))}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 pb-5 pt-1">
+              <Button variant="primary" size="lg" fullWidth onClick={onClose} noUppercase>
+                เริ่มสั่งเลย →
+              </Button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Sub-component: BeanModifierModal — picker for bean/blend selection
 // ---------------------------------------------------------------------------
 function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
@@ -968,6 +1081,35 @@ function CustomerOrderApp() {
   const bestSellerIds = useMemo(() => new Set(bestSellers.map((m) => m.id)), [bestSellers]);
   const showHighlights = activeCategory === 'ทั้งหมด' && searchQuery.trim() === '';
 
+  // Welcome popup items = ขายดี first, then แนะนำ (deduped). Showcase only.
+  const welcomeItems = useMemo(() => {
+    const seen = new Set();
+    return [...bestSellers, ...featuredItems].filter((m) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+  }, [bestSellers, featuredItems]);
+
+  // Auto-open once per browser session (sessionStorage) once the menu has loaded
+  // and there is something to highlight. Closing it marks the session as seen.
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const welcomeShownRef = useRef(false);
+  useEffect(() => {
+    if (loading || welcomeShownRef.current || welcomeItems.length === 0) return;
+    let seen = false;
+    try { seen = sessionStorage.getItem('siwara_welcome_seen') === '1'; } catch { /* private mode */ }
+    if (!seen) {
+      welcomeShownRef.current = true;
+      setWelcomeOpen(true);
+    }
+  }, [loading, welcomeItems.length]);
+
+  const closeWelcome = useCallback(() => {
+    setWelcomeOpen(false);
+    try { sessionStorage.setItem('siwara_welcome_seen', '1'); } catch { /* private mode */ }
+  }, []);
+
   // Re-render every minute so the Happy Hour banner (and sale prices) appear and
   // disappear automatically as the time window opens/closes during a session.
   const [, setNowTick] = useState(0);
@@ -1625,6 +1767,14 @@ function CustomerOrderApp() {
           setCartDrawerOpen(false);
           setView('checkout');
         }}
+      />
+
+      {/* ---- Welcome popup: auto-running ขายดี + แนะนำ showcase ---- */}
+      <WelcomePopup
+        isOpen={welcomeOpen}
+        items={welcomeItems}
+        settingsData={settingsData}
+        onClose={closeWelcome}
       />
 
       {/* ---- Bean modifier modal ---- */}
