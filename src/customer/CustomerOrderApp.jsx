@@ -47,6 +47,7 @@ import { getISODate } from '../utils/calculations';
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
 import { notifyNewOrderToLine } from '../services/lineNotify';
+import { applyCustomerSEO } from '../utils/seo';
 
 // ---------------------------------------------------------------------------
 // Helper: merge stock links from a menu item and a bean modifier
@@ -1109,6 +1110,13 @@ function CustomerOrderApp() {
     setWelcomeOpen(false);
     try { sessionStorage.setItem('siwara_welcome_seen', '1'); } catch { /* private mode */ }
   }, []);
+
+  // SEO: enrich <head> (title, description, JSON-LD menu) from the live shop data
+  // once it has loaded. Re-runs if the menu/shop name changes within the session.
+  useEffect(() => {
+    if (loading || menu.length === 0) return;
+    applyCustomerSEO({ shopName: settings.shopName, menu, categories });
+  }, [loading, menu, categories, settings.shopName]);
 
   // Re-render every minute so the Happy Hour banner (and sale prices) appear and
   // disappear automatically as the time window opens/closes during a session.
