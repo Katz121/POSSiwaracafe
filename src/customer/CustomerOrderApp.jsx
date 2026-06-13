@@ -1092,12 +1092,16 @@ function CustomerOrderApp() {
     });
   }, [bestSellers, featuredItems]);
 
+  // Feature flag — set to true to bring back the auto-running welcome popup.
+  // Disabled for now per request; all popup code below stays intact.
+  const WELCOME_POPUP_ENABLED = false;
+
   // Auto-open once per browser session (sessionStorage) once the menu has loaded
   // and there is something to highlight. Closing it marks the session as seen.
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const welcomeShownRef = useRef(false);
   useEffect(() => {
-    if (loading || welcomeShownRef.current || welcomeItems.length === 0) return;
+    if (!WELCOME_POPUP_ENABLED || loading || welcomeShownRef.current || welcomeItems.length === 0) return;
     let seen = false;
     try { seen = sessionStorage.getItem('siwara_welcome_seen') === '1'; } catch { /* private mode */ }
     if (!seen) {
