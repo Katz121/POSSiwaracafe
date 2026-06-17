@@ -996,17 +996,16 @@ function CustomerOrderApp() {
     const base = ['artifacts', appId, 'public', 'data'];
     cancelledRef.current = false;
 
-    // 1) Paint instantly from the per-device cache for a fast first frame.
-    //    If the cache is still FRESH (within TTL) we stop here — a returning /
-    //    refreshing / re-scanning customer then costs ZERO Firestore reads. Shop
-    //    setting changes (Happy Hour, prices, spend threshold) still reach the
-    //    customer within the short TTL on the next load. Only a stale-or-missing
-    //    cache falls through to the network read in step 2.
+    // 1) Paint instantly from the per-device cache for a fast first frame, then
+    //    ALWAYS revalidate against the latest bundle below (step 2). The shop
+    //    toggles menu items on/off through the day (e.g. a cake selling out), and
+    //    customers MUST see the current menu — so never skip the read on a fresh
+    //    cache. Customer reads are negligible for quota (~1 per load); freshness
+    //    wins. The cache only gives a fast first paint while the read runs.
     const cached = readCachedPublicMenu(appId);
     if (cached) {
       applyBundle(cached.bundle);
       setLoading(false);
-      if (cached.fresh) return; // cache within TTL → skip the read entirely
     } else {
       setLoading(true);
     }
