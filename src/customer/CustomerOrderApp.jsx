@@ -40,7 +40,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { auth, db, appId } from '../services/firebase';
-import { fetchPublicMenu, readCachedPublicMenu, writeCachedPublicMenu } from '../utils/publicMenu';
+import { fetchPublicMenu, readCachedPublicMenu, writeCachedPublicMenu, SENSITIVE_SETTINGS_KEYS } from '../utils/publicMenu';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
 import { formatCurrency, VAT_RATE, roundUpTo5 } from '../config/constants';
 import { getISODate } from '../utils/calculations';
@@ -1040,7 +1040,13 @@ function CustomerOrderApp() {
         setMenu(menuSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setCategories(catsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setBeanModifiers(beansSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        applySettings(settingsSnap.exists() ? settingsSnap.data() : {});
+        // Strip admin-only secrets (adminPin, geminiApiKey, startingCash) before
+        // they touch customer state — the published bundle already strips these,
+        // but this raw-doc fallback must too, otherwise a customer device would
+        // read AND (with offline persistence) cache the admin PIN to disk.
+        let settingsRaw = settingsSnap.exists() ? { ...settingsSnap.data() } : {};
+        for (const key of SENSITIVE_SETTINGS_KEYS) delete settingsRaw[key];
+        applySettings(settingsRaw);
       } catch {
         // Both paths failed — keep whatever defaults we have so the page renders.
       }
