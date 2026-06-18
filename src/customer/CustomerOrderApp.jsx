@@ -1066,12 +1066,20 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   const availableMenu = menu.filter((item) => item.available !== false);
 
-  const filteredMenu = availableMenu.filter((item) => {
-    const matchCat = activeCategory === 'ทั้งหมด' || item.category === activeCategory;
-    const q = searchQuery.trim().toLowerCase();
-    const matchSearch = q === '' || item.name.toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q);
-    return matchCat && matchSearch;
-  });
+  const filteredMenu = availableMenu
+    .filter((item) => {
+      const matchCat = activeCategory === 'ทั้งหมด' || item.category === activeCategory;
+      const q = searchQuery.trim().toLowerCase();
+      const matchSearch = q === '' || item.name.toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q);
+      return matchCat && matchSearch;
+    })
+    // Popular first: most-ordered (soldCount) at the top, least at the back, so
+    // the preview slice and the top of the list surface what customers order
+    // most. Ties fall back to name for a stable order.
+    .sort((a, b) =>
+      (Number(b.soldCount || 0) - Number(a.soldCount || 0)) ||
+      String(a.name || '').localeCompare(String(b.name || ''), 'th'),
+    );
 
   // ---------------------------------------------------------------------------
   // Highlights: ขายดี (by soldCount) + แนะนำ (isFeatured)
