@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Users, Search, User, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X } from 'lucide-react';
-import { doc, setDoc, deleteDoc, serverTimestamp, increment, arrayUnion } from 'firebase/firestore';
+import { Users, Search, User, UserMinus, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X } from 'lucide-react';
+import { doc, setDoc, deleteDoc, updateDoc, serverTimestamp, increment, arrayUnion } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getNameKey } from '../../utils/calculations';
@@ -8,13 +8,23 @@ import useDebounce from '../../hooks/useDebounce';
 import { Button, Modal, EmptyState, useToast, ConfirmModal, InputModal, Skeleton } from '../ui';
 import { DEFAULT_REDEEM_POINTS_THRESHOLD } from '../../config/constants';
 
+// Milliseconds for an order, handling Firestore Timestamp ({seconds}), ISO
+// strings, or the plain `date` field — used to sort orders newest-first.
+const getOrderMs = (o) => {
+  const t = o?.timestamp ?? o?.createdAt;
+  if (t && typeof t === 'object' && t.seconds != null) return t.seconds * 1000;
+  const ms = new Date(t || o?.date || 0).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+};
+
 export default function MembersView() {
   const {
     members,
     orders,
     isSyncing,
     redeemPointsThreshold,
-    runDbAction
+    runDbAction,
+    setOrderToCancel
   } = useAppContext();
 
   const toast = useToast();
@@ -128,9 +138,11 @@ export default function MembersView() {
       // Convert to array and sort by count
       const favorites = Object.values(itemCounts).sort((a, b) => b.count - a.count);
 
-      // Get recent orders (last 10)
-      const recentOrders = memberOrders
-        .sort((a, b) => new Date(b.timestamp || b.createdAt) - new Date(a.timestamp || a.createdAt))
+      // Get recent orders (newest first). createdAt is a Firestore Timestamp
+      // ({seconds}), not a date string — new Date() on it yields Invalid Date,
+      // which made the previous sort a no-op (hence the random order).
+      const recentOrders = [...memberOrders]
+        .sort((a, b) => getOrderMs(b) - getOrderMs(a))
         .slice(0, 10);
 
       return {
@@ -183,6 +195,23 @@ export default function MembersView() {
       }, { merge: true });
     }, 'ปฏิเสธไม่สำเร็จ');
     toast.info('ปฏิเสธคำขอแต้มแล้ว');
+  };
+
+  // Wrong member entered on a bill → detach it from this member (revenue is
+  // kept; the order just stops counting under this customer).
+  const unlinkOrderFromMember = (order) => {
+    runDbAction(async () => {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id), {
+        memberPhone: '', memberNickname: ''
+      });
+    }, 'ถอดออเดอร์ออกจากสมาชิกไม่สำเร็จ');
+    toast.success('ถอดออเดอร์ออกจากสมาชิกแล้ว');
+  };
+
+  // Delete a whole bill (reuses the app-level confirm + stock restore flow).
+  const deleteOrder = (order) => {
+    setSelectedMemberForFavorites(null);
+    setOrderToCancel(order.id);
   };
 
   const deleteMember = (member) => {
@@ -618,6 +647,23 @@ export default function MembersView() {
                                   {item.name} x{item.quantity}
                                 </span>
                               ))}
+                            </div>
+                            {/* Fix mis-entered bills: detach from this member, or delete the bill */}
+                            <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-gray-100">
+                              <button
+                                onClick={() => unlinkOrderFromMember(order)}
+                                title="กรอกสมาชิกผิด — ถอดออเดอร์นี้ออกจากสมาชิก (ยอดขายไม่หาย)"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-600 border border-amber-100 hover:bg-amber-100 transition-all active:scale-95 font-bold text-xs"
+                              >
+                                <UserMinus size={14} /> ถอดออกจากสมาชิก
+                              </button>
+                              <button
+                                onClick={() => deleteOrder(order)}
+                                title="ลบบิลนี้ทิ้ง"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-500 border border-red-100 hover:bg-red-100 transition-all active:scale-95 font-bold text-xs"
+                              >
+                                <Trash2 size={14} /> ลบบิล
+                              </button>
                             </div>
                           </div>
                         );
