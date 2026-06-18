@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Users, Search, User, UserMinus, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X } from 'lucide-react';
-import { doc, setDoc, deleteDoc, updateDoc, serverTimestamp, increment, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, updateDoc, writeBatch, serverTimestamp, increment, arrayUnion } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getNameKey } from '../../utils/calculations';
@@ -238,17 +238,36 @@ export default function MembersView() {
   };
 
   const deleteMember = (member) => {
-    const memberId = member?.id || member?.phone;
-    if (!memberId || String(memberId).startsWith('name-only:')) return;
+    if (!member?.id) return;
     setDeletingMember(member);
     setShowDeleteConfirm(true);
   };
 
+  // Delete handles every row type:
+  //  - phone member: delete the doc (orders keyed by phone won't re-appear)
+  //  - name member (name:key doc) / name-only projection (no doc): delete the
+  //    doc if any AND unlink the name from its orders, otherwise the row would
+  //    just re-materialise from those orders.
   const confirmDeleteMember = async () => {
     setShowDeleteConfirm(false);
-    const memberId = deletingMember?.id || deletingMember?.phone;
+    const member = deletingMember;
+    const nameKey = getNameKey(member?.name);
+    const hasPhone = !!String(member?.phone || '').trim();
+    const isNameOnly = String(member?.id || '').startsWith('name-only:');
+    const base = ['artifacts', appId, 'public', 'data'];
     await runDbAction(async () => {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId));
+      const batch = writeBatch(db);
+      let ops = 0;
+      if (!isNameOnly && (member?.id || member?.phone)) {
+        batch.delete(doc(db, ...base, 'members', member.id || member.phone));
+        ops++;
+      }
+      if (!hasPhone && nameKey) {
+        orders
+          .filter(o => !o.memberPhone && getNameKey(o.memberNickname) === nameKey)
+          .forEach(o => { batch.update(doc(db, ...base, 'orders', o.id), { memberNickname: '' }); ops++; });
+      }
+      if (ops > 0) await batch.commit();
     }, 'ไม่สามารถลบสมาชิกได้');
     setDeletingMember(null);
   };
@@ -494,7 +513,7 @@ export default function MembersView() {
                           <Edit size={14} />
                         </button>
                       )}
-                      {m.id && !String(m.id).startsWith('name-only:') && (
+                      {m.id && (
                         <button onClick={() => deleteMember(m)} className="p-2 bg-red-50 text-red-500 rounded-lg active:scale-90">
                           <Trash2 size={14} />
                         </button>
@@ -543,7 +562,7 @@ export default function MembersView() {
                           <Edit size={16} className="lg:w-[18px] lg:h-[18px]" />
                         </button>
                       )}
-                      {m.id && !String(m.id).startsWith('name-only:') && (
+                      {m.id && (
                         <button onClick={() => deleteMember(m)} className="p-2 lg:p-3 bg-red-50 text-red-500 rounded-xl lg:rounded-2xl shadow-sm border border-red-100 hover:bg-red-100 transition-all active:scale-90">
                           <Trash2 size={16} className="lg:w-[18px] lg:h-[18px]" />
                         </button>
