@@ -198,14 +198,37 @@ export default function MembersView() {
   };
 
   // Wrong member entered on a bill → detach it from this member (revenue is
-  // kept; the order just stops counting under this customer).
+  // kept; the order just stops counting under this customer). The points this
+  // bill earned were credited to the wrong member, so claw them back too —
+  // from pendingPoints first (not yet approved), then from points, never below
+  // zero. Redemptions aren't reversed (orders don't record a redeem flag).
   const unlinkOrderFromMember = (order) => {
+    const member = selectedMemberForFavorites;
     runDbAction(async () => {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id), {
         memberPhone: '', memberNickname: ''
       });
+
+      const earned = Math.floor(Number(order.total || 0) / 10);
+      const memberId = member && resolveMemberId(member);
+      const isNameOnly = String(member?.id || '').startsWith('name-only:');
+      if (earned > 0 && memberId && !isNameOnly) {
+        let remain = earned;
+        const fromPending = Math.min(remain, Number(member.pendingPoints || 0)); remain -= fromPending;
+        const fromPoints = Math.min(remain, Number(member.points || 0));
+        const payload = {};
+        if (fromPending > 0) payload.pendingPoints = increment(-fromPending);
+        if (fromPoints > 0) {
+          payload.points = increment(-fromPoints);
+          payload.pointsHistory = arrayUnion(historyEntry(-fromPoints, 'manual'));
+        }
+        if (Object.keys(payload).length > 0) {
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId), payload, { merge: true });
+        }
+      }
     }, 'ถอดออเดอร์ออกจากสมาชิกไม่สำเร็จ');
-    toast.success('ถอดออเดอร์ออกจากสมาชิกแล้ว');
+    const earned = Math.floor(Number(order.total || 0) / 10);
+    toast.success(earned > 0 ? `ถอดออเดอร์ออกแล้ว และหักแต้มที่ได้จากบิลนี้ ${earned} แต้ม` : 'ถอดออเดอร์ออกจากสมาชิกแล้ว');
   };
 
   // Delete a whole bill (reuses the app-level confirm + stock restore flow).
