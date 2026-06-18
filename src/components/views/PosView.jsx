@@ -5,7 +5,7 @@ import {
   ShoppingBag, CheckCircle, RefreshCcw, ArrowRight,
   Trash2, Sparkles, Phone, User, Flame
 } from 'lucide-react';
-import { collection, doc, addDoc, setDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, addDoc, setDoc, updateDoc, increment, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getNameKey } from '../../utils/calculations';
@@ -385,8 +385,14 @@ export default function PosView() {
         const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
         const memberData = { lastOrderAt: serverTimestamp() };
         if (!editingOrderId) {
+          // Earned points go to pendingPoints and require the owner's approval
+          // in the Members page — never auto-credited. (Redemption below is
+          // applied in real time because the customer is using points now.)
           const pointsToAdd = Math.floor(netTotal / 10);
-          memberData.points = increment(pointsToAdd);
+          if (pointsToAdd > 0) {
+            memberData.pendingPoints = increment(pointsToAdd);
+            memberData.pendingReason = 'order';
+          }
         }
         if (memberNickname) memberData.name = memberNickname;
         if (phoneValid) memberData.phone = memberPhone;
@@ -409,7 +415,10 @@ export default function PosView() {
           const redeemMemberId = currentMember.phone || (memNameKey ? `name:${memNameKey}` : null);
           if (redeemMemberId) {
             const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', redeemMemberId);
-            await updateDoc(memRef, { points: increment(-REDEEM_POINTS_THRESHOLD) });
+            await updateDoc(memRef, {
+              points: increment(-REDEEM_POINTS_THRESHOLD),
+              pointsHistory: arrayUnion({ delta: -REDEEM_POINTS_THRESHOLD, reason: 'redeem', at: new Date().toISOString() }),
+            });
           }
         }
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), orderData);

@@ -1,16 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { Users, Search, User, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X } from 'lucide-react';
-import { doc, setDoc, deleteDoc, writeBatch, serverTimestamp, increment, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, serverTimestamp, increment, arrayUnion } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getNameKey } from '../../utils/calculations';
 import useDebounce from '../../hooks/useDebounce';
 import { Button, Modal, EmptyState, useToast, ConfirmModal, InputModal, Skeleton } from '../ui';
-import {
-  DEFAULT_REDEEM_POINTS_THRESHOLD,
-  DEFAULT_REDEEM_DISCOUNT_VALUE,
-  DEFAULT_OWN_GLASS_DISCOUNT
-} from '../../config/constants';
+import { DEFAULT_REDEEM_POINTS_THRESHOLD } from '../../config/constants';
 
 export default function MembersView() {
   const {
@@ -18,16 +14,12 @@ export default function MembersView() {
     orders,
     isSyncing,
     redeemPointsThreshold,
-    redeemDiscountValue,
-    ownGlassDiscount,
     runDbAction
   } = useAppContext();
 
   const toast = useToast();
 
   const REDEEM_POINTS_THRESHOLD = Number(redeemPointsThreshold) || DEFAULT_REDEEM_POINTS_THRESHOLD;
-  const REDEEM_DISCOUNT_VALUE = Number(redeemDiscountValue) || DEFAULT_REDEEM_DISCOUNT_VALUE;
-  const OWN_GLASS_DISCOUNT = Number(ownGlassDiscount) || DEFAULT_OWN_GLASS_DISCOUNT;
 
   // Local states
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
@@ -42,8 +34,12 @@ export default function MembersView() {
   const [editingMember, setEditingMember] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingMember, setDeletingMember] = useState(null);
-  const [showFixAllConfirm, setShowFixAllConfirm] = useState(false);
-  const [fixAllTargets, setFixAllTargets] = useState([]);
+
+  // An order counts toward a member's purchase history as soon as it is placed
+  // (pending) — not only once completed — so today's orders show immediately.
+  // Points are NOT derived from this history; they are mutated in real time at
+  // checkout (earn → pendingPoints awaiting approval, redeem → points).
+  const orderCounts = (o) => o.status !== 'cancelled';
 
   // Memos
   const processedMembers = useMemo(() => {
@@ -52,7 +48,7 @@ export default function MembersView() {
       const nameKey = getNameKey(m.name);
       const phone = String(m.phone || '').trim();
       const memberOrders = orders.filter(o => {
-        if (o.status !== 'completed') return false;
+        if (!orderCounts(o)) return false;
         if (phone && o.memberPhone === phone) return true;
         if (!nameKey) return false;
         return !o.memberPhone && getNameKey(o.memberNickname) === nameKey;
@@ -60,29 +56,13 @@ export default function MembersView() {
       const totalPurchases = memberOrders.reduce((sum, o) => sum + (o.items?.reduce((s, i) => s + Number(i.quantity), 0) || 0), 0);
       const totalSpent = memberOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
-      // Calculate expected points based on history
-      let expectedPoints = 0;
-      memberOrders.forEach(o => {
-        const earned = Math.floor(Number(o.total || 0) / 10);
-        expectedPoints += earned;
-        const d = Number(o.discount || 0);
-        // Redemption check
-        if (d === REDEEM_DISCOUNT_VALUE || d === (REDEEM_DISCOUNT_VALUE + OWN_GLASS_DISCOUNT)) {
-          expectedPoints -= REDEEM_POINTS_THRESHOLD;
-        }
-      });
-      // Only flag when points are MISSING (expected > current). Never flag when
-      // current is higher — review/bonus points and imperfect redemption detection
-      // must not cause points to be wiped.
-      const pointsDiscrepancy = Math.max(0, expectedPoints) > Number(m.points || 0);
-
-      return { ...m, totalPurchases, totalSpent, expectedPoints: Math.max(0, expectedPoints), pointsDiscrepancy };
+      return { ...m, totalPurchases, totalSpent };
     });
 
     // 2. Identify orders that don't belong to any member in the collection
     const nameOnlyMap = new Map();
     orders
-      .filter(o => o.status === 'completed' && !o.memberPhone && o.memberNickname)
+      .filter(o => orderCounts(o) && !o.memberPhone && o.memberNickname)
       .forEach((o) => {
         const key = getNameKey(o.memberNickname);
         if (!key) return;
@@ -91,23 +71,15 @@ export default function MembersView() {
         const alreadyRegistered = members.some(m => getNameKey(m.name) === key);
         if (alreadyRegistered) return;
 
-        const current = nameOnlyMap.get(key) || { id: `name-only:${key}`, name: key, phone: '', points: 0, totalPurchases: 0, totalSpent: 0, expectedPoints: 0, pointsDiscrepancy: false };
+        const current = nameOnlyMap.get(key) || { id: `name-only:${key}`, name: key, phone: '', points: 0, totalPurchases: 0, totalSpent: 0 };
         const orderPurchases = o.items?.reduce((s, i) => s + Number(i.quantity), 0) || 0;
         current.totalPurchases += orderPurchases;
         current.totalSpent += Number(o.total) || 0;
-
-        // Calculate points for name-only members too
-        const earned = Math.floor(Number(o.total || 0) / 10);
-        current.expectedPoints += earned;
-        const d = Number(o.discount || 0);
-        if (d === REDEEM_DISCOUNT_VALUE || d === (REDEEM_DISCOUNT_VALUE + OWN_GLASS_DISCOUNT)) {
-          current.expectedPoints -= REDEEM_POINTS_THRESHOLD;
-        }
         nameOnlyMap.set(key, current);
       });
 
     return [...memberStats, ...nameOnlyMap.values()].sort((a, b) => b.totalPurchases - a.totalPurchases);
-  }, [members, orders, REDEEM_POINTS_THRESHOLD, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT]);
+  }, [members, orders]);
 
   const filteredMembers = useMemo(() => {
     const term = String(debouncedMemberSearchTerm || '').trim();
@@ -125,9 +97,10 @@ export default function MembersView() {
       const nameKey = getNameKey(member.name);
       const phone = String(member.phone || '').trim();
 
-      // Get all orders for this member
+      // Get all orders for this member (pending orders included so today's
+      // purchases appear immediately).
       const memberOrders = orders.filter(o => {
-        if (o.status !== 'completed') return false;
+        if (!orderCounts(o)) return false;
         if (phone && o.memberPhone === phone) return true;
         if (!nameKey) return false;
         return !o.memberPhone && getNameKey(o.memberNickname) === nameKey;
@@ -186,39 +159,6 @@ export default function MembersView() {
   };
   const historyEntry = (delta, reason) => ({ delta: Number(delta), reason, at: new Date().toISOString() });
 
-  const syncMemberPoints = async (member, silent = false) => {
-    await runDbAction(async () => {
-      const memberId = resolveMemberId(member);
-      if (!memberId) return;
-
-      const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
-      // Top up only — never reduce below current points (protects review/bonus points).
-      const target = Math.max(Number(member.points) || 0, Number(member.expectedPoints) || 0);
-      const delta = target - (Number(member.points) || 0);
-      const payload = { points: target };
-      if (delta > 0) payload.pointsHistory = arrayUnion(historyEntry(delta, 'recalc'));
-      await setDoc(memRef, payload, { merge: true });
-
-      // Mark orders as processed
-      const memberOrders = orders.filter(o => {
-        if (o.status !== 'completed' || o.pointsProcessed) return false;
-        const mPhone = String(member.phone || '').trim();
-        const mName = getNameKey(member.name);
-        if (mPhone && o.memberPhone === mPhone) return true;
-        return !o.memberPhone && getNameKey(o.memberNickname) === mName;
-      });
-
-      if (memberOrders.length > 0) {
-        const batch = writeBatch(db);
-        memberOrders.forEach(o => {
-          batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'orders', o.id), { pointsProcessed: true });
-        });
-        await batch.commit();
-      }
-    }, 'ปรับปรุงแต้มไม่สำเร็จ');
-    if (!silent) toast.success(`ปรับปรุงแต้มของ ${member.name} เป็น ${member.expectedPoints} แต้มแล้ว`);
-  };
-
   const approvePending = (member) => {
     const pending = Number(member.pendingPoints || 0);
     if (pending <= 0) return;
@@ -243,37 +183,6 @@ export default function MembersView() {
       }, { merge: true });
     }, 'ปฏิเสธไม่สำเร็จ');
     toast.info('ปฏิเสธคำขอแต้มแล้ว');
-  };
-
-  const fixAllPoints = () => {
-    const targets = processedMembers.filter(m => m.pointsDiscrepancy);
-    if (targets.length === 0) {
-      toast.info('ข้อมูลสมาชิกทุกคนถูกต้องตรงตามประวัติแล้วครับ');
-      return;
-    }
-    setFixAllTargets(targets);
-    setShowFixAllConfirm(true);
-  };
-
-  const confirmFixAllPoints = async () => {
-    setShowFixAllConfirm(false);
-    toast.info('กำลังปรับปรุงแต้ม... กรุณารอสักครู่');
-    let count = 0;
-    let errorCount = 0;
-    for (const m of fixAllTargets) {
-      try {
-        await syncMemberPoints(m, true);
-        count++;
-      } catch {
-        errorCount++;
-      }
-    }
-    if (errorCount > 0) {
-      toast.warning(`ปรับปรุงสำเร็จ ${count} รายการ, ล้มเหลว ${errorCount} รายการ`);
-    } else {
-      toast.success(`ปรับปรุงข้อมูลสมาชิกสำเร็จ ${count} รายการ`);
-    }
-    setFixAllTargets([]);
   };
 
   const deleteMember = (member) => {
@@ -386,17 +295,6 @@ export default function MembersView() {
           >
             <span className="hidden sm:inline">เพิ่ม</span>สมาชิก
           </Button>
-          {processedMembers.some(m => m.pointsDiscrepancy) && (
-            <Button
-              onClick={fixAllPoints}
-              variant="warning"
-              size="md"
-              leftIcon={<RefreshCcw size={14} />}
-              className="animate-pulse"
-            >
-              <span className="hidden sm:inline">ปรับปรุง</span>แต้ม
-            </Button>
-          )}
           <div className="relative flex-1 md:flex-none md:w-64 lg:w-80 flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 text-gray-300 w-4 h-4 md:w-5 md:h-5" />
@@ -468,7 +366,7 @@ export default function MembersView() {
                   <div className="min-w-0">
                     <p className="font-black text-gray-800 text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
                     <span className="inline-block mt-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-700 font-black text-xs">
-                      รออนุมัติ +{Number(m.pendingPoints)} · รีวิว
+                      รออนุมัติ +{Number(m.pendingPoints)} · {m.pendingReason === 'order' ? 'จากการซื้อ' : 'รีวิว'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -539,11 +437,6 @@ export default function MembersView() {
                       <button onClick={() => setHistoryMember(m)} className="p-2 bg-violet-50 text-violet-500 rounded-lg active:scale-90" title="ประวัติแต้ม">
                         <History size={14} />
                       </button>
-                      {m.pointsDiscrepancy && (
-                        <button onClick={() => syncMemberPoints(m)} className="p-2 bg-red-50 text-red-500 rounded-lg active:scale-90">
-                          <RefreshCcw size={14} />
-                        </button>
-                      )}
                       {m.id && (
                         <button onClick={() => editMember(m)} className="p-2 bg-blue-50 text-blue-500 rounded-lg active:scale-90">
                           <Edit size={14} />
@@ -593,15 +486,6 @@ export default function MembersView() {
                       >
                         <History size={16} className="lg:w-[18px] lg:h-[18px]" />
                       </button>
-                      {m.pointsDiscrepancy && (
-                        <button
-                          onClick={() => syncMemberPoints(m)}
-                          title={`คลิกเพื่อปรับปรุงแต้มเป็น ${m.expectedPoints} ตามประวัติการสั่งซื้อ`}
-                          className="p-2 lg:p-3 bg-red-50 text-red-500 rounded-xl lg:rounded-2xl shadow-sm border border-red-100 hover:bg-red-100 transition-all active:scale-90"
-                        >
-                          <RefreshCcw size={16} className="lg:w-[18px] lg:h-[18px]" />
-                        </button>
-                      )}
                       {m.id && (
                         <button onClick={() => editMember(m)} className="p-2 lg:p-3 bg-blue-50 text-blue-500 rounded-xl lg:rounded-2xl shadow-sm border border-blue-100 hover:bg-blue-100 transition-all active:scale-90">
                           <Edit size={16} className="lg:w-[18px] lg:h-[18px]" />
@@ -840,18 +724,6 @@ export default function MembersView() {
         confirmText="ลบ"
         cancelText="ยกเลิก"
         variant="danger"
-      />
-
-      {/* Fix All Points Confirm Modal */}
-      <ConfirmModal
-        isOpen={showFixAllConfirm}
-        onClose={() => { setShowFixAllConfirm(false); setFixAllTargets([]); }}
-        onConfirm={confirmFixAllPoints}
-        title="ปรับปรุงแต้มสมาชิก"
-        message={`ต้องการปรับปรุงแต้มสมาชิก ${fixAllTargets.length} รายการ ที่มีข้อมูลไม่ตรงกับประวัติ ใช่หรือไม่?`}
-        confirmText="ปรับปรุง"
-        cancelText="ยกเลิก"
-        variant="warning"
       />
     </div>
   );

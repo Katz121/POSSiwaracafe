@@ -1429,22 +1429,29 @@ function CustomerOrderApp() {
           const memberRef = doc(db, ...base, 'members', phone);
           const pointsToAdd = Math.floor(total / 10);
           const redeemDeduct = (usePoints && pointsEligible) ? redeemPointsThreshold : 0;
-          const netPoints = pointsToAdd - redeemDeduct;
 
           const isExisting = !!member && member.phone === phone;
           const memberPayload = {
             phone,
             name: customerName.trim(),
-            points: increment(netPoints),
             lastOrderAt: serverTimestamp(),
           };
+          // Earned points are held in pendingPoints until the owner approves them
+          // on the Members page. Redemption is applied in real time.
+          if (pointsToAdd > 0) {
+            memberPayload.pendingPoints = increment(pointsToAdd);
+            memberPayload.pendingReason = 'order';
+          }
+          if (redeemDeduct > 0) {
+            memberPayload.points = increment(-redeemDeduct);
+          }
           if (!isExisting) {
             memberPayload.createdAt = serverTimestamp();
           }
-          // Points source history (kept on the member doc)
+          // History records the real-time redemption now; earned points are
+          // logged to history when the owner approves them.
           const now = new Date().toISOString();
           const entries = [];
-          if (pointsToAdd > 0) entries.push({ delta: pointsToAdd, reason: 'order', at: now });
           if (redeemDeduct > 0) entries.push({ delta: -redeemDeduct, reason: 'redeem', at: now });
           if (entries.length > 0) memberPayload.pointsHistory = arrayUnion(...entries);
           await setDoc(memberRef, memberPayload, { merge: true });
