@@ -451,6 +451,10 @@ export default function PosView() {
         const originalOrder = orders.find(o => o.id === editingOrderId);
         const editData = { ...orderData, updatedAt: serverTimestamp() };
         if (originalOrder?.status) editData.status = originalOrder.status;
+        // Editing must NOT move the sale to "now" — keep the original creation
+        // time and report date, otherwise daily sales totals get corrupted.
+        if (originalOrder?.createdAt) editData.createdAt = originalOrder.createdAt;
+        if (originalOrder?.date) editData.date = originalOrder.date;
         // Reconcile the redemption against what this bill already redeemed:
         if (pointsRedeemActive && !wasRedeemed && redeemMemberId) {
           await applyRedeem(redeemMemberId);
