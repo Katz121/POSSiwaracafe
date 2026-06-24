@@ -127,9 +127,32 @@ export default function PosView() {
     [reviewDiscount, subtotal],
   );
 
+  // --- Loyalty points redemption: ONE source of truth -------------------------
+  // The bill discount and the points deduction MUST share the same condition.
+  // Previously the bill subtracted REDEEM_DISCOUNT_VALUE whenever `usePoints` was
+  // on, while the deduction additionally required a loaded member with enough
+  // points AND only ran in the new-order branch. So any race that dropped
+  // `currentMember`, or any edited bill, handed out the ฿discount for free without
+  // ever taking the points (audit found 30 such leaked redemptions). Gate both on
+  // `pointsRedeemActive`, and reconcile against the order's own `pointsRedeemed`
+  // flag at save time so editing/re-saving never double-deducts or leaks.
+  const redeemNameKey = getNameKey(currentMember?.name);
+  const redeemMemberId = (currentMember && !currentMember.isNew)
+    ? (currentMember.phone || (redeemNameKey ? `name:${redeemNameKey}` : null))
+    : null;
+  const editingOrder = editingOrderId ? orders.find(o => o.id === editingOrderId) : null;
+  const wasRedeemed = !!editingOrder?.pointsRedeemed;
+  // A bill that already redeemed stays redeemable on edit even if the member's
+  // balance has since dropped below the threshold (we're keeping an existing
+  // redemption, not creating a new one). A brand-new redemption still needs a
+  // sufficient balance.
+  const pointsRedeemActive = usePoints
+    && !!redeemMemberId
+    && (Number(currentMember?.points || 0) >= REDEEM_POINTS_THRESHOLD || wasRedeemed);
+
   const discountAmount = useMemo(() => {
     let d = 0;
-    if (usePoints) d += REDEEM_DISCOUNT_VALUE;
+    if (pointsRedeemActive) d += REDEEM_DISCOUNT_VALUE;
     if (bringOwnGlass) d += OWN_GLASS_DISCOUNT;
     cart.forEach(item => {
       if (item.promoApplied && activePromotion?.discountPercent > 0) {
@@ -141,7 +164,7 @@ export default function PosView() {
     d += reviewDiscountAmount;    // รีวิว 5%
     // Cap at the subtotal so combined discounts can never exceed 100% / go negative.
     return Math.min(subtotal, d);
-  }, [usePoints, bringOwnGlass, activePromotion, cart, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, effectiveComboDiscount, effectiveSpendDiscount, reviewDiscountAmount, subtotal]);
+  }, [pointsRedeemActive, bringOwnGlass, activePromotion, cart, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, effectiveComboDiscount, effectiveSpendDiscount, reviewDiscountAmount, subtotal]);
 
   const vatAmount = useMemo(() => vatEnabled ? Math.round(Math.max(0, subtotal - discountAmount) * VAT_RATE) : 0, [subtotal, discountAmount, vatEnabled]);
   const netTotal = useMemo(() => Math.max(0, (subtotal - discountAmount) + vatAmount), [subtotal, discountAmount, vatAmount]);
@@ -215,7 +238,9 @@ export default function PosView() {
         setIsPaid(orderToEdit.isPaid || false);
         setBringOwnGlass(orderToEdit.bringOwnGlass || false);
         setReviewDiscount(orderToEdit.reviewDiscount || false);
-        setUsePoints(false);
+        // Keep an existing redemption on when re-opening the bill so the discount is
+        // preserved and reconciliation (in handleCheckout) doesn't refund it.
+        setUsePoints(!!orderToEdit.pointsRedeemed);
         if (orderToEdit.memberPhone) setMemberPhone(orderToEdit.memberPhone);
         if (orderToEdit.memberNickname) setMemberNickname(orderToEdit.memberNickname);
       } else {
@@ -403,23 +428,50 @@ export default function PosView() {
         }
         await setDoc(memRef, memberData, { merge: true });
       }
+      // Loyalty redemption: deduct/refund points atomically with saving the order,
+      // and stamp the order with what it redeemed so re-edits stay idempotent.
+      const redeemAmount = REDEEM_POINTS_THRESHOLD;
+      const applyRedeem = async (memberId) => {
+        const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
+        await updateDoc(memRef, {
+          points: increment(-redeemAmount),
+          pointsHistory: arrayUnion({ delta: -redeemAmount, reason: 'redeem', at: new Date().toISOString() }),
+        });
+      };
+      const refundRedeem = async (memberId, amount) => {
+        if (!memberId || !amount) return;
+        const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
+        await updateDoc(memRef, {
+          points: increment(amount),
+          pointsHistory: arrayUnion({ delta: amount, reason: 'redeem-refund', at: new Date().toISOString() }),
+        });
+      };
+
       if (editingOrderId) {
         const originalOrder = orders.find(o => o.id === editingOrderId);
         const editData = { ...orderData, updatedAt: serverTimestamp() };
         if (originalOrder?.status) editData.status = originalOrder.status;
+        // Reconcile the redemption against what this bill already redeemed:
+        if (pointsRedeemActive && !wasRedeemed && redeemMemberId) {
+          await applyRedeem(redeemMemberId);
+          editData.pointsRedeemed = true;
+          editData.pointsRedeemId = redeemMemberId;
+          editData.pointsRedeemAmount = redeemAmount;
+        } else if (!pointsRedeemActive && wasRedeemed) {
+          await refundRedeem(originalOrder?.pointsRedeemId, Number(originalOrder?.pointsRedeemAmount) || redeemAmount);
+          editData.pointsRedeemed = false;
+          editData.pointsRedeemId = '';
+          editData.pointsRedeemAmount = 0;
+        }
+        // (both redeemed, or neither → leave the existing flags untouched)
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', editingOrderId), editData);
         setEditingOrderId(null);
       } else {
-        if (usePoints && currentMember && Number(currentMember.points || 0) >= REDEEM_POINTS_THRESHOLD) {
-          const memNameKey = getNameKey(currentMember.name);
-          const redeemMemberId = currentMember.phone || (memNameKey ? `name:${memNameKey}` : null);
-          if (redeemMemberId) {
-            const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', redeemMemberId);
-            await updateDoc(memRef, {
-              points: increment(-REDEEM_POINTS_THRESHOLD),
-              pointsHistory: arrayUnion({ delta: -REDEEM_POINTS_THRESHOLD, reason: 'redeem', at: new Date().toISOString() }),
-            });
-          }
+        if (pointsRedeemActive && redeemMemberId) {
+          await applyRedeem(redeemMemberId);
+          orderData.pointsRedeemed = true;
+          orderData.pointsRedeemId = redeemMemberId;
+          orderData.pointsRedeemAmount = redeemAmount;
         }
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), orderData);
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue'), { current: Number(queueCounter) + 1 });
@@ -678,7 +730,7 @@ export default function PosView() {
             <span className="font-bold">-฿{reviewDiscountAmount.toLocaleString()}</span>
           </div>
         )}
-        {usePoints && (
+        {pointsRedeemActive && (
           <div className="flex justify-between text-xs text-[var(--accent-emerald)]">
             <span>ใช้แต้มสะสม</span>
             <span className="font-bold">-฿{REDEEM_DISCOUNT_VALUE}</span>
