@@ -395,9 +395,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
                   >
                     <span className="font-semibold text-gray-800">{mod.name}</span>
                     <span className={`font-bold ${surcharge > 0 ? 'text-orange-500' : 'text-emerald-600'}`}>
-                      {multi
-                        ? (surcharge > 0 ? `+${formatCurrency(surcharge)}` : 'ฐาน')
-                        : formatCurrency(computeModifierPrice(item, [mod]))}
+                      {formatCurrency(computeModifierPrice(item, [mod]))}
                     </span>
                   </motion.button>
                 );

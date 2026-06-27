@@ -1138,9 +1138,7 @@ export default function PosView() {
                           className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${selected ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-500 ring-2 ring-amber-400' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 hover:border-amber-500'}`}>
                           <span className="font-bold text-amber-800 dark:text-amber-400">#{mod.name}</span>
                           <span className={`font-bold ${surcharge > 0 ? 'text-amber-600' : 'text-[var(--accent-emerald)]'}`}>
-                            {multi
-                              ? (surcharge > 0 ? `+฿${surcharge.toLocaleString()}` : 'ฐาน')
-                              : `฿${computeModifierPrice(pendingBeanItem, [mod]).toLocaleString()}`}
+                            ฿{computeModifierPrice(pendingBeanItem, [mod]).toLocaleString()}
                           </span>
                         </button>
                       );
