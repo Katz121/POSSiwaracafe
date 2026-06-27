@@ -8,6 +8,7 @@ import { doc, collection, addDoc, updateDoc, deleteDoc } from 'firebase/firestor
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate, compressImage } from '../../utils/calculations';
+import { getModifierGroups } from '../../config/constants';
 import { generateMenuImage } from '../../services/aiService';
 import { uploadImageToR2, isBase64Image } from '../../services/imageUpload';
 import { Button, Modal, EmptyState, useToast, ConfirmModal, InputModal, Skeleton } from '../ui';
@@ -212,7 +213,12 @@ export default function MenuManageView() {
   const saveMenuItem = async (e) => {
     e.preventDefault();
     const col = collection(db, 'artifacts', appId, 'public', 'data', 'menu');
-    const data = { ...newItem, price: Number(newItem.price), beanExtra: Number(newItem.beanExtra) || 0, baseBeanIds: Array.isArray(newItem.baseBeanIds) ? newItem.baseBeanIds : [], modifierGroup: newItem.modifierGroup || 'เมล็ดกาแฟ' };
+    // modifierGroups (array) คือค่าหลักรองรับหลายกลุ่ม; modifierGroup (string)
+    // เก็บไว้ให้เข้ากันได้กับเมนู/โค้ดเดิม = กลุ่มแรกที่เลือก
+    const groups = (Array.isArray(newItem.modifierGroups) && newItem.modifierGroups.length)
+      ? newItem.modifierGroups
+      : [newItem.modifierGroup || 'เมล็ดกาแฟ'];
+    const data = { ...newItem, price: Number(newItem.price), beanExtra: Number(newItem.beanExtra) || 0, baseBeanIds: Array.isArray(newItem.baseBeanIds) ? newItem.baseBeanIds : [], modifierGroups: groups, modifierGroup: groups[0] };
     if (!data.category && dynamicCategories.length > 0) data.category = dynamicCategories[0].name;
     await runDbAction(async () => {
       if (editingItem) await updateDoc(doc(col, editingItem.id), data); else await addDoc(col, data);
@@ -845,14 +851,38 @@ export default function MenuManageView() {
             {/* Bean special add-on price (only when bean selection is on) */}
             {newItem.allowBeanModifier && (
               <div className="bg-amber-50/30 p-5 rounded-[2rem] border border-amber-100">
-                <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-2">กลุ่มตัวเลือกที่ใช้ (เมล็ดกาแฟ / มัทฉะ / ...)</label>
-                <select
-                  value={newItem.modifierGroup || 'เมล็ดกาแฟ'}
-                  onChange={e => setNewItem({ ...newItem, modifierGroup: e.target.value, baseBeanIds: [] })}
-                  className="w-full mb-4 bg-white border border-amber-200 rounded-2xl p-4 text-sm font-black outline-none cursor-pointer"
-                >
-                  {[...new Set(['เมล็ดกาแฟ', ...(beanModifiers || []).map(b => b.group || 'เมล็ดกาแฟ')])].map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-2">กลุ่มตัวเลือกที่ใช้ (เลือกได้หลายกลุ่ม)</label>
+                {(() => {
+                  const allGroups = [...new Set(['เมล็ดกาแฟ', ...(beanModifiers || []).map(b => b.group || 'เมล็ดกาแฟ')])];
+                  const selectedGroups = getModifierGroups(newItem);
+                  return (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {allGroups.map(g => {
+                        const selected = selectedGroups.includes(g);
+                        return (
+                          <button
+                            key={g}
+                            type="button"
+                            onClick={() => {
+                              // ต้องเหลืออย่างน้อย 1 กลุ่ม
+                              const next = selected
+                                ? (selectedGroups.length > 1 ? selectedGroups.filter(x => x !== g) : selectedGroups)
+                                : [...selectedGroups, g];
+                              // ตัด baseBeanIds ที่ไม่อยู่ในกลุ่มที่เลือกแล้วออก
+                              const allowedIds = (beanModifiers || []).filter(b => next.includes(b.group || 'เมล็ดกาแฟ')).map(b => b.id);
+                              const baseBeanIds = (newItem.baseBeanIds || []).filter(id => allowedIds.includes(id));
+                              setNewItem({ ...newItem, modifierGroups: next, modifierGroup: next[0], baseBeanIds });
+                            }}
+                            className={`px-4 py-2 rounded-xl text-xs font-black border transition-all ${selected ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-amber-300 hover:text-amber-600'}`}
+                          >
+                            {g}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                <p className="text-xs text-gray-400 mb-4 font-bold leading-relaxed">เลือกหลายกลุ่มได้ ลูกค้าจะเลือกทีละกลุ่ม เช่น <strong>ส้ม</strong> (ฐานราคา) + <strong>เมล็ดกาแฟ</strong> (บวกเพิ่ม)</p>
 
                 <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-2">ราคาส่วนเพิ่มเมื่อเลือกเมล็ด (เช่น น้ำช่อ)</label>
                 <input
@@ -862,38 +892,42 @@ export default function MenuManageView() {
                   className="w-full bg-white border border-amber-200 rounded-2xl p-4 text-sm font-black outline-none"
                   placeholder="0"
                 />
-                <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">ราคาที่คิด = <strong>ค่าที่สูงกว่า</strong> ระหว่างราคาเมนู กับ (ราคาเมล็ดที่เลือก + ส่วนเพิ่มนี้)</p>
+                <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">ราคารวม = ราคาเมนู + ส่วนเพิ่มของแต่ละตัวเลือกที่ไม่ใช่เบส (กลุ่มเดียว = ค่าที่สูงกว่าระหว่างราคาเมนูกับราคาตัวเลือก)</p>
 
-                {/* Base beans for THIS menu: selecting one keeps the menu price (no surcharge) */}
-                <div className="mt-4">
-                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block mb-2">ตัวเลือกที่คงราคาเมนู (เบส — ไม่บวกเพิ่ม)</label>
-                  {(() => {
-                    const group = newItem.modifierGroup || 'เมล็ดกาแฟ';
+                {/* Base options per group: selecting one keeps the menu price (no surcharge) */}
+                <div className="mt-4 space-y-4">
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest block">ตัวเลือกที่คงราคาเมนู (เบส — ไม่บวกเพิ่ม)</label>
+                  {getModifierGroups(newItem).map(group => {
                     const groupBeans = (beanModifiers || []).filter(b => (b.group || 'เมล็ดกาแฟ') === group);
-                    return groupBeans.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic font-bold">ยังไม่มีตัวเลือกในกลุ่มนี้ (เพิ่มที่หน้าแอดมิน)</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {groupBeans.map(b => {
-                          const selected = (newItem.baseBeanIds || []).includes(b.id);
-                          return (
-                            <button
-                              key={b.id}
-                              type="button"
-                              onClick={() => {
-                                const cur = newItem.baseBeanIds || [];
-                                const next = selected ? cur.filter(x => x !== b.id) : [...cur, b.id];
-                                setNewItem({ ...newItem, baseBeanIds: next });
-                              }}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${selected ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-amber-300 hover:text-amber-600'}`}
-                            >
-                              #{b.name}
-                            </button>
-                          );
-                        })}
+                    return (
+                      <div key={group}>
+                        <p className="text-xs font-black text-amber-600 mb-2">{group}</p>
+                        {groupBeans.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic font-bold">ยังไม่มีตัวเลือกในกลุ่มนี้ (เพิ่มที่หน้าแอดมิน)</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {groupBeans.map(b => {
+                              const selected = (newItem.baseBeanIds || []).includes(b.id);
+                              return (
+                                <button
+                                  key={b.id}
+                                  type="button"
+                                  onClick={() => {
+                                    const cur = newItem.baseBeanIds || [];
+                                    const next = selected ? cur.filter(x => x !== b.id) : [...cur, b.id];
+                                    setNewItem({ ...newItem, baseBeanIds: next });
+                                  }}
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${selected ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-amber-300 hover:text-amber-600'}`}
+                                >
+                                  #{b.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
-                  })()}
+                  })}
                 </div>
               </div>
             )}

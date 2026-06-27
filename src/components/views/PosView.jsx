@@ -21,7 +21,10 @@ import {
   DEFAULT_ITEMS_PER_PAGE,
   VAT_RATE,
   MENU_PAGE_OPTIONS,
-  roundUpTo5
+  roundUpTo5,
+  getModifierGroups,
+  isBaseModifier,
+  computeModifierPrice
 } from '../../config/constants';
 
 export default function PosView() {
@@ -79,6 +82,8 @@ export default function PosView() {
   const [bringOwnGlass, setBringOwnGlass] = useState(false);
   const [reviewDiscount, setReviewDiscount] = useState(false); // staff applies 5% for a verified review
   const [pendingBeanItem, setPendingBeanItem] = useState(null);
+  // ตัวเลือกที่เลือกไว้ต่อกลุ่มในป๊อปอัป (เช่น { 'ส้ม': mod, 'เมล็ดกาแฟ': mod })
+  const [pendingBeanSelections, setPendingBeanSelections] = useState({});
   const [recommendations, setRecommendations] = useState([]);
   const [isRecommending, setIsRecommending] = useState(false);
   const [menuPage, setMenuPage] = useState(1);
@@ -289,8 +294,10 @@ export default function PosView() {
   }, []);
 
   const addToCart = (p) => {
-    const pGroup = p.modifierGroup || 'เมล็ดกาแฟ';
-    if (p.allowBeanModifier && beanModifiers.some(b => b.available !== false && (b.group || 'เมล็ดกาแฟ') === pGroup)) {
+    const pGroups = getModifierGroups(p);
+    const hasOptions = beanModifiers.some(b => b.available !== false && pGroups.includes(b.group || 'เมล็ดกาแฟ'));
+    if (p.allowBeanModifier && hasOptions) {
+      setPendingBeanSelections({});
       setPendingBeanItem(p);
       return;
     }
@@ -311,27 +318,21 @@ export default function PosView() {
     });
   };
 
-  const addToCartWithBean = (item, modifier) => {
-    // Price = max(menu price, chosen bean price + this menu's special add-on).
-    // Floor at the menu price so a cheaper bean never lowers it (กาแฟส้ม ฿80),
-    // while a premium bean + add-on can raise it (อเมริกาโน่น้ำช่อ = 120 + 15).
-    // Base beans (global default คั่วเข้ม, or tagged on this menu) are included in
-    // the menu price — no surcharge. Coffee menus round up to the nearest 5 baht.
-    const isBaseBean = modifier && (modifier.isDefault || (item.baseBeanIds || []).includes(modifier.id));
-    const rawPrice = (modifier && !isBaseBean)
-      ? Math.max(Number(item.price) || 0, (Number(modifier.price) || 0) + (Number(item.beanExtra) || 0))
-      : Number(item.price) || 0;
-    const finalPrice = roundUpTo5(rawPrice);
-    const modifierName = modifier ? `#${modifier.name}` : '';
-    const cartItemId = modifier ? `${item.id}-${modifier.id}` : item.id;
+  const addToCartWithBean = (item, modifiers) => {
+    // Accepts one modifier or a list (one per group, e.g. ส้ม + เมล็ดกาแฟ).
+    // Price is additive: base = menu price, each non-base option adds its own
+    // surcharge — ส้มสด 80 (ฐาน 60 → +20) บวกเมล็ดพรีเมียมต่างหาก. กลุ่มเดียว
+    // ยังเท่ากับ max(ราคาเมนู, ราคาตัวเลือก+ส่วนเพิ่ม) แบบเดิม. ปัดขึ้นทีละ 5 บาท.
+    const mods = (Array.isArray(modifiers) ? modifiers : [modifiers]).filter(Boolean);
+    const finalPrice = computeModifierPrice(item, mods);
+    const modifierName = mods.map(m => `#${m.name}`).join(' ');
+    const cartItemId = mods.length ? `${item.id}-${mods.map(m => m.id).join('-')}` : item.id;
     const mergedStockLinks = [...(item.stockLinks || [])];
-    if (modifier && modifier.stockLinks) {
-      modifier.stockLinks.forEach(link => {
-        const existing = mergedStockLinks.find(l => l.stockId === link.stockId);
-        if (existing) existing.usage = (Number(existing.usage) || 0) + (Number(link.usage) || 0);
-        else mergedStockLinks.push({ ...link });
-      });
-    }
+    mods.forEach(mod => (mod.stockLinks || []).forEach(link => {
+      const existing = mergedStockLinks.find(l => l.stockId === link.stockId);
+      if (existing) existing.usage = (Number(existing.usage) || 0) + (Number(link.usage) || 0);
+      else mergedStockLinks.push({ ...link });
+    }));
     setCart(prev => {
       const existing = prev.find(c => c.cartId === cartItemId);
       if (existing) return prev.map(c => c.cartId === cartItemId ? { ...c, quantity: c.quantity + 1 } : c);
@@ -342,6 +343,7 @@ export default function PosView() {
       }];
     });
     setPendingBeanItem(null);
+    setPendingBeanSelections({});
   };
 
   const updateCartItemNote = (cartItemId, note) => setCart(prev => prev.map(item => (item.cartId || item.id) === cartItemId ? { ...item, note } : item));
@@ -1094,39 +1096,74 @@ export default function PosView() {
         </div>
       )}
 
-      {/* Bean Modifier Selection Modal */}
-      <Modal isOpen={!!pendingBeanItem} onClose={() => setPendingBeanItem(null)} title={`เลือก${pendingBeanItem?.modifierGroup || 'เมล็ดกาแฟ'}`} size="sm">
-        {pendingBeanItem && (
-          <div className="space-y-4">
-            <p className="text-center font-medium -mt-2 mb-4 text-[var(--text-secondary)]">{pendingBeanItem.name}</p>
-            <div className="space-y-3">
-              {/* No "ไม่เพิ่มกาแฟ" default — it was confusing for non-coffee groups
-                  (e.g. matcha). Staff/customer pick a bean/grade explicitly; the
-                  base-price option shows in green among the choices below. */}
-              {beanModifiers
-                .filter(b => b.available !== false && (b.group || 'เมล็ดกาแฟ') === (pendingBeanItem.modifierGroup || 'เมล็ดกาแฟ'))
-                .map(mod => {
-                  // Base beans use the menu price; others: max(menu, bean + add-on). Rounded up to 5.
-                  const isBaseBean = mod.isDefault || (pendingBeanItem.baseBeanIds || []).includes(mod.id);
-                  const beanBase = Number(pendingBeanItem.price) || 0;
-                  const effective = roundUpTo5(isBaseBean ? beanBase : Math.max(beanBase, (Number(mod.price) || 0) + (Number(pendingBeanItem.beanExtra) || 0)));
-                  return { mod, effective, raisesPrice: effective > roundUpTo5(beanBase) };
-                })
-                .sort((a, b) => a.effective - b.effective) // cheapest first
-                .map(({ mod, effective, raisesPrice }) => (
-                <button key={mod.id} onClick={() => addToCartWithBean(pendingBeanItem, mod)}
-                  className="w-full p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 flex items-center justify-between hover:border-amber-500 transition-all">
-                  <span className="font-bold text-amber-800 dark:text-amber-400">#{mod.name}</span>
-                  {/* base-price beans use the green colour; pricier ones amber */}
-                  <span className={`font-bold ${raisesPrice ? 'text-amber-600' : 'text-[var(--accent-emerald)]'}`}>
-                    ฿{effective.toLocaleString()}
-                  </span>
-                </button>
-                ))}
+      {/* Bean Modifier Selection Modal — รองรับหลายกลุ่ม (เช่น ส้ม + เมล็ดกาแฟ) */}
+      <Modal isOpen={!!pendingBeanItem} onClose={() => { setPendingBeanItem(null); setPendingBeanSelections({}); }} title="เลือกตัวเลือก" size="sm">
+        {pendingBeanItem && (() => {
+          const itemBase = Number(pendingBeanItem.price) || 0;
+          const extra = Number(pendingBeanItem.beanExtra) || 0;
+          // กลุ่มที่มีตัวเลือกพร้อมขายจริงเท่านั้น
+          const groups = getModifierGroups(pendingBeanItem)
+            .map(g => ({
+              name: g,
+              mods: beanModifiers
+                .filter(b => b.available !== false && (b.group || 'เมล็ดกาแฟ') === g)
+                .map(mod => ({
+                  mod,
+                  surcharge: isBaseModifier(pendingBeanItem, mod) ? 0 : Math.max(0, (Number(mod.price) || 0) + extra - itemBase),
+                }))
+                .sort((a, b) => a.surcharge - b.surcharge),
+            }))
+            .filter(g => g.mods.length > 0);
+          const multi = groups.length > 1;
+          const allChosen = groups.every(g => pendingBeanSelections[g.name]);
+          const chosenMods = groups.map(g => pendingBeanSelections[g.name]).filter(Boolean);
+          const previewPrice = computeModifierPrice(pendingBeanItem, chosenMods);
+
+          return (
+            <div className="space-y-4">
+              <p className="text-center font-medium -mt-2 text-[var(--text-secondary)]">{pendingBeanItem.name}</p>
+              {groups.map(group => (
+                <div key={group.name} className="space-y-2">
+                  {multi && <p className="text-xs font-black uppercase tracking-widest text-[var(--text-muted)] ml-1">{group.name}</p>}
+                  <div className="space-y-2">
+                    {group.mods.map(({ mod, surcharge }) => {
+                      const selected = pendingBeanSelections[group.name]?.id === mod.id;
+                      // กลุ่มเดียว = แตะเลือกแล้วเพิ่มลงตะกร้าทันที (UX เดิม).
+                      // หลายกลุ่ม = แตะเพื่อเลือกในกลุ่มนั้น แล้วกดยืนยันด้านล่าง.
+                      const onClick = multi
+                        ? () => setPendingBeanSelections(prev => ({ ...prev, [group.name]: mod }))
+                        : () => addToCartWithBean(pendingBeanItem, mod);
+                      return (
+                        <button key={mod.id} onClick={onClick}
+                          className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${selected ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-500 ring-2 ring-amber-400' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 hover:border-amber-500'}`}>
+                          <span className="font-bold text-amber-800 dark:text-amber-400">#{mod.name}</span>
+                          <span className={`font-bold ${surcharge > 0 ? 'text-amber-600' : 'text-[var(--accent-emerald)]'}`}>
+                            {multi
+                              ? (surcharge > 0 ? `+฿${surcharge.toLocaleString()}` : 'ฐาน')
+                              : `฿${computeModifierPrice(pendingBeanItem, [mod]).toLocaleString()}`}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              {multi && (
+                <>
+                  <div className="flex items-center justify-between px-1 pt-1 text-[var(--text-primary)]">
+                    <span className="font-bold">รวม</span>
+                    <span className="font-black text-lg text-[var(--accent-emerald)]">฿{previewPrice.toLocaleString()}</span>
+                  </div>
+                  <Button variant="primary" fullWidth disabled={!allChosen}
+                    onClick={() => addToCartWithBean(pendingBeanItem, chosenMods)}>
+                    {allChosen ? 'เพิ่มลงตะกร้า' : 'เลือกให้ครบทุกกลุ่ม'}
+                  </Button>
+                </>
+              )}
+              <Button variant="secondary" fullWidth onClick={() => { setPendingBeanItem(null); setPendingBeanSelections({}); }}>ยกเลิก</Button>
             </div>
-            <Button variant="secondary" fullWidth onClick={() => setPendingBeanItem(null)}>ยกเลิก</Button>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
     </>
   );

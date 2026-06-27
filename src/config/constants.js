@@ -20,6 +20,32 @@ export const VAT_PERCENTAGE = 7;                     // สำหรับแส
 // ปัดราคาขึ้นเป็นพหุคูณของ 5 (สำหรับเมนูกาแฟ) เช่น 72→75, 102→105
 export const roundUpTo5 = (n) => Math.ceil((Number(n) || 0) / 5) * 5;
 
+// ==================== MENU MODIFIER GROUPS ====================
+// เมนูหนึ่งเลือกได้หลายกลุ่มตัวเลือก (เช่น "ส้ม" + "เมล็ดกาแฟ") — เก็บใน
+// modifierGroups (array). รองรับเมนูเดิมที่ใช้ modifierGroup (string) ตัวเดียว.
+export const getModifierGroups = (item) =>
+  (Array.isArray(item?.modifierGroups) && item.modifierGroups.length)
+    ? item.modifierGroups
+    : [item?.modifierGroup || 'เมล็ดกาแฟ'];
+
+// ตัวเลือกที่เป็น "เบส" คงราคาเมนูเดิม (ไม่บวกเพิ่ม)
+export const isBaseModifier = (item, mod) =>
+  !!mod && (mod.isDefault || (item?.baseBeanIds || []).includes(mod.id));
+
+// ราคารวมแบบบวกเพิ่ม (additive): ฐาน = ราคาเมนู, แต่ละตัวเลือกที่ไม่ใช่เบสบวก
+// ส่วนต่างของมัน เช่น ส้มสด 80 (ฐาน 60 → +20) + เมล็ดน้ำช่อ 75 (→ +15). ตัวเลือก
+// กลุ่มเดียวจะเท่ากับ max(ราคาเมนู, ราคาตัวเลือก+ส่วนเพิ่ม) แบบเดิมทุกประการ.
+export const computeModifierPrice = (item, mods) => {
+  const base = Number(item?.price) || 0;
+  const extra = Number(item?.beanExtra) || 0;
+  const list = (Array.isArray(mods) ? mods : [mods]).filter(Boolean);
+  const total = list.reduce((sum, mod) => {
+    if (isBaseModifier(item, mod)) return sum;
+    return sum + Math.max(0, (Number(mod.price) || 0) + extra - base);
+  }, base);
+  return roundUpTo5(total);
+};
+
 // ==================== CAKE CLEARANCE (HAPPY HOUR) ====================
 export const DEFAULT_CAKE_SALE_PERCENT = 20;         // ส่วนลด % ช่วงล้างสต๊อกเค้ก
 export const DEFAULT_CAKE_SALE_START = '17:00';      // เริ่มช่วงลดราคา
