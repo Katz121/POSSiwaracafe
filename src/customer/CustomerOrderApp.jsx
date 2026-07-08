@@ -48,6 +48,203 @@ import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE,
 import { bumpMenuSoldCount } from '../utils/menuSales';
 import { notifyNewOrderToLine } from '../services/lineNotify';
 import { applyCustomerSEO } from '../utils/seo';
+import { getNameKey } from '../utils/calculations';
+
+// ---------------------------------------------------------------------------
+// i18n: Thai/English UI chrome for the customer-facing QR ordering page.
+// Menu/category names come from Firestore and are intentionally NOT translated.
+// ---------------------------------------------------------------------------
+const QR_LANG_STORAGE_KEY = 'qr_lang';
+
+const TX = {
+  th: {
+    appLoading: 'กำลังโหลดเมนู...',
+    orderViaQr: 'สั่งออเดอร์ผ่าน QR',
+    searchPlaceholder: 'ค้นหาเมนู...',
+    categoryAll: 'ทั้งหมด',
+    noMenuFound: 'ไม่พบเมนูที่ค้นหา',
+    noMenuFoundDesc: (q) => `ไม่พบ "${q}" ลองค้นหาคำอื่น`,
+    noMenuYet: 'ยังไม่มีเมนู',
+    noMenuYetDesc: 'กรุณารอสักครู่',
+    allMenuHeading: 'เมนูทั้งหมด',
+    viewAllMenu: (n) => `ดูเมนูทั้งหมด (+${n}) ▾`,
+    bestSellerBadge: '🔥 ขายดี',
+    featuredBadge: 'แนะนำ',
+    startingFrom: 'เริ่มต้น ',
+    startingFromShort: 'เริ่ม ',
+    bestSellerRailTitle: '🔥 เมนูขายดี',
+    featuredRailTitle: '⭐ เมนูแนะนำ',
+    happyHourBanner: (pct, left) => `Happy Hour! เค้กลด ${pct}% · เหลืออีก ${left} ⏳`,
+    happyHourUntil: (end) => `ถึง ${end} น. · รีบสั่งก่อนหมดเวลา!`,
+    hoursShort: 'ชม.',
+    minutesShort: 'นาที',
+    comboNudgeCake: (pct) => `เพิ่มเครื่องดื่มอีก 1 แก้ว รับส่วนลด ${pct}%! 🥤`,
+    comboNudgeDrink: (pct) => `เพิ่มเค้กอีก 1 ชิ้น รับส่วนลด ${pct}%! 🍰`,
+    comboApplied: (pct) => `🎉 คุณได้รับส่วนลดคอมโบ ${pct}% แล้ว`,
+    spendReachedWithDiscount: (pct) => `🎉 ได้ส่วนลด ${pct}% แล้ว!`,
+    spendReachedNoDiscount: (amt) => `🎉 สั่งครบ ${amt} แล้ว!`,
+    spendStart: (amt, pct) => `🛍️ สั่งครบ ${amt} รับส่วนลด ${pct}%`,
+    spendRemaining: (amt, pct) => `🎁 อีกแค่ ${amt} รับส่วนลด ${pct}%!`,
+    cartTitle: 'รายการสั่ง',
+    cartEmptyTitle: 'ยังไม่มีรายการ',
+    cartEmptyDesc: 'กลับไปเพิ่มเมนูที่ต้องการ',
+    notePlaceholder: 'หมายเหตุ (เช่น ไม่ใส่น้ำตาล)',
+    addNote: 'เพิ่มหมายเหตุ',
+    cartTotal: 'ยอดรวม',
+    proceed: 'ดำเนินการต่อ',
+    viewCart: 'ดูตะกร้า',
+    chooseOption: 'เลือกตัวเลือก',
+    total: 'รวม',
+    addToCart: 'เพิ่มลงตะกร้า',
+    chooseAllGroups: 'เลือกให้ครบทุกกลุ่ม',
+    cancel: 'ยกเลิก',
+    chooseOptionFor: 'เลือกตัวเลือกสำหรับ',
+    confirmOrder: 'ยืนยันออเดอร์',
+    orderedItems: 'รายการที่สั่ง',
+    itemsPrice: 'ราคาสินค้า',
+    comboDiscountLabel: 'คอมโบเค้ก+เครื่องดื่ม',
+    pointsDiscountLabel: 'ส่วนลดแต้มสมาชิก',
+    spendDiscountLabel: 'ส่วนลดสั่งครบยอด',
+    vatLabel: 'VAT 7%',
+    grandTotal: 'ยอดรวม',
+    yourName: 'ชื่อของคุณ *',
+    namePlaceholder: 'กรอกชื่อเพื่อรับออเดอร์',
+    nameHint: 'ชื่อนี้จะใช้เรียกออเดอร์ของคุณ',
+    phoneLabel: 'เบอร์โทร (สำหรับสะสมแต้ม)',
+    phonePlaceholder: 'กรอกเบอร์โทร (ไม่บังคับ)',
+    memberStatus: (name, points) => `สมาชิก: ${name} • ${points} แต้ม`,
+    defaultCustomerName: 'ลูกค้า',
+    pointsReady: (val) => `🎉 ครบแล้ว! แลกส่วนลด ฿${val} ได้เลย`,
+    pointsRemaining: (rem, val) => `อีก ${rem} แต้ม แลกส่วนลด ฿${val}`,
+    newPhoneHint: 'เบอร์ใหม่ — ระบบจะสมัครสมาชิกให้อัตโนมัติ และเริ่มสะสมแต้ม',
+    usePointsToggle: (threshold, val) => `ใช้ ${threshold} แต้ม แลกส่วนลด ฿${val}`,
+    submitting: 'กำลังส่งออเดอร์...',
+    submitOrder: 'ส่งออเดอร์',
+    welcomeGreeting: 'ยินดีต้อนรับ ☕',
+    welcomeTitle: 'เมนูแนะนำ & ขายดี',
+    welcomeDesc: 'ที่ลูกค้าสั่งบ่อยที่สุด — ลองดูก่อนสั่งได้เลย',
+    welcomeCta: 'เริ่มสั่งเลย →',
+    close: 'ปิด',
+    orderOf: 'ออเดอร์ของ',
+    queueBefore: 'มีคิวก่อนหน้า · คิวของคุณ',
+    preparingDrink: 'กำลังทำเครื่องดื่มของคุณ ☕',
+    payAtCounter: 'กรุณาชำระเงินที่เคาน์เตอร์',
+    staffWillCall: 'พนักงานจะเรียกชื่อเมื่อเครื่องดื่มพร้อม',
+    reviewThanks: 'ขอบคุณสำหรับรีวิว 💚',
+    reviewPrompt: 'ถูกใจร้านเราไหม? 💚',
+    reviewDesc: 'ฝากรีวิวให้เราหน่อยน้า เป็นกำลังใจให้ร้านมากๆ 🙏',
+    writeReview: 'เขียนรีวิว',
+    reviewDiscountNote: '📣 รีวิวแล้ว แจ้งพนักงานตอนจ่ายเงิน รับส่วนลด 5% ทันที!',
+    orderAgain: 'สั่งเพิ่ม / สั่งใหม่',
+    soldOutError: (names) => `ขออภัย "${names}" เพิ่งหมด กรุณานำออกจากตะกร้าแล้วลองใหม่อีกครั้ง`,
+    submitFailedError: (code) => `สั่งออเดอร์ไม่สำเร็จ (${code}) — ลองใหม่อีกครั้ง`,
+  },
+  en: {
+    appLoading: 'Loading menu...',
+    orderViaQr: 'Order via QR',
+    searchPlaceholder: 'Search menu...',
+    categoryAll: 'All',
+    noMenuFound: 'No matching items',
+    noMenuFoundDesc: (q) => `No results for "${q}" — try another search`,
+    noMenuYet: 'No menu items yet',
+    noMenuYetDesc: 'Please check back shortly',
+    allMenuHeading: 'All items',
+    viewAllMenu: (n) => `View all (+${n}) ▾`,
+    bestSellerBadge: '🔥 Best seller',
+    featuredBadge: 'Featured',
+    startingFrom: 'From ',
+    startingFromShort: 'From ',
+    bestSellerRailTitle: '🔥 Best sellers',
+    featuredRailTitle: '⭐ Featured',
+    happyHourBanner: (pct, left) => `Happy Hour! ${pct}% off cakes · ${left} left ⏳`,
+    happyHourUntil: (end) => `Until ${end} · order before time runs out!`,
+    hoursShort: 'hr',
+    minutesShort: 'min',
+    comboNudgeCake: (pct) => `Add 1 more drink to get ${pct}% off! 🥤`,
+    comboNudgeDrink: (pct) => `Add 1 more cake to get ${pct}% off! 🍰`,
+    comboApplied: (pct) => `🎉 Combo discount of ${pct}% applied`,
+    spendReachedWithDiscount: (pct) => `🎉 You got ${pct}% off!`,
+    spendReachedNoDiscount: (amt) => `🎉 You've reached ${amt}!`,
+    spendStart: (amt, pct) => `🛍️ Spend ${amt} to get ${pct}% off`,
+    spendRemaining: (amt, pct) => `🎁 Just ${amt} more for ${pct}% off!`,
+    cartTitle: 'Your order',
+    cartEmptyTitle: 'Cart is empty',
+    cartEmptyDesc: 'Go back and add some items',
+    notePlaceholder: 'Note (e.g. no sugar)',
+    addNote: 'Add note',
+    cartTotal: 'Total',
+    proceed: 'Continue',
+    viewCart: 'View cart',
+    chooseOption: 'Choose option',
+    total: 'Total',
+    addToCart: 'Add to cart',
+    chooseAllGroups: 'Select all groups',
+    cancel: 'Cancel',
+    chooseOptionFor: 'Choose options for',
+    confirmOrder: 'Confirm order',
+    orderedItems: 'Order items',
+    itemsPrice: 'Items total',
+    comboDiscountLabel: 'Cake + drink combo',
+    pointsDiscountLabel: 'Member points discount',
+    spendDiscountLabel: 'Spend threshold discount',
+    vatLabel: 'VAT 7%',
+    grandTotal: 'Total',
+    yourName: 'Your name *',
+    namePlaceholder: 'Enter your name to receive your order',
+    nameHint: "This name will be called when your order is ready",
+    phoneLabel: 'Phone (to earn points)',
+    phonePlaceholder: 'Enter phone (optional)',
+    memberStatus: (name, points) => `Member: ${name} • ${points} points`,
+    defaultCustomerName: 'Customer',
+    pointsReady: (val) => `🎉 Ready! Redeem for ฿${val} off`,
+    pointsRemaining: (rem, val) => `${rem} points left to redeem ฿${val} off`,
+    newPhoneHint: "New number — you'll be signed up automatically and start earning points",
+    usePointsToggle: (threshold, val) => `Use ${threshold} points for ฿${val} off`,
+    submitting: 'Placing order...',
+    submitOrder: 'Place order',
+    welcomeGreeting: 'Welcome ☕',
+    welcomeTitle: 'Featured & Best sellers',
+    welcomeDesc: "Customers' favorites — take a look before you order",
+    welcomeCta: 'Start ordering →',
+    close: 'Close',
+    orderOf: 'Order for',
+    queueBefore: 'People ahead of you · your number',
+    preparingDrink: 'Preparing your drink ☕',
+    payAtCounter: 'Please pay at the counter',
+    staffWillCall: "Staff will call your name when it's ready",
+    reviewThanks: 'Thanks for the review 💚',
+    reviewPrompt: 'Enjoyed your visit? 💚',
+    reviewDesc: 'Leave us a review — it means a lot! 🙏',
+    writeReview: 'Write a review',
+    reviewDiscountNote: '📣 Show your review to staff at checkout for 5% off!',
+    orderAgain: 'Order again',
+    soldOutError: (names) => `Sorry, "${names}" just sold out — please remove it from your cart and try again`,
+    submitFailedError: (code) => `Order failed (${code}) — please try again`,
+  },
+};
+
+const makeT = (lang) => (key, ...args) => {
+  const entry = TX[lang]?.[key] ?? TX.th[key] ?? key;
+  return typeof entry === 'function' ? entry(...args) : entry;
+};
+
+// ---------------------------------------------------------------------------
+// Sub-component: LanguageToggle — TH/EN switch shown in the header
+// ---------------------------------------------------------------------------
+function LanguageToggle({ lang, onToggle }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+      style={{ minHeight: 32 }}
+      aria-label="Toggle language / สลับภาษา"
+    >
+      <span className={lang === 'th' ? 'text-emerald-600' : 'text-gray-400'}>TH</span>
+      <span className="text-gray-300">|</span>
+      <span className={lang === 'en' ? 'text-emerald-600' : 'text-gray-400'}>EN</span>
+    </button>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Helper: merge stock links from a menu item and a bean modifier
@@ -68,7 +265,7 @@ function mergeStockLinks(itemLinks = [], modifierLinks = []) {
 // ---------------------------------------------------------------------------
 // Sub-component: MenuItemCard
 // ---------------------------------------------------------------------------
-function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false }) {
+function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false, t }) {
   const hasImage = Boolean(item.image);
   const sale = getItemSalePrice(item, settingsData);
   // Coffee menus display prices rounded up to the nearest 5 baht.
@@ -99,12 +296,12 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false }) {
         <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
           {isBestSeller && (
             <span className="bg-orange-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-              🔥 ขายดี
+              {t('bestSellerBadge')}
             </span>
           )}
           {item.isFeatured && (
             <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-              แนะนำ
+              {t('featuredBadge')}
             </span>
           )}
         </div>
@@ -125,15 +322,15 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false }) {
           {sale.onSale ? (
             <div className="flex flex-col gap-0.5">
               <span className="text-gray-400 text-xs line-through leading-none">
-                {item.allowBeanModifier ? 'เริ่มต้น ' : ''}{formatCurrency(dp(sale.originalPrice))}
+                {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(sale.originalPrice))}
               </span>
               <span className="text-red-500 font-bold text-base leading-none">
-                {item.allowBeanModifier ? 'เริ่มต้น ' : ''}{formatCurrency(dp(sale.price))}
+                {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(sale.price))}
               </span>
             </div>
           ) : (
             <span className="text-emerald-600 font-bold text-base">
-              {item.allowBeanModifier ? 'เริ่มต้น ' : ''}{formatCurrency(dp(item.price))}
+              {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(item.price))}
             </span>
           )}
           <div className="w-9 h-9 bg-emerald-500 rounded-full flex items-center justify-center shadow-md">
@@ -148,7 +345,7 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false }) {
 // ---------------------------------------------------------------------------
 // Sub-component: HighlightRail — horizontal carousel of highlighted menu items
 // ---------------------------------------------------------------------------
-function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoScroll = false }) {
+function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoScroll = false, t }) {
   const [paused, setPaused] = useState(false);
   if (!items || items.length === 0) return null;
 
@@ -159,6 +356,7 @@ function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoS
         onAdd={onAdd}
         settingsData={settingsData}
         isBestSeller={bestSellerIds ? bestSellerIds.has(item.id) : true}
+        t={t}
       />
     </div>
   );
@@ -205,7 +403,7 @@ function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoS
 // every visitor immediately sees what the shop is known for. Pulls straight
 // from the live menu (isPinnedBest = ขายดี, isFeatured = แนะนำ).
 // ---------------------------------------------------------------------------
-function WelcomePopup({ isOpen, items, settingsData, onClose }) {
+function WelcomePopup({ isOpen, items, settingsData, onClose, t }) {
   const [paused, setPaused] = useState(false);
 
   // Price shown follows the same rules as MenuItemCard (sale + 5-baht rounding
@@ -218,7 +416,7 @@ function WelcomePopup({ isOpen, items, settingsData, onClose }) {
 
   const card = (item, key) => {
     const p = priceOf(item);
-    const badge = item.isPinnedBest ? { text: '🔥 ขายดี', cls: 'bg-orange-500' } : { text: '⭐ แนะนำ', cls: 'bg-emerald-500' };
+    const badge = item.isPinnedBest ? { text: t('bestSellerBadge'), cls: 'bg-orange-500' } : { text: `⭐ ${t('featuredBadge')}`, cls: 'bg-emerald-500' };
     return (
       <div key={key} className="w-36 flex-shrink-0 mr-3 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="relative w-full aspect-[4/3] bg-emerald-50 flex items-center justify-center overflow-hidden">
@@ -241,7 +439,7 @@ function WelcomePopup({ isOpen, items, settingsData, onClose }) {
               </div>
             ) : (
               <span className="text-emerald-600 font-bold text-sm">
-                {item.allowBeanModifier ? 'เริ่ม ' : ''}{formatCurrency(p.display)}
+                {item.allowBeanModifier ? t('startingFromShort') : ''}{formatCurrency(p.display)}
               </span>
             )}
           </div>
@@ -272,14 +470,14 @@ function WelcomePopup({ isOpen, items, settingsData, onClose }) {
             <div className="relative px-5 pt-5 pb-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white">
               <button
                 onClick={onClose}
-                aria-label="ปิด"
+                aria-label={t('close')}
                 className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
               >
                 <X size={18} />
               </button>
-              <p className="text-white/80 text-xs font-semibold">ยินดีต้อนรับ ☕</p>
-              <h2 className="font-black text-xl leading-tight">เมนูแนะนำ & ขายดี</h2>
-              <p className="text-white/85 text-xs mt-0.5">ที่ลูกค้าสั่งบ่อยที่สุด — ลองดูก่อนสั่งได้เลย</p>
+              <p className="text-white/80 text-xs font-semibold">{t('welcomeGreeting')}</p>
+              <h2 className="font-black text-xl leading-tight">{t('welcomeTitle')}</h2>
+              <p className="text-white/85 text-xs mt-0.5">{t('welcomeDesc')}</p>
             </div>
 
             {/* Auto-running marquee */}
@@ -302,7 +500,7 @@ function WelcomePopup({ isOpen, items, settingsData, onClose }) {
             {/* Footer */}
             <div className="px-5 pb-5 pt-1">
               <Button variant="primary" size="lg" fullWidth onClick={onClose} noUppercase>
-                เริ่มสั่งเลย →
+                {t('welcomeCta')}
               </Button>
             </div>
           </motion.div>
@@ -315,7 +513,7 @@ function WelcomePopup({ isOpen, items, settingsData, onClose }) {
 // ---------------------------------------------------------------------------
 // Sub-component: BeanModifierModal — picker for bean/blend selection
 // ---------------------------------------------------------------------------
-function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
+function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t }) {
   // เลือกตัวเลือกต่อกลุ่ม (เช่น { 'ส้ม': mod, 'เมล็ดกาแฟ': mod })
   const [selections, setSelections] = useState({});
   // เคลียร์ตัวเลือกทุกครั้งที่เปิดเมนูใหม่ (ปรับ state ตอน render ตามแนวทาง React)
@@ -352,31 +550,31 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="เลือกตัวเลือก"
+      title={t('chooseOption')}
       size="sm"
       footer={
         multi ? (
           <div className="w-full space-y-2">
             <div className="flex items-center justify-between px-1">
-              <span className="font-semibold text-gray-700">รวม</span>
+              <span className="font-semibold text-gray-700">{t('total')}</span>
               <span className="font-bold text-lg text-emerald-600">{formatCurrency(previewPrice)}</span>
             </div>
             <Button variant="primary" size="lg" fullWidth disabled={!allChosen} noUppercase
               onClick={() => onSelect(item, chosenMods)}>
-              {allChosen ? 'เพิ่มลงตะกร้า' : 'เลือกให้ครบทุกกลุ่ม'}
+              {allChosen ? t('addToCart') : t('chooseAllGroups')}
             </Button>
-            <Button variant="ghost" fullWidth onClick={onClose} className="text-gray-400">ยกเลิก</Button>
+            <Button variant="ghost" fullWidth onClick={onClose} className="text-gray-400">{t('cancel')}</Button>
           </div>
         ) : (
           <Button variant="ghost" fullWidth onClick={onClose} className="text-gray-400">
-            ยกเลิก
+            {t('cancel')}
           </Button>
         )
       }
     >
       {item && (
         <div className="space-y-4">
-          <p className="text-sm text-gray-500">เลือกตัวเลือกสำหรับ <strong>{item.name}</strong></p>
+          <p className="text-sm text-gray-500">{t('chooseOptionFor')} <strong>{item.name}</strong></p>
           {groups.map((group) => (
             <div key={group.name} className="space-y-2">
               {multi && <p className="text-xs font-black uppercase tracking-widest text-gray-400 ml-1">{group.name}</p>}
@@ -411,7 +609,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose }) {
 // ---------------------------------------------------------------------------
 // Sub-component: CartDrawer — slide-up drawer with cart contents
 // ---------------------------------------------------------------------------
-function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote, total, onProceed }) {
+function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote, total, onProceed, t }) {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [noteValue, setNoteValue] = useState('');
 
@@ -453,7 +651,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
             </div>
 
             <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-              <h2 className="font-bold text-lg text-gray-900">รายการสั่ง</h2>
+              <h2 className="font-bold text-lg text-gray-900">{t('cartTitle')}</h2>
               <button
                 onClick={onClose}
                 className="w-9 h-9 rounded-full flex items-center justify-center bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
@@ -467,8 +665,8 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
               {cart.length === 0 ? (
                 <EmptyState
                   icon="cart"
-                  title="ยังไม่มีรายการ"
-                  description="กลับไปเพิ่มเมนูที่ต้องการ"
+                  title={t('cartEmptyTitle')}
+                  description={t('cartEmptyDesc')}
                   size="sm"
                 />
               ) : (
@@ -524,7 +722,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                             value={noteValue}
                             onChange={(e) => setNoteValue(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter') saveNote(id); }}
-                            placeholder="หมายเหตุ (เช่น ไม่ใส่น้ำตาล)"
+                            placeholder={t('notePlaceholder')}
                             className="flex-1 text-xs border border-gray-200 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:border-emerald-400"
                           />
                           <button
@@ -540,7 +738,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                           className="flex items-center gap-1 text-xs text-gray-400 hover:text-emerald-600 transition-colors"
                         >
                           <FileText size={12} />
-                          <span>{cartItem.note && cartItem.note !== cartItem.beanModifier ? cartItem.note : 'เพิ่มหมายเหตุ'}</span>
+                          <span>{cartItem.note && cartItem.note !== cartItem.beanModifier ? cartItem.note : t('addNote')}</span>
                         </button>
                       )}
                     </div>
@@ -553,11 +751,11 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
             {cart.length > 0 && (
               <div className="flex-shrink-0 border-t border-gray-100 px-5 py-4 bg-white">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm text-gray-500 font-medium">ยอดรวม</span>
+                  <span className="text-sm text-gray-500 font-medium">{t('cartTotal')}</span>
                   <span className="font-black text-lg text-emerald-600">{formatCurrency(total)}</span>
                 </div>
                 <Button variant="primary" size="lg" fullWidth onClick={onProceed}>
-                  ดำเนินการต่อ
+                  {t('proceed')}
                 </Button>
               </div>
             )}
@@ -571,7 +769,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
 // ---------------------------------------------------------------------------
 // Sub-component: StickyCartBar — fixed bottom bar showing cart summary
 // ---------------------------------------------------------------------------
-function StickyCartBar({ cart, total, onClick }) {
+function StickyCartBar({ cart, total, onClick, t }) {
   const itemCount = cart.reduce((s, i) => s + Number(i.quantity), 0);
 
   if (itemCount === 0) return null;
@@ -593,7 +791,7 @@ function StickyCartBar({ cart, total, onClick }) {
         </span>
         <span className="font-bold text-base flex items-center gap-2">
           <ShoppingCart size={18} />
-          ดูตะกร้า
+          {t('viewCart')}
         </span>
         <span className="font-bold text-base">{formatCurrency(total)}</span>
       </button>
@@ -630,6 +828,7 @@ function CheckoutStep({
   comboDiscount,
   pointsDiscount,
   spendDiscount,
+  t,
 }) {
   const itemCount = cart.reduce((s, i) => s + Number(i.quantity), 0);
   const canSubmit = customerName.trim().length > 0 && itemCount > 0 && !submitting;
@@ -650,14 +849,14 @@ function CheckoutStep({
         >
           <ChevronDown size={20} className="rotate-90" />
         </button>
-        <h1 className="font-bold text-gray-900 text-lg">ยืนยันออเดอร์</h1>
+        <h1 className="font-bold text-gray-900 text-lg">{t('confirmOrder')}</h1>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4 pb-40">
         {/* Order items summary */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="font-bold text-gray-800">รายการที่สั่ง</h2>
+            <h2 className="font-bold text-gray-800">{t('orderedItems')}</h2>
           </div>
           <div className="divide-y divide-gray-50">
             {cart.map((cartItem) => {
@@ -686,35 +885,35 @@ function CheckoutStep({
         {/* Totals */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-4 space-y-2">
           <div className="flex justify-between text-sm text-gray-600">
-            <span>ราคาสินค้า</span>
+            <span>{t('itemsPrice')}</span>
             <span>{formatCurrency(subtotal)}</span>
           </div>
           {comboDiscount > 0 && (
             <div className="flex justify-between text-sm text-red-500">
-              <span>คอมโบเค้ก+เครื่องดื่ม</span>
+              <span>{t('comboDiscountLabel')}</span>
               <span>-{formatCurrency(comboDiscount)}</span>
             </div>
           )}
           {pointsDiscount > 0 && (
             <div className="flex justify-between text-sm text-emerald-600">
-              <span>ส่วนลดแต้มสมาชิก</span>
+              <span>{t('pointsDiscountLabel')}</span>
               <span>-{formatCurrency(pointsDiscount)}</span>
             </div>
           )}
           {spendDiscount > 0 && (
             <div className="flex justify-between text-sm text-amber-600">
-              <span>ส่วนลดสั่งครบยอด</span>
+              <span>{t('spendDiscountLabel')}</span>
               <span>-{formatCurrency(spendDiscount)}</span>
             </div>
           )}
           {vatEnabled && (
             <div className="flex justify-between text-sm text-gray-500">
-              <span>VAT 7%</span>
+              <span>{t('vatLabel')}</span>
               <span>{formatCurrency(vat)}</span>
             </div>
           )}
           <div className="flex justify-between font-bold text-base text-gray-900 pt-2 border-t border-gray-100">
-            <span>ยอดรวม</span>
+            <span>{t('grandTotal')}</span>
             <span className="text-emerald-600">{formatCurrency(total)}</span>
           </div>
         </div>
@@ -722,20 +921,20 @@ function CheckoutStep({
         {/* Customer name input */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-4 space-y-4">
           <Input
-            label="ชื่อของคุณ *"
-            placeholder="กรอกชื่อเพื่อรับออเดอร์"
+            label={t('yourName')}
+            placeholder={t('namePlaceholder')}
             value={customerName}
             onChange={(e) => onNameChange(e.target.value)}
             maxLength={60}
             autoFocus
           />
-          <p className="text-xs text-gray-400 -mt-2">ชื่อนี้จะใช้เรียกออเดอร์ของคุณ</p>
+          <p className="text-xs text-gray-400 -mt-2">{t('nameHint')}</p>
 
           {/* Phone input for membership */}
           <div>
             <Input
-              label="เบอร์โทร (สำหรับสะสมแต้ม)"
-              placeholder="กรอกเบอร์โทร (ไม่บังคับ)"
+              label={t('phoneLabel')}
+              placeholder={t('phonePlaceholder')}
               value={customerPhone}
               onChange={(e) => onPhoneChange(e.target.value)}
               inputMode="numeric"
@@ -745,17 +944,17 @@ function CheckoutStep({
             {member ? (
               <div className="mt-1.5 space-y-0.5">
                 <p className="text-xs text-emerald-600 font-medium">
-                  สมาชิก: {member.name || 'ลูกค้า'} • {memberPoints} แต้ม
+                  {t('memberStatus', member.name || t('defaultCustomerName'), memberPoints)}
                 </p>
                 <p className="text-xs text-amber-600 font-bold">
                   {memberPoints >= redeemPointsThreshold
-                    ? `🎉 ครบแล้ว! แลกส่วนลด ฿${redeemDiscountValue} ได้เลย`
-                    : `อีก ${redeemPointsThreshold - memberPoints} แต้ม แลกส่วนลด ฿${redeemDiscountValue}`}
+                    ? t('pointsReady', redeemDiscountValue)
+                    : t('pointsRemaining', redeemPointsThreshold - memberPoints, redeemDiscountValue)}
                 </p>
               </div>
             ) : customerPhone.length >= 9 ? (
               <p className="text-xs text-gray-500 mt-1.5">
-                เบอร์ใหม่ — ระบบจะสมัครสมาชิกให้อัตโนมัติ และเริ่มสะสมแต้ม
+                {t('newPhoneHint')}
               </p>
             ) : null}
           </div>
@@ -775,7 +974,7 @@ function CheckoutStep({
               style={{ minHeight: 44 }}
             >
               <span className={`text-sm font-semibold ${usePoints ? 'text-emerald-700' : 'text-gray-700'}`}>
-                ใช้ {redeemPointsThreshold} แต้ม แลกส่วนลด ฿{redeemDiscountValue}
+                {t('usePointsToggle', redeemPointsThreshold, redeemDiscountValue)}
               </span>
               <div
                 className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${
@@ -818,7 +1017,7 @@ function CheckoutStep({
           loading={submitting}
           disabled={!canSubmit}
         >
-          {submitting ? 'กำลังส่งออเดอร์...' : 'ส่งออเดอร์'}
+          {submitting ? t('submitting') : t('submitOrder')}
         </Button>
       </div>
     </motion.div>
@@ -828,7 +1027,7 @@ function CheckoutStep({
 // ---------------------------------------------------------------------------
 // Sub-component: SuccessScreen
 // ---------------------------------------------------------------------------
-function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber }) {
+function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, t }) {
   const hasReviewUrl = typeof reviewUrl === 'string' && reviewUrl.trim() !== '';
   const [reviewDone, setReviewDone] = useState(false);
 
@@ -887,24 +1086,24 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber }) {
         transition={{ delay: 0.25 }}
         className="space-y-3"
       >
-        <p className="text-gray-500 font-medium text-sm">ออเดอร์ของ</p>
+        <p className="text-gray-500 font-medium text-sm">{t('orderOf')}</p>
         <h1 className="font-black text-3xl text-gray-900">{customerName}</h1>
 
         {queueNumber > 1 ? (
           <div className="bg-emerald-500 text-white rounded-3xl px-8 py-5 inline-block shadow-lg shadow-emerald-200 my-4">
-            <p className="text-sm font-medium opacity-80 mb-1">มีคิวก่อนหน้า · คิวของคุณ</p>
+            <p className="text-sm font-medium opacity-80 mb-1">{t('queueBefore')}</p>
             <p className="text-5xl font-black tracking-tight">#{queueNumber}</p>
           </div>
         ) : (
           <p className="text-emerald-600 font-black text-2xl leading-relaxed mt-4">
-            กำลังทำเครื่องดื่มของคุณ ☕
+            {t('preparingDrink')}
           </p>
         )}
         <p className="text-gray-600 font-semibold text-base leading-relaxed">
-          กรุณาชำระเงินที่เคาน์เตอร์
+          {t('payAtCounter')}
         </p>
         <p className="text-gray-400 text-sm">
-          พนักงานจะเรียกชื่อเมื่อเครื่องดื่มพร้อม
+          {t('staffWillCall')}
         </p>
       </motion.div>
 
@@ -917,12 +1116,12 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber }) {
           className="mt-8 w-full max-w-xs bg-white rounded-2xl shadow-sm border border-emerald-100 px-5 py-4 text-center"
         >
           {reviewDone ? (
-            <p className="font-bold text-emerald-600 text-base py-2">ขอบคุณสำหรับรีวิว 💚</p>
+            <p className="font-bold text-emerald-600 text-base py-2">{t('reviewThanks')}</p>
           ) : (
             <>
-              <p className="font-bold text-gray-900 text-base mb-1">ถูกใจร้านเราไหม? 💚</p>
+              <p className="font-bold text-gray-900 text-base mb-1">{t('reviewPrompt')}</p>
               <p className="text-gray-500 text-sm mb-4 leading-relaxed">
-                ฝากรีวิวให้เราหน่อยน้า เป็นกำลังใจให้ร้านมากๆ 🙏
+                {t('reviewDesc')}
               </p>
               <Button
                 variant="primary"
@@ -932,13 +1131,13 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber }) {
                 onClick={handleReviewClick}
                 noUppercase
               >
-                เขียนรีวิว
+                {t('writeReview')}
               </Button>
             </>
           )}
           {/* Review is verified in person — show the review, then staff applies 5% at payment */}
           <p className="text-emerald-700 text-sm font-semibold mt-3 leading-relaxed">
-            📣 รีวิวแล้ว แจ้งพนักงานตอนจ่ายเงิน รับส่วนลด 5% ทันที!
+            {t('reviewDiscountNote')}
           </p>
         </motion.div>
       )}
@@ -957,7 +1156,7 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber }) {
           leftIcon={<RefreshCw size={18} />}
           noUppercase
         >
-          สั่งเพิ่ม / สั่งใหม่
+          {t('orderAgain')}
         </Button>
       </motion.div>
     </motion.div>
@@ -968,6 +1167,24 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber }) {
 // Main component
 // ---------------------------------------------------------------------------
 function CustomerOrderApp() {
+  // --- Language state (persisted so returning customers keep their choice) ---
+  const [lang, setLang] = useState(() => {
+    try {
+      const saved = localStorage.getItem(QR_LANG_STORAGE_KEY);
+      return saved === 'en' || saved === 'th' ? saved : 'th';
+    } catch {
+      return 'th';
+    }
+  });
+  const t = useMemo(() => makeT(lang), [lang]);
+  const toggleLang = useCallback(() => {
+    setLang((prev) => {
+      const next = prev === 'th' ? 'en' : 'th';
+      try { localStorage.setItem(QR_LANG_STORAGE_KEY, next); } catch { /* private mode */ }
+      return next;
+    });
+  }, []);
+
   // --- Auth & data state ---
   const [authed, setAuthed] = useState(false);
   const [menu, setMenu] = useState([]);
@@ -1211,8 +1428,8 @@ function CustomerOrderApp() {
     return diff;
   })();
   const happyHourLeftText = happyHourLeft >= 60
-    ? `${Math.floor(happyHourLeft / 60)} ชม. ${happyHourLeft % 60} นาที`
-    : `${happyHourLeft} นาที`;
+    ? `${Math.floor(happyHourLeft / 60)} ${t('hoursShort')} ${happyHourLeft % 60} ${t('minutesShort')}`
+    : `${happyHourLeft} ${t('minutesShort')}`;
 
   // ---------------------------------------------------------------------------
   // Category list: "ทั้งหมด" + each category that has at least one available item
@@ -1409,7 +1626,7 @@ function CustomerOrderApp() {
           const soldOut = cart.filter((c) => !availableIds.has(c.id));
           if (soldOut.length > 0) {
             const names = [...new Set(soldOut.map((c) => c.name))].join(', ');
-            setSubmitError(`ขออภัย "${names}" เพิ่งหมด กรุณานำออกจากตะกร้าแล้วลองใหม่อีกครั้ง`);
+            setSubmitError(t('soldOutError', names));
             applyBundle(fresh);              // refresh the menu so the UI matches reality
             writeCachedPublicMenu(appId, fresh);
             setSubmitting(false);
@@ -1477,18 +1694,30 @@ function CustomerOrderApp() {
       });
 
       // --- Member side-effect (non-blocking) ---
-      if (phone.length >= 9) {
+      // Identity mirrors PosView: phone when valid, otherwise a name-based id
+      // (`name:${nameKey}`) so customers who skip the phone field still earn
+      // points under a stable identity. Redemption stays phone-only below
+      // because `member`/`pointsEligible` are only ever loaded by phone.
+      const phoneValid = phone.length >= 9;
+      const nameKey = getNameKey(customerName);
+      const nameValid = nameKey.length > 0;
+      const memberId = phoneValid ? phone : (nameValid ? `name:${nameKey}` : null);
+
+      if (memberId) {
         try {
-          const memberRef = doc(db, ...base, 'members', phone);
+          const memberRef = doc(db, ...base, 'members', memberId);
           const pointsToAdd = Math.floor(total / 10);
           const redeemDeduct = (usePoints && pointsEligible) ? redeemPointsThreshold : 0;
 
-          const isExisting = !!member && member.phone === phone;
+          // `member` state is only ever loaded by phone lookup, so a name-based
+          // id never resolves to an existing member here — that's fine, it just
+          // means createdAt gets (re)stamped, matching PosView's !existingMember path.
+          const isExisting = !!member && phoneValid && member.phone === phone;
           const memberPayload = {
-            phone,
             name: customerName.trim(),
             lastOrderAt: serverTimestamp(),
           };
+          if (phoneValid) memberPayload.phone = phone;
           // Earned points are held in pendingPoints until the owner approves them
           // on the Members page. Redemption is applied in real time.
           if (pointsToAdd > 0) {
@@ -1529,7 +1758,7 @@ function CustomerOrderApp() {
       // (bad/oversized doc), 'unavailable' (network/offline), etc.
       console.error('[QR order submit] failed:', err);
       const code = err?.code || err?.message || 'unknown';
-      setSubmitError(`สั่งออเดอร์ไม่สำเร็จ (${code}) — ลองใหม่อีกครั้ง`);
+      setSubmitError(t('submitFailedError', code));
     } finally {
       setSubmitting(false);
     }
@@ -1557,7 +1786,7 @@ function CustomerOrderApp() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-white gap-4">
         <Spinner size="xl" color="emerald" />
-        <p className="text-gray-400 font-medium text-sm">กำลังโหลดเมนู...</p>
+        <p className="text-gray-400 font-medium text-sm">{t('appLoading')}</p>
       </div>
     );
   }
@@ -1573,6 +1802,7 @@ function CustomerOrderApp() {
           customerName={customerName}
           onReset={handleReset}
           reviewUrl={settingsData.reviewUrl}
+          t={t}
         />
       </AnimatePresence>
     );
@@ -1608,6 +1838,7 @@ function CustomerOrderApp() {
           comboDiscount={comboDiscount}
           pointsDiscount={pointsDiscount}
           spendDiscount={spendDiscount}
+          t={t}
         />
       </AnimatePresence>
     );
@@ -1625,19 +1856,22 @@ function CustomerOrderApp() {
         <div className="px-4 py-4 flex items-center justify-between">
           <div>
             <h1 className="font-black text-gray-900 text-xl leading-tight">{settings.shopName}</h1>
-            <p className="text-emerald-500 text-xs font-semibold mt-0.5">สั่งออเดอร์ผ่าน QR</p>
+            <p className="text-emerald-500 text-xs font-semibold mt-0.5">{t('orderViaQr')}</p>
           </div>
-          {itemCount > 0 && (
-            <button
-              onClick={() => setCartDrawerOpen(true)}
-              className="relative w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 hover:bg-emerald-100 transition-colors"
-            >
-              <ShoppingCart size={22} />
-              <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
-                {itemCount}
-              </span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <LanguageToggle lang={lang} onToggle={toggleLang} />
+            {itemCount > 0 && (
+              <button
+                onClick={() => setCartDrawerOpen(true)}
+                className="relative w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 hover:bg-emerald-100 transition-colors"
+              >
+                <ShoppingCart size={22} />
+                <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                  {itemCount}
+                </span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Search */}
@@ -1648,7 +1882,7 @@ function CustomerOrderApp() {
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ค้นหาเมนู..."
+              placeholder={t('searchPlaceholder')}
               className="w-full bg-gray-100 rounded-xl py-2.5 pl-9 pr-4 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400"
             />
           </div>
@@ -1666,7 +1900,7 @@ function CustomerOrderApp() {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              {cat}
+              {cat === 'ทั้งหมด' ? t('categoryAll') : cat}
             </button>
           ))}
         </div>
@@ -1684,9 +1918,9 @@ function CustomerOrderApp() {
           >
             <span className="text-2xl">🍰</span>
             <div className="leading-tight flex-1">
-              <p className="text-white font-black text-sm">Happy Hour! เค้กลด {happyHourPercent}% · เหลืออีก {happyHourLeftText} ⏳</p>
+              <p className="text-white font-black text-sm">{t('happyHourBanner', happyHourPercent, happyHourLeftText)}</p>
               <p className="text-white/90 font-semibold text-xs">
-                ถึง {settingsData.cakeSaleEnd} น. · รีบสั่งก่อนหมดเวลา!
+                {t('happyHourUntil', settingsData.cakeSaleEnd)}
               </p>
             </div>
           </motion.div>
@@ -1705,8 +1939,8 @@ function CustomerOrderApp() {
           >
             <span className="text-emerald-700 font-semibold text-sm">
               {combo.hasCake
-                ? `เพิ่มเครื่องดื่มอีก 1 แก้ว รับส่วนลด ${combo.percent}%! 🥤`
-                : `เพิ่มเค้กอีก 1 ชิ้น รับส่วนลด ${combo.percent}%! 🍰`}
+                ? t('comboNudgeCake', combo.percent)
+                : t('comboNudgeDrink', combo.percent)}
             </span>
           </motion.div>
         )}
@@ -1719,7 +1953,7 @@ function CustomerOrderApp() {
             className="mx-4 mt-3 bg-emerald-500 rounded-2xl px-4 py-3 flex items-center gap-2"
           >
             <span className="text-white font-semibold text-sm">
-              🎉 คุณได้รับส่วนลดคอมโบ {combo.percent}% แล้ว
+              {t('comboApplied', combo.percent)}
             </span>
           </motion.div>
         )}
@@ -1735,11 +1969,11 @@ function CustomerOrderApp() {
               <span className={`font-bold text-sm ${subtotal >= spendThreshold ? 'text-emerald-600' : 'text-amber-700'}`}>
                 {subtotal >= spendThreshold
                   ? (spendDiscount > 0
-                      ? `🎉 ได้ส่วนลด ${spendDiscountPercent}% แล้ว!`
-                      : `🎉 สั่งครบ ${formatCurrency(spendThreshold)} แล้ว!`)
+                      ? t('spendReachedWithDiscount', spendDiscountPercent)
+                      : t('spendReachedNoDiscount', formatCurrency(spendThreshold)))
                   : subtotal === 0
-                    ? `🛍️ สั่งครบ ${formatCurrency(spendThreshold)} รับส่วนลด ${spendDiscountPercent}%`
-                    : `🎁 อีกแค่ ${formatCurrency(spendRemaining)} รับส่วนลด ${spendDiscountPercent}%!`}
+                    ? t('spendStart', formatCurrency(spendThreshold), spendDiscountPercent)
+                    : t('spendRemaining', formatCurrency(spendRemaining), spendDiscountPercent)}
               </span>
               <span className="text-[11px] font-bold text-gray-400 shrink-0">
                 {formatCurrency(Math.min(subtotal, spendThreshold))}/{formatCurrency(spendThreshold)}
@@ -1762,20 +1996,22 @@ function CustomerOrderApp() {
         <div className="pt-4 space-y-5">
           {bestSellers.length > 0 && (
             <HighlightRail
-              title="🔥 เมนูขายดี"
+              title={t('bestSellerRailTitle')}
               items={bestSellers}
               onAdd={handleMenuItemClick}
               settingsData={settingsData}
               autoScroll
+              t={t}
             />
           )}
           {featuredItems.length > 0 && (
             <HighlightRail
-              title="⭐ เมนูแนะนำ"
+              title={t('featuredRailTitle')}
               items={featuredItems}
               onAdd={handleMenuItemClick}
               settingsData={settingsData}
               bestSellerIds={bestSellerIds}
+              t={t}
             />
           )}
         </div>
@@ -1784,13 +2020,13 @@ function CustomerOrderApp() {
       {/* ---- Menu grid ---- */}
       <main className="px-4 py-4 pb-32">
         {showHighlights && (bestSellers.length > 0 || featuredItems.length > 0) && (
-          <h2 className="text-sm font-bold text-gray-700 mb-3 px-0.5">เมนูทั้งหมด</h2>
+          <h2 className="text-sm font-bold text-gray-700 mb-3 px-0.5">{t('allMenuHeading')}</h2>
         )}
         {filteredMenu.length === 0 ? (
           <EmptyState
             icon={searchQuery ? 'search' : 'default'}
-            title={searchQuery ? 'ไม่พบเมนูที่ค้นหา' : 'ยังไม่มีเมนู'}
-            description={searchQuery ? `ไม่พบ "${searchQuery}" ลองค้นหาคำอื่น` : 'กรุณารอสักครู่'}
+            title={searchQuery ? t('noMenuFound') : t('noMenuYet')}
+            description={searchQuery ? t('noMenuFoundDesc', searchQuery) : t('noMenuYetDesc')}
           />
         ) : (
           <>
@@ -1806,6 +2042,7 @@ function CustomerOrderApp() {
                     onAdd={handleMenuItemClick}
                     settingsData={settingsData}
                     isBestSeller={bestSellerIds.has(item.id)}
+                    t={t}
                   />
                 ))}
               </AnimatePresence>
@@ -1815,7 +2052,7 @@ function CustomerOrderApp() {
                 onClick={() => setShowAllItems(true)}
                 className="mt-4 w-full py-3 rounded-2xl border-2 border-emerald-200 text-emerald-600 font-bold text-sm bg-white hover:bg-emerald-50 transition-colors active:scale-[0.98]"
               >
-                ดูเมนูทั้งหมด (+{filteredMenu.length - MENU_PREVIEW_COUNT}) ▾
+                {t('viewAllMenu', filteredMenu.length - MENU_PREVIEW_COUNT)}
               </button>
             )}
           </>
@@ -1829,6 +2066,7 @@ function CustomerOrderApp() {
             cart={cart}
             total={total}
             onClick={() => setCartDrawerOpen(true)}
+            t={t}
           />
         )}
       </AnimatePresence>
@@ -1846,6 +2084,7 @@ function CustomerOrderApp() {
           setCartDrawerOpen(false);
           setView('checkout');
         }}
+        t={t}
       />
 
       {/* ---- Welcome popup: auto-running ขายดี + แนะนำ showcase ---- */}
@@ -1854,6 +2093,7 @@ function CustomerOrderApp() {
         items={welcomeItems}
         settingsData={settingsData}
         onClose={closeWelcome}
+        t={t}
       />
 
       {/* ---- Bean modifier modal ---- */}
@@ -1866,6 +2106,7 @@ function CustomerOrderApp() {
           setBeanModalOpen(false);
           setPendingItem(null);
         }}
+        t={t}
       />
     </div>
   );
