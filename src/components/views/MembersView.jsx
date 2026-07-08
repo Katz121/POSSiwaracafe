@@ -88,7 +88,14 @@ export default function MembersView() {
       const inWindow = Number.isNaN(at) ? true : at >= cutoff; // undated entries count (conservative)
       return s + (d > 0 && inWindow && EARN_REASONS.has(e?.reason) ? d : 0);
     }, 0);
-    const credited = Number(m.pendingPoints || 0) + creditedInWindow;
+    // Points the owner explicitly REJECTED count as settled too — they were
+    // deliberately declined, so they must not reappear as a gap.
+    const rejectedInWindow = history.reduce((s, e) => {
+      const at = parseAt(e?.at);
+      const inWindow = Number.isNaN(at) ? true : at >= cutoff;
+      return s + (e?.reason === 'rejected' && inWindow ? Number(e?.amount || 0) : 0);
+    }, 0);
+    const credited = Number(m.pendingPoints || 0) + creditedInWindow + rejectedInWindow;
     // Points redeemed inside the window — shown to the owner for a sanity check,
     // not used in the gap maths.
     const redeemedNet = history.reduce((s, e) => {
@@ -275,12 +282,17 @@ export default function MembersView() {
   };
 
   const rejectPending = (member) => {
+    const pending = Number(member.pendingPoints || 0);
     runDbAction(async () => {
       const id = resolveMemberId(member);
       if (!id) return;
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', id), {
-        pendingPoints: 0
-      }, { merge: true });
+      const payload = { pendingPoints: 0 };
+      // Record the rejection so the reconciliation tool treats these declined
+      // points as settled and never resurfaces them as a "missing" gap.
+      if (pending > 0) {
+        payload.pointsHistory = arrayUnion({ delta: 0, reason: 'rejected', amount: pending, at: new Date().toISOString() });
+      }
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', id), payload, { merge: true });
     }, 'ปฏิเสธไม่สำเร็จ');
     toast.info('ปฏิเสธคำขอแต้มแล้ว');
   };
@@ -1027,7 +1039,7 @@ export default function MembersView() {
         title="ประวัติแต้ม"
       >
         {(() => {
-          const reasonLabels = { order: 'ออเดอร์', review: 'รีวิว', redeem: 'แลกแต้ม', manual: 'ปรับด้วยมือ', recalc: 'ปรับปรุง' };
+          const reasonLabels = { order: 'ออเดอร์', review: 'รีวิว', redeem: 'แลกแต้ม', manual: 'ปรับด้วยมือ', recalc: 'ปรับปรุง', rejected: 'ปฏิเสธแต้ม' };
           const entries = [...(historyMember?.pointsHistory || [])].sort((a, b) => new Date(b.at) - new Date(a.at));
           if (entries.length === 0) {
             return (
@@ -1047,9 +1059,15 @@ export default function MembersView() {
                       <p className="font-black text-gray-800 text-sm">{reasonLabels[e.reason] || e.reason || 'ไม่ระบุ'}</p>
                       <p className="text-xs font-bold text-gray-400">{dateStr}</p>
                     </div>
-                    <div className={`font-black text-base md:text-lg shrink-0 ${delta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {delta >= 0 ? `+${delta}` : `${delta}`}
-                    </div>
+                    {e.reason === 'rejected' ? (
+                      <div className="font-black text-base md:text-lg shrink-0 text-gray-400">
+                        ปฏิเสธ {Number(e.amount || 0)}
+                      </div>
+                    ) : (
+                      <div className={`font-black text-base md:text-lg shrink-0 ${delta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {delta >= 0 ? `+${delta}` : `${delta}`}
+                      </div>
+                    )}
                   </div>
                 );
               })}
