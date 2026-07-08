@@ -228,6 +228,16 @@ const makeT = (lang) => (key, ...args) => {
   return typeof entry === 'function' ? entry(...args) : entry;
 };
 
+// Menu/category/bean names come from Firestore (the shop's own data). When the
+// customer switches to English we show the `<field>En` value if the owner has
+// filled it in, otherwise we fall back to the original Thai. `field` defaults to
+// 'name' → 'nameEn'; pass 'description' for 'descriptionEn'.
+const dispField = (obj, lang, field = 'name') => {
+  if (!obj) return '';
+  const en = obj[`${field}En`];
+  return lang === 'en' && en ? en : (obj[field] || '');
+};
+
 // ---------------------------------------------------------------------------
 // Sub-component: LanguageToggle — TH/EN switch shown in the header
 // ---------------------------------------------------------------------------
@@ -265,7 +275,7 @@ function mergeStockLinks(itemLinks = [], modifierLinks = []) {
 // ---------------------------------------------------------------------------
 // Sub-component: MenuItemCard
 // ---------------------------------------------------------------------------
-function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false, t }) {
+function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false, t, lang = 'th' }) {
   const hasImage = Boolean(item.image);
   const sale = getItemSalePrice(item, settingsData);
   // Coffee menus display prices rounded up to the nearest 5 baht.
@@ -314,9 +324,9 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false, t }) {
 
       {/* Info */}
       <div className="p-3 flex flex-col gap-1 flex-1">
-        <p className="font-semibold text-gray-900 text-sm leading-tight line-clamp-2">{item.name}</p>
-        {item.description && (
-          <p className="text-gray-400 text-xs leading-tight line-clamp-2">{item.description}</p>
+        <p className="font-semibold text-gray-900 text-sm leading-tight line-clamp-2">{dispField(item, lang)}</p>
+        {dispField(item, lang, 'description') && (
+          <p className="text-gray-400 text-xs leading-tight line-clamp-2">{dispField(item, lang, 'description')}</p>
         )}
         <div className="mt-auto pt-2 flex items-center justify-between">
           {sale.onSale ? (
@@ -345,7 +355,7 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false, t }) {
 // ---------------------------------------------------------------------------
 // Sub-component: HighlightRail — horizontal carousel of highlighted menu items
 // ---------------------------------------------------------------------------
-function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoScroll = false, t }) {
+function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoScroll = false, t, lang = 'th' }) {
   const [paused, setPaused] = useState(false);
   if (!items || items.length === 0) return null;
 
@@ -357,6 +367,7 @@ function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoS
         settingsData={settingsData}
         isBestSeller={bestSellerIds ? bestSellerIds.has(item.id) : true}
         t={t}
+        lang={lang}
       />
     </div>
   );
@@ -403,7 +414,7 @@ function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoS
 // every visitor immediately sees what the shop is known for. Pulls straight
 // from the live menu (isPinnedBest = ขายดี, isFeatured = แนะนำ).
 // ---------------------------------------------------------------------------
-function WelcomePopup({ isOpen, items, settingsData, onClose, t }) {
+function WelcomePopup({ isOpen, items, settingsData, onClose, t, lang = 'th' }) {
   const [paused, setPaused] = useState(false);
 
   // Price shown follows the same rules as MenuItemCard (sale + 5-baht rounding
@@ -430,7 +441,7 @@ function WelcomePopup({ isOpen, items, settingsData, onClose, t }) {
           </span>
         </div>
         <div className="p-2.5">
-          <p className="font-semibold text-gray-900 text-xs leading-tight line-clamp-2 min-h-[2rem]">{item.name}</p>
+          <p className="font-semibold text-gray-900 text-xs leading-tight line-clamp-2 min-h-[2rem]">{dispField(item, lang)}</p>
           <div className="mt-1">
             {p.onSale ? (
               <div className="flex items-baseline gap-1">
@@ -513,7 +524,7 @@ function WelcomePopup({ isOpen, items, settingsData, onClose, t }) {
 // ---------------------------------------------------------------------------
 // Sub-component: BeanModifierModal — picker for bean/blend selection
 // ---------------------------------------------------------------------------
-function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t }) {
+function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang = 'th' }) {
   // เลือกตัวเลือกต่อกลุ่ม (เช่น { 'ส้ม': mod, 'เมล็ดกาแฟ': mod })
   const [selections, setSelections] = useState({});
   // เคลียร์ตัวเลือกทุกครั้งที่เปิดเมนูใหม่ (ปรับ state ตอน render ตามแนวทาง React)
@@ -574,7 +585,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t }) {
     >
       {item && (
         <div className="space-y-4">
-          <p className="text-sm text-gray-500">{t('chooseOptionFor')} <strong>{item.name}</strong></p>
+          <p className="text-sm text-gray-500">{t('chooseOptionFor')} <strong>{dispField(item, lang)}</strong></p>
           {groups.map((group) => (
             <div key={group.name} className="space-y-2">
               {multi && <p className="text-xs font-black uppercase tracking-widest text-gray-400 ml-1">{group.name}</p>}
@@ -591,7 +602,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t }) {
                     onClick={onClick}
                     className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all text-left min-h-[56px] ${selected ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300' : 'border-gray-100 hover:border-emerald-400 hover:bg-emerald-50'}`}
                   >
-                    <span className="font-semibold text-gray-800">{mod.name}</span>
+                    <span className="font-semibold text-gray-800">{dispField(mod, lang)}</span>
                     <span className={`font-bold ${surcharge > 0 ? 'text-orange-500' : 'text-emerald-600'}`}>
                       {formatCurrency(computeModifierPrice(item, [mod]))}
                     </span>
@@ -609,7 +620,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t }) {
 // ---------------------------------------------------------------------------
 // Sub-component: CartDrawer — slide-up drawer with cart contents
 // ---------------------------------------------------------------------------
-function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote, total, onProceed, t }) {
+function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote, total, onProceed, t, lang = 'th' }) {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [noteValue, setNoteValue] = useState('');
 
@@ -677,7 +688,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                       <div className="flex items-start gap-3">
                         {/* Name & modifier */}
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm text-gray-900 leading-tight">{cartItem.name}</p>
+                          <p className="font-semibold text-sm text-gray-900 leading-tight">{dispField(cartItem, lang)}</p>
                           {cartItem.beanModifier && cartItem.beanModifier !== '' && (
                             <p className="text-xs text-emerald-600 font-medium">{cartItem.beanModifier}</p>
                           )}
@@ -829,6 +840,7 @@ function CheckoutStep({
   pointsDiscount,
   spendDiscount,
   t,
+  lang = 'th',
 }) {
   const itemCount = cart.reduce((s, i) => s + Number(i.quantity), 0);
   const canSubmit = customerName.trim().length > 0 && itemCount > 0 && !submitting;
@@ -864,7 +876,7 @@ function CheckoutStep({
               return (
                 <div key={id} className="px-4 py-3 flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm text-gray-800 leading-tight">{cartItem.name}</p>
+                    <p className="font-medium text-sm text-gray-800 leading-tight">{dispField(cartItem, lang)}</p>
                     {cartItem.beanModifier && cartItem.beanModifier !== '' && (
                       <p className="text-xs text-emerald-600">{cartItem.beanModifier}</p>
                     )}
@@ -1335,7 +1347,11 @@ function CustomerOrderApp() {
     .filter((item) => {
       const matchCat = activeCategory === 'ทั้งหมด' || item.category === activeCategory;
       const q = searchQuery.trim().toLowerCase();
-      const matchSearch = q === '' || item.name.toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q);
+      const matchSearch = q === '' ||
+        item.name.toLowerCase().includes(q) ||
+        (item.description || '').toLowerCase().includes(q) ||
+        (item.nameEn || '').toLowerCase().includes(q) ||
+        (item.descriptionEn || '').toLowerCase().includes(q);
       return matchCat && matchSearch;
     })
     // Popular first: most-ordered (soldCount) at the top, least at the back, so
@@ -1435,6 +1451,12 @@ function CustomerOrderApp() {
   // Category list: "ทั้งหมด" + each category that has at least one available item
   // ---------------------------------------------------------------------------
   const categoryNames = ['ทั้งหมด', ...new Set(categories.map((c) => c.name).filter(Boolean))];
+  // Thai category name → English (only where the owner filled `nameEn`), used to
+  // localise the category tabs in EN mode. The tab VALUE stays the Thai name so
+  // it still matches `item.category`; only the label is swapped.
+  const categoryEnByName = Object.fromEntries(
+    categories.filter((c) => c.name && c.nameEn).map((c) => [c.name, c.nameEn])
+  );
 
   // ---------------------------------------------------------------------------
   // Membership / points derivations
@@ -1839,6 +1861,7 @@ function CustomerOrderApp() {
           pointsDiscount={pointsDiscount}
           spendDiscount={spendDiscount}
           t={t}
+          lang={lang}
         />
       </AnimatePresence>
     );
@@ -1900,7 +1923,7 @@ function CustomerOrderApp() {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              {cat === 'ทั้งหมด' ? t('categoryAll') : cat}
+              {cat === 'ทั้งหมด' ? t('categoryAll') : (lang === 'en' && categoryEnByName[cat] ? categoryEnByName[cat] : cat)}
             </button>
           ))}
         </div>
@@ -2002,6 +2025,7 @@ function CustomerOrderApp() {
               settingsData={settingsData}
               autoScroll
               t={t}
+              lang={lang}
             />
           )}
           {featuredItems.length > 0 && (
@@ -2012,6 +2036,7 @@ function CustomerOrderApp() {
               settingsData={settingsData}
               bestSellerIds={bestSellerIds}
               t={t}
+              lang={lang}
             />
           )}
         </div>
@@ -2043,6 +2068,7 @@ function CustomerOrderApp() {
                     settingsData={settingsData}
                     isBestSeller={bestSellerIds.has(item.id)}
                     t={t}
+                    lang={lang}
                   />
                 ))}
               </AnimatePresence>
@@ -2085,6 +2111,7 @@ function CustomerOrderApp() {
           setView('checkout');
         }}
         t={t}
+        lang={lang}
       />
 
       {/* ---- Welcome popup: auto-running ขายดี + แนะนำ showcase ---- */}
@@ -2094,6 +2121,7 @@ function CustomerOrderApp() {
         settingsData={settingsData}
         onClose={closeWelcome}
         t={t}
+        lang={lang}
       />
 
       {/* ---- Bean modifier modal ---- */}
@@ -2107,6 +2135,7 @@ function CustomerOrderApp() {
           setPendingItem(null);
         }}
         t={t}
+        lang={lang}
       />
     </div>
   );

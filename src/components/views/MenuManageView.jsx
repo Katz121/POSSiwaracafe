@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   ClipboardList, RefreshCcw, Zap, CheckCircle2, Trash2,
   ChevronDown, ChevronUp, Star, Eye, EyeOff, Edit, PackagePlus,
-  Coffee, Link2, Plus, Upload, TrendingUp, Store, AlertTriangle, FolderCog, Clock
+  Coffee, Link2, Plus, Upload, TrendingUp, Store, AlertTriangle, FolderCog, Clock, Languages
 } from 'lucide-react';
 import { doc, collection, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
@@ -33,13 +33,14 @@ export default function MenuManageView() {
 
   // Local states - Menu form
   const [newItem, setNewItem] = useState({
-    name: '', price: '', category: '', image: '', recommended: false, isFeatured: false, isPinnedBest: false, available: true,
+    name: '', nameEn: '', price: '', category: '', image: '', description: '', descriptionEn: '', recommended: false, isFeatured: false, isPinnedBest: false, available: true,
     stockLinks: []
   });
   const [editingItem, setEditingItem] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSuggestingStock, setIsSuggestingStock] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
 
   // Local states - Collapsed categories
   const [collapsedCategories, setCollapsedCategories] = useState({});
@@ -58,7 +59,7 @@ export default function MenuManageView() {
 
   // Local states - Category management
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [newCategory, setNewCategory] = useState({ name: '', icon: '📁', color: 'gray' });
+  const [newCategory, setNewCategory] = useState({ name: '', nameEn: '', icon: '📁', color: 'gray' });
   const [categoryToDelete, setCategoryToDelete] = useState(null);
 
   // Local states - Delete menu confirmation
@@ -224,7 +225,7 @@ export default function MenuManageView() {
       if (editingItem) await updateDoc(doc(col, editingItem.id), data); else await addDoc(col, data);
       toast.success(editingItem ? 'แก้ไขเมนูสำเร็จ' : 'เพิ่มเมนูใหม่สำเร็จ');
       setEditingItem(null);
-      setNewItem({ name: '', price: '', category: '', image: '', recommended: false, isFeatured: false, isPinnedBest: false, available: true, stockLinks: [] });
+      setNewItem({ name: '', nameEn: '', price: '', category: '', image: '', description: '', descriptionEn: '', recommended: false, isFeatured: false, isPinnedBest: false, available: true, stockLinks: [] });
     }, 'บันทึกเมนูไม่สำเร็จ');
   };
 
@@ -326,10 +327,11 @@ export default function MenuManageView() {
     await runDbAction(async () => {
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'categories'), {
         name: newCategory.name.trim(),
+        nameEn: newCategory.nameEn?.trim() || '',
         icon: newCategory.icon,
         color: newCategory.color
       });
-      setNewCategory({ name: '', icon: '📁', color: 'gray' });
+      setNewCategory({ name: '', nameEn: '', icon: '📁', color: 'gray' });
     }, 'เพิ่มหมวดหมู่ไม่สำเร็จ');
   };
 
@@ -347,11 +349,95 @@ export default function MenuManageView() {
     }, 'ลบหมวดหมู่ไม่สำเร็จ');
   };
 
+  // AI Batch English Translation — fills nameEn/descriptionEn only for items that
+  // don't already have one, so manually-entered EN text is never overwritten.
+  // Runs in batches of ~30 items per call to keep the Gemini prompt short.
+  const translateItemsBatch = async (items, collectionName, withDescription) => {
+    if (!items.length) return 0;
+    const batchSize = 30;
+    let successCount = 0;
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      const payload = batch.map(it => withDescription
+        ? { id: it.id, name: it.name || '', description: it.description || '' }
+        : { id: it.id, name: it.name || '' });
+
+      const prompt = `You are translating Thai cafe/coffee shop menu ${withDescription ? 'item names and descriptions' : 'names'} into natural, accurate English using correct coffee shop terminology.
+Examples: "อเมริกาโน่ร้อน" -> "Hot Americano", "ชาเขียวเย็น" -> "Iced Green Tea", "ลาเต้ร้อน" -> "Hot Latte".
+
+Input (JSON array):
+${JSON.stringify(payload)}
+
+Return ONLY a raw JSON array (no markdown code fences, no explanation), same length and order as input, each element shaped exactly as:
+${withDescription
+  ? '{ "id": "<same id as input>", "nameEn": "<short English name>", "descriptionEn": "<English description, or empty string if input description was empty>" }'
+  : '{ "id": "<same id as input>", "nameEn": "<short English name>" }'}`;
+
+      try {
+        const result = await callGeminiAPI(prompt, true);
+        if (!result.success || !Array.isArray(result.data)) continue;
+        for (const entry of result.data) {
+          const original = batch.find(b => b.id === entry.id);
+          if (!original || !entry.nameEn) continue;
+          try {
+            const updates = withDescription
+              ? { nameEn: entry.nameEn, descriptionEn: entry.descriptionEn || '' }
+              : { nameEn: entry.nameEn };
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, original.id), updates);
+            successCount++;
+          } catch (err) {
+            console.error(`[translate] update failed for ${collectionName}/${original.id}`, err);
+          }
+        }
+      } catch (err) {
+        console.error(`[translate] batch failed for ${collectionName}`, err);
+      }
+    }
+    return successCount;
+  };
+
+  const handleTranslateToEnglish = async () => {
+    if (!geminiApiKey) {
+      toast.warning('กรุณาตั้งค่า Gemini API Key ก่อน');
+      return;
+    }
+
+    const menuTargets = menu.filter(m => !m.nameEn);
+    const catTargets = dynamicCategories.filter(c => !c.nameEn);
+    const beanTargets = (beanModifiers || []).filter(b => !b.nameEn);
+
+    if (!menuTargets.length && !catTargets.length && !beanTargets.length) {
+      toast.success('ทุกรายการมีชื่อภาษาอังกฤษครบแล้ว');
+      return;
+    }
+
+    setIsTranslating(true);
+    try {
+      const menuCount = await translateItemsBatch(menuTargets, 'menu', true);
+      const catCount = await translateItemsBatch(catTargets, 'categories', false);
+      const beanCount = await translateItemsBatch(beanTargets, 'beanModifiers', false);
+      toast.success(`แปลแล้ว ${menuCount} เมนู, ${catCount} หมวด, ${beanCount} ตัวเลือก`);
+    } catch (e) {
+      toast.error('เกิดข้อผิดพลาดในการแปล: ' + e.message);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
   return (
     <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-gray-800">
       <header className="h-16 md:h-20 lg:h-24 bg-white border-b border-gray-100 px-4 md:px-8 lg:px-12 flex items-center justify-between shadow-sm z-10 font-black text-gray-800">
         <div className="flex items-center gap-2 md:gap-4 text-emerald-600 uppercase font-black"><ClipboardList size={24} className="md:w-8 md:h-8 lg:w-9 lg:h-9" /><h1 className="text-base md:text-xl lg:text-2xl font-black uppercase tracking-tight text-gray-800">คลังเมนู</h1></div>
         <div className="flex items-center gap-2 md:gap-4">
+          <Button
+            onClick={handleTranslateToEnglish}
+            disabled={isTranslating}
+            variant="secondary"
+            size="lg"
+            leftIcon={<Languages size={16} className={isTranslating ? 'animate-spin' : ''} />}
+          >
+            {isTranslating ? 'กำลังแปล...' : 'แปลเมนูเป็นอังกฤษด้วย AI'}
+          </Button>
           <Button
             onClick={() => setShowCategoryModal(true)}
             variant="warning"
@@ -370,7 +456,7 @@ export default function MenuManageView() {
             จัดการโปรโมชั่น
           </Button>
           <Button
-            onClick={() => { setEditingItem(null); setNewItem({ name: '', price: '', category: '', image: '', recommended: false, available: true, stockLinks: [] }); }}
+            onClick={() => { setEditingItem(null); setNewItem({ name: '', nameEn: '', price: '', category: '', image: '', description: '', descriptionEn: '', recommended: false, available: true, stockLinks: [] }); }}
             variant="primary"
             size="lg"
           >
@@ -577,14 +663,23 @@ export default function MenuManageView() {
               <h3 className="text-sm font-black text-gray-600 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <Plus size={18} className="text-emerald-500" /> เพิ่มหมวดหมู่ใหม่
               </h3>
-              <div className="flex gap-4">
-                <div className="flex-1">
+              <div className="flex gap-4 flex-wrap">
+                <div className="flex-1 min-w-[160px]">
                   <input
                     type="text"
                     value={newCategory.name}
                     onChange={e => setNewCategory({ ...newCategory, name: e.target.value })}
                     className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-base font-black outline-none focus:border-amber-300 transition-all"
                     placeholder="ชื่อหมวดหมู่ เช่น กาแฟ, ชา, ขนม..."
+                  />
+                </div>
+                <div className="flex-1 min-w-[160px]">
+                  <input
+                    type="text"
+                    value={newCategory.nameEn}
+                    onChange={e => setNewCategory({ ...newCategory, nameEn: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-base font-black outline-none focus:border-amber-300 transition-all"
+                    placeholder="ชื่อ (EN) เช่น Coffee, Tea..."
                   />
                 </div>
                 <select
@@ -718,7 +813,7 @@ export default function MenuManageView() {
                 icon={ClipboardList}
                 title="ยังไม่มีเมนู"
                 description="เริ่มเพิ่มเมนูอาหารและเครื่องดื่มใหม่"
-                action={{ label: "เพิ่มเมนูใหม่", onClick: () => { setEditingItem(null); setNewItem({ name: '', price: '', category: '', image: '', recommended: false, available: true, stockLinks: [] }); } }}
+                action={{ label: "เพิ่มเมนูใหม่", onClick: () => { setEditingItem(null); setNewItem({ name: '', nameEn: '', price: '', category: '', image: '', description: '', descriptionEn: '', recommended: false, available: true, stockLinks: [] }); } }}
               />
             )}
             {groupedMenu.map(group => (
@@ -761,7 +856,7 @@ export default function MenuManageView() {
                     <div className="flex gap-3">
                       <button onClick={() => toggleExcludeFromSale(i)} title={i.excludeFromSale ? 'ยกเว้นลด Happy Hour (กดเพื่อให้ร่วมลด)' : 'ร่วมลด Happy Hour (กดเพื่อยกเว้น เช่น เค้กใหม่)'} className={`p-4 rounded-2xl transition-all shadow-sm active:scale-90 ${i.excludeFromSale ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}><Clock size={22} /></button>
                       <button onClick={() => toggleAvailability(i)} className={`p-4 rounded-2xl transition-all shadow-sm active:scale-90 ${i.available !== false ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>{i.available !== false ? <Eye size={22} /> : <EyeOff size={22} />}</button>
-                      <button onClick={() => { setEditingItem(i); setNewItem(i); }} aria-label="แก้ไขเมนู" className="p-4 bg-blue-50 text-blue-500 rounded-2xl transition-all shadow-sm border border-blue-100 active:scale-90"><Edit size={22} /></button>
+                      <button onClick={() => { setEditingItem(i); setNewItem({ ...i, nameEn: i.nameEn || '', descriptionEn: i.descriptionEn || '' }); }} aria-label="แก้ไขเมนู" className="p-4 bg-blue-50 text-blue-500 rounded-2xl transition-all shadow-sm border border-blue-100 active:scale-90"><Edit size={22} /></button>
                       <button onClick={() => {
                         setMenuToDelete(i);
                         setShowDeleteMenuConfirm(true);
@@ -777,6 +872,8 @@ export default function MenuManageView() {
           <h2 className="font-black text-3xl text-gray-800 mb-10 flex items-center gap-5 uppercase font-black leading-none"><div className={`p-3.5 rounded-3xl shadow-lg ${editingItem ? 'bg-blue-500 shadow-blue-500/20' : 'bg-emerald-500 shadow-emerald-500/20'} text-white`}><PackagePlus size={32} /></div>{editingItem ? 'แก้ไขเมนูเดิม' : 'เพิ่มเมนูใหม่'}</h2>
           <form onSubmit={saveMenuItem} className="space-y-8 text-gray-800">
             <div><label className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] block mb-3 ml-2 leading-none">ชื่อรายการอาหาร</label><input type="text" required value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full bg-[#f8faf9] border border-gray-100 rounded-[2rem] p-6 text-base font-black outline-none focus:bg-white transition-all shadow-inner leading-none" /></div>
+
+            <div><label className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] block mb-3 ml-2 leading-none">ชื่อ (EN)</label><input type="text" value={newItem.nameEn || ''} onChange={e => setNewItem({ ...newItem, nameEn: e.target.value })} placeholder="e.g. Hot Americano" className="w-full bg-[#f8faf9] border border-gray-100 rounded-[2rem] p-6 text-base font-black outline-none focus:bg-white transition-all shadow-inner leading-none" /></div>
 
             {/* ✨ AI Magic Write */}
             <div className="relative">
@@ -824,6 +921,16 @@ export default function MenuManageView() {
                 onChange={e => setNewItem({ ...newItem, description: e.target.value })}
                 className="w-full bg-[#f8faf9] border border-gray-100 rounded-[2rem] p-6 text-sm font-bold outline-none focus:bg-white transition-all shadow-inner leading-relaxed min-h-[120px]"
                 placeholder="ใส่คำบรรยายสินค้า..."
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] block mb-3 ml-2 leading-none">คำอธิบาย (EN)</label>
+              <textarea
+                value={newItem.descriptionEn || ''}
+                onChange={e => setNewItem({ ...newItem, descriptionEn: e.target.value })}
+                className="w-full bg-[#f8faf9] border border-gray-100 rounded-[2rem] p-6 text-sm font-bold outline-none focus:bg-white transition-all shadow-inner leading-relaxed min-h-[120px]"
+                placeholder="English description..."
               />
             </div>
 
