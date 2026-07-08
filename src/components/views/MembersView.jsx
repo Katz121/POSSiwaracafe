@@ -50,6 +50,7 @@ export default function MembersView() {
   const [creditTarget, setCreditTarget] = useState(null); // member awaiting credit confirm
   const [mergeGroup, setMergeGroup] = useState(null);      // { key, members } awaiting merge confirm
   const [mergePrimaryId, setMergePrimaryId] = useState(null);
+  const [reconcileDays, setReconcileDays] = useState(14);  // only reconcile the last N days
 
   // An order counts toward a member's purchase history as soon as it is placed
   // (pending) — not only once completed — so today's orders show immediately.
@@ -61,25 +62,49 @@ export default function MembersView() {
   // QR checkout use: Math.floor(total / 10)).
   const orderEarn = (o) => Math.floor(Number(o.total || 0) / 10);
 
-  // "Earn already recorded" for a member = points still pending approval PLUS
-  // every positive credit ever logged to history (order/review approvals, prior
-  // reconciliations, and manual top-ups). Redeem refunds are a return of spent
-  // points, not a purchase reward, so they are excluded. Counting manual credits
-  // here keeps the reconciliation conservative — it never re-credits points the
-  // owner already granted by hand.
+  // History reasons that represent a POSITIVE earn credit (order/review approval,
+  // a previous reconciliation, or a manual top-up). Redeem entries are NOT here,
+  // so redemptions never count as earn on either side of the audit.
   const EARN_REASONS = new Set(['order', 'review', 'recalc', 'manual']);
-  const recordedEarn = (m) => {
-    const pending = Number(m.pendingPoints || 0);
+  const parseAt = (at) => {
+    const ms = at ? Date.parse(at) : NaN;
+    return Number.isFinite(ms) ? ms : NaN;
+  };
+
+  // Earn audit for a single member, scoped to a time window [cutoff, now]:
+  //   expected = Σ orderEarn over the member's orders placed inside the window
+  //   credited = current pendingPoints + positive earn credits logged inside the
+  //              window (pendingPoints has no timestamp, so it always counts —
+  //              it offsets recent expected earn that hasn't been approved yet)
+  // Because both sides look only at EARN (never redeem), a member who spent their
+  // points is not flagged as "short", and confirming a credit can never refund a
+  // redemption — it only fills purchases that produced no points at all.
+  const auditMemberEarn = (m, memberOrders, cutoff) => {
+    const expected = memberOrders.reduce((s, o) => s + (getOrderMs(o) >= cutoff ? orderEarn(o) : 0), 0);
     const history = Array.isArray(m.pointsHistory) ? m.pointsHistory : [];
-    const credited = history.reduce((s, e) => {
+    const creditedInWindow = history.reduce((s, e) => {
       const d = Number(e?.delta || 0);
-      return s + (d > 0 && EARN_REASONS.has(e?.reason) ? d : 0);
+      const at = parseAt(e?.at);
+      const inWindow = Number.isNaN(at) ? true : at >= cutoff; // undated entries count (conservative)
+      return s + (d > 0 && inWindow && EARN_REASONS.has(e?.reason) ? d : 0);
     }, 0);
-    return pending + credited;
+    const credited = Number(m.pendingPoints || 0) + creditedInWindow;
+    // Points redeemed inside the window — shown to the owner for a sanity check,
+    // not used in the gap maths.
+    const redeemedNet = history.reduce((s, e) => {
+      const at = parseAt(e?.at);
+      const inWindow = Number.isNaN(at) ? false : at >= cutoff;
+      return s + ((e?.reason === 'redeem' || e?.reason === 'redeem-refund') && inWindow ? Number(e?.delta || 0) : 0);
+    }, 0);
+    return { expectedEarn: expected, earnGap: expected - credited, redeemed: Math.max(0, -redeemedNet) };
   };
 
   // Memos
   const processedMembers = useMemo(() => {
+    // The earn audit only looks back this far (default 14 days) — recent
+    // "bought but points didn't show" cases, not the whole bill history.
+    const cutoff = Date.now() - reconcileDays * 24 * 60 * 60 * 1000;
+
     // 1. Calculate stats for members in the collection
     const memberStats = members.map(m => {
       const nameKey = getNameKey(m.name);
@@ -90,14 +115,12 @@ export default function MembersView() {
         if (!nameKey) return false;
         return !o.memberPhone && getNameKey(o.memberNickname) === nameKey;
       });
+      // Purchase totals stay all-time (display); the earn audit is windowed.
       const totalPurchases = memberOrders.reduce((sum, o) => sum + (o.items?.reduce((s, i) => s + Number(i.quantity), 0) || 0), 0);
       const totalSpent = memberOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+      const audit = auditMemberEarn(m, memberOrders, cutoff);
 
-      // Earn audit: what the purchases should have granted vs what was recorded.
-      const expectedEarn = memberOrders.reduce((sum, o) => sum + orderEarn(o), 0);
-      const earnGap = expectedEarn - recordedEarn(m);
-
-      return { ...m, totalPurchases, totalSpent, expectedEarn, earnGap };
+      return { ...m, totalPurchases, totalSpent, ...audit };
     });
 
     // 2. Identify orders that don't belong to any member in the collection
@@ -112,19 +135,21 @@ export default function MembersView() {
         const alreadyRegistered = members.some(m => getNameKey(m.name) === key);
         if (alreadyRegistered) return;
 
-        const current = nameOnlyMap.get(key) || { id: `name-only:${key}`, name: key, phone: '', points: 0, totalPurchases: 0, totalSpent: 0, expectedEarn: 0, earnGap: 0 };
+        const current = nameOnlyMap.get(key) || { id: `name-only:${key}`, name: key, phone: '', points: 0, totalPurchases: 0, totalSpent: 0, expectedEarn: 0, earnGap: 0, redeemed: 0 };
         const orderPurchases = o.items?.reduce((s, i) => s + Number(i.quantity), 0) || 0;
         current.totalPurchases += orderPurchases;
         current.totalSpent += Number(o.total) || 0;
         // Name-only customers have no member doc → nothing was ever recorded, so
-        // the whole expected earn is the gap (they bought but never got points).
-        current.expectedEarn += orderEarn(o);
-        current.earnGap = current.expectedEarn;
+        // the whole expected earn (within the window) is the gap.
+        if (getOrderMs(o) >= cutoff) {
+          current.expectedEarn += orderEarn(o);
+          current.earnGap = current.expectedEarn;
+        }
         nameOnlyMap.set(key, current);
       });
 
     return [...memberStats, ...nameOnlyMap.values()].sort((a, b) => b.totalPurchases - a.totalPurchases);
-  }, [members, orders]);
+  }, [members, orders, reconcileDays]);
 
   // Members whose purchases earned fewer points than they should have — the
   // "bought but points didn't show" cases. Sorted biggest-gap first. The owner
@@ -592,12 +617,26 @@ export default function MembersView() {
         <div className="px-3 md:px-6 lg:px-8 pt-3 md:pt-4 shrink-0 space-y-3">
           {/* Missing points (bought but points didn't show) */}
           <div className="bg-white border border-emerald-200 rounded-2xl p-3 md:p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-1 text-emerald-700 font-black text-sm md:text-base uppercase tracking-wider">
-              <Calculator size={18} />
-              <span>แต้มที่ซื้อแล้วไม่ขึ้น</span>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center gap-2 text-emerald-700 font-black text-sm md:text-base uppercase tracking-wider">
+                <Calculator size={18} />
+                <span>แต้มที่ซื้อแล้วไม่ขึ้น</span>
+              </div>
+              {/* Time window — only reconcile recent orders */}
+              <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+                {[7, 14].map(d => (
+                  <button
+                    key={d}
+                    onClick={() => setReconcileDays(d)}
+                    className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${reconcileDays === d ? 'bg-emerald-500 text-white shadow' : 'text-gray-500 hover:text-emerald-600'}`}
+                  >
+                    {d} วัน
+                  </button>
+                ))}
+              </div>
             </div>
             <p className="text-xs text-gray-400 font-bold mb-3">
-              เทียบยอดซื้อจริงกับแต้มที่ระบบบันทึกไว้ — เติมส่วนที่ขาดเข้า “รออนุมัติ” แล้วค่อยกดอนุมัติอีกที (฿10 = 1 แต้ม)
+              เทียบยอดซื้อกับแต้มที่ได้ เฉพาะ {reconcileDays} วันล่าสุด — เติมส่วนที่ขาดเข้า “รออนุมัติ” แล้วค่อยกดอนุมัติอีกที (฿10 = 1 แต้ม · การแลกแต้มไม่ถูกนับซ้ำ)
             </p>
             {reconcileList.length === 0 ? (
               <div className="text-center py-6 text-gray-400 font-bold text-sm flex items-center justify-center gap-2">
@@ -612,6 +651,9 @@ export default function MembersView() {
                       <p className="text-xs font-bold text-gray-400">
                         {m.phone ? String(m.phone) : 'ไม่มีเบอร์'} · ควรได้ {Number(m.expectedEarn || 0)} · ขาด
                         <span className="text-emerald-600"> {Number(m.earnGap)}</span> แต้ม
+                        {Number(m.redeemed || 0) > 0 && (
+                          <span className="text-orange-500"> · แลกไปแล้ว {Number(m.redeemed)}</span>
+                        )}
                       </p>
                     </div>
                     <Button onClick={() => setCreditTarget(m)} variant="primary" size="sm" leftIcon={<Check size={14} />}>
@@ -1068,7 +1110,7 @@ export default function MembersView() {
         onConfirm={() => creditGap(creditTarget)}
         title="เติมแต้มย้อนหลัง"
         message={creditTarget
-          ? `${creditTarget.name || 'ลูกค้า'} ซื้อจริงควรได้ ${Number(creditTarget.expectedEarn || 0)} แต้ม แต่ระบบบันทึกไว้ไม่ครบ — เติมส่วนที่ขาด +${Number(creditTarget.earnGap || 0)} แต้มเข้า "รออนุมัติ" ใช่หรือไม่? (ยังต้องกดอนุมัติอีกครั้ง)`
+          ? `${creditTarget.name || 'ลูกค้า'} ซื้อใน ${reconcileDays} วันล่าสุดควรได้ ${Number(creditTarget.expectedEarn || 0)} แต้ม แต่ได้ไม่ครบ${Number(creditTarget.redeemed || 0) > 0 ? ` (แลกไปแล้ว ${Number(creditTarget.redeemed)} แต้ม — ไม่นับรวมในนี้)` : ''} — เติมส่วนที่ขาด +${Number(creditTarget.earnGap || 0)} แต้มเข้า "รออนุมัติ" ใช่หรือไม่? (ยังต้องกดอนุมัติอีกครั้ง)`
           : ''}
         confirmText={`เติม +${Number(creditTarget?.earnGap || 0)}`}
         cancelText="ยกเลิก"
