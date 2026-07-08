@@ -1,130 +1,44 @@
 /**
- * Service Worker for POS App
- * Provides offline caching and faster loading
+ * Self-destroying service worker (tombstone).
+ *
+ * An earlier version of this app registered a caching service worker. The
+ * registration was later removed from the app code, but the old worker keeps
+ * running on every device that installed it — serving stale, cache-first builds
+ * so new deploys "sometimes don't show up" until the user manually clears their
+ * cache (which then forces a slow Firestore cold start).
+ *
+ * This file replaces that worker. Browsers always revalidate the service-worker
+ * script itself, so on the next visit an affected device picks this up, wipes
+ * all caches, unregisters, and reloads once — permanently freeing it. New
+ * visitors never register a worker at all (the app no longer calls register()),
+ * so nothing re-installs.
+ *
+ * Do NOT delete this file: the SPA `_redirects` catch-all would answer /sw.js
+ * with index.html (HTTP 200), the old worker's update check would then fail, and
+ * it would keep running forever. Keep the tombstone deployed.
  */
-
-// Bump these version suffixes on each deploy that must invalidate cached assets.
-const CACHE_NAME = 'pos-app-v2';
-const STATIC_CACHE = 'pos-static-v2';
-const DYNAMIC_CACHE = 'pos-dynamic-v2';
-
-// Files to cache immediately on install
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json'
-];
-
-// Install event - cache static assets
-self.addEventListener('install', (event) => {
-  console.log('[SW] Installing Service Worker...');
-  event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => {
-        console.log('[SW] Caching static assets');
-        return cache.addAll(STATIC_ASSETS);
-      })
-      .then(() => self.skipWaiting())
-  );
+self.addEventListener('install', () => {
+  self.skipWaiting();
 });
 
-// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating Service Worker...');
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== STATIC_CACHE && name !== DYNAMIC_CACHE)
-          .map((name) => {
-            console.log('[SW] Deleting old cache:', name);
-            return caches.delete(name);
-          })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
-
-// Fetch event - serve from cache, fallback to network
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  // Skip non-GET requests
-  if (request.method !== 'GET') return;
-
-  // Skip Firebase and external API requests
-  if (url.hostname.includes('firebase') ||
-      url.hostname.includes('googleapis') ||
-      url.hostname.includes('generativelanguage')) {
-    return;
-  }
-
-  // For navigation requests, try network first
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          // Cache the new version
-          const responseClone = response.clone();
-          caches.open(DYNAMIC_CACHE).then((cache) => {
-            cache.put(request, responseClone);
-          });
-          return response;
-        })
-        .catch(() => {
-          // Fallback to cache
-          return caches.match(request).then((cached) => {
-            return cached || caches.match('/');
-          });
-        })
-    );
-    return;
-  }
-
-  // For static assets, try cache first
-  if (url.pathname.match(/\.(js|css|png|jpg|jpeg|svg|ico|woff|woff2)$/)) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) {
-          // Return cached version and update in background
-          fetch(request).then((response) => {
-            caches.open(STATIC_CACHE).then((cache) => {
-              cache.put(request, response);
-            });
-          });
-          return cached;
-        }
-        // No cache, fetch from network
-        return fetch(request).then((response) => {
-          const responseClone = response.clone();
-          caches.open(STATIC_CACHE).then((cache) => {
-            cache.put(request, responseClone);
-          });
-          return response;
-        });
-      })
-    );
-    return;
-  }
-
-  // Default: network first, cache fallback
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        const responseClone = response.clone();
-        caches.open(DYNAMIC_CACHE).then((cache) => {
-          cache.put(request, responseClone);
-        });
-        return response;
-      })
-      .catch(() => caches.match(request))
-  );
-});
-
-// Listen for messages from the app
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
+  event.waitUntil((async () => {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    } catch (err) {
+      // Ignore — unregister below is what matters most.
+    }
+    try {
+      await self.registration.unregister();
+    } catch (err) {
+      // Ignore.
+    }
+    // Reload every open tab once, now that no worker controls them, so the user
+    // immediately gets the latest build from the network instead of stale cache.
+    const clients = await self.clients.matchAll({ type: 'window' });
+    clients.forEach((client) => {
+      if ('navigate' in client) client.navigate(client.url);
+    });
+  })());
 });
