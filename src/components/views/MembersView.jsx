@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Users, Search, User, UserMinus, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X } from 'lucide-react';
+import { Users, Search, User, UserMinus, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X, Calculator, GitMerge, AlertTriangle, ChevronDown } from 'lucide-react';
 import { doc, setDoc, deleteDoc, updateDoc, writeBatch, serverTimestamp, increment, arrayUnion } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
@@ -45,11 +45,38 @@ export default function MembersView() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingMember, setDeletingMember] = useState(null);
 
+  // Reconciliation + merge tools
+  const [showReconcile, setShowReconcile] = useState(false);
+  const [creditTarget, setCreditTarget] = useState(null); // member awaiting credit confirm
+  const [mergeGroup, setMergeGroup] = useState(null);      // { key, members } awaiting merge confirm
+  const [mergePrimaryId, setMergePrimaryId] = useState(null);
+
   // An order counts toward a member's purchase history as soon as it is placed
   // (pending) — not only once completed — so today's orders show immediately.
   // Points are NOT derived from this history; they are mutated in real time at
   // checkout (earn → pendingPoints awaiting approval, redeem → points).
   const orderCounts = (o) => o.status !== 'cancelled';
+
+  // Points earned by a single bill = ฿10 spent → 1 point (same rule the POS and
+  // QR checkout use: Math.floor(total / 10)).
+  const orderEarn = (o) => Math.floor(Number(o.total || 0) / 10);
+
+  // "Earn already recorded" for a member = points still pending approval PLUS
+  // every positive credit ever logged to history (order/review approvals, prior
+  // reconciliations, and manual top-ups). Redeem refunds are a return of spent
+  // points, not a purchase reward, so they are excluded. Counting manual credits
+  // here keeps the reconciliation conservative — it never re-credits points the
+  // owner already granted by hand.
+  const EARN_REASONS = new Set(['order', 'review', 'recalc', 'manual']);
+  const recordedEarn = (m) => {
+    const pending = Number(m.pendingPoints || 0);
+    const history = Array.isArray(m.pointsHistory) ? m.pointsHistory : [];
+    const credited = history.reduce((s, e) => {
+      const d = Number(e?.delta || 0);
+      return s + (d > 0 && EARN_REASONS.has(e?.reason) ? d : 0);
+    }, 0);
+    return pending + credited;
+  };
 
   // Memos
   const processedMembers = useMemo(() => {
@@ -66,7 +93,11 @@ export default function MembersView() {
       const totalPurchases = memberOrders.reduce((sum, o) => sum + (o.items?.reduce((s, i) => s + Number(i.quantity), 0) || 0), 0);
       const totalSpent = memberOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
-      return { ...m, totalPurchases, totalSpent };
+      // Earn audit: what the purchases should have granted vs what was recorded.
+      const expectedEarn = memberOrders.reduce((sum, o) => sum + orderEarn(o), 0);
+      const earnGap = expectedEarn - recordedEarn(m);
+
+      return { ...m, totalPurchases, totalSpent, expectedEarn, earnGap };
     });
 
     // 2. Identify orders that don't belong to any member in the collection
@@ -81,15 +112,47 @@ export default function MembersView() {
         const alreadyRegistered = members.some(m => getNameKey(m.name) === key);
         if (alreadyRegistered) return;
 
-        const current = nameOnlyMap.get(key) || { id: `name-only:${key}`, name: key, phone: '', points: 0, totalPurchases: 0, totalSpent: 0 };
+        const current = nameOnlyMap.get(key) || { id: `name-only:${key}`, name: key, phone: '', points: 0, totalPurchases: 0, totalSpent: 0, expectedEarn: 0, earnGap: 0 };
         const orderPurchases = o.items?.reduce((s, i) => s + Number(i.quantity), 0) || 0;
         current.totalPurchases += orderPurchases;
         current.totalSpent += Number(o.total) || 0;
+        // Name-only customers have no member doc → nothing was ever recorded, so
+        // the whole expected earn is the gap (they bought but never got points).
+        current.expectedEarn += orderEarn(o);
+        current.earnGap = current.expectedEarn;
         nameOnlyMap.set(key, current);
       });
 
     return [...memberStats, ...nameOnlyMap.values()].sort((a, b) => b.totalPurchases - a.totalPurchases);
   }, [members, orders]);
+
+  // Members whose purchases earned fewer points than they should have — the
+  // "bought but points didn't show" cases. Sorted biggest-gap first. The owner
+  // reviews and confirms each credit (points go to pendingPoints for the normal
+  // approval flow, never straight into the balance).
+  const reconcileList = useMemo(
+    () => processedMembers
+      .filter(m => Number(m.earnGap || 0) >= 1)
+      .sort((a, b) => Number(b.earnGap) - Number(a.earnGap)),
+    [processedMembers]
+  );
+
+  // Duplicate identities: the same person split across a phone doc and a
+  // name doc (or several name variants). Grouped by normalised name; only
+  // groups with more than one distinct identity are surfaced for merging.
+  const duplicateGroups = useMemo(() => {
+    const byName = new Map();
+    processedMembers.forEach(m => {
+      const key = getNameKey(m.name);
+      if (!key) return;
+      const arr = byName.get(key) || [];
+      arr.push(m);
+      byName.set(key, arr);
+    });
+    return [...byName.entries()]
+      .filter(([, arr]) => arr.length > 1)
+      .map(([key, arr]) => ({ key, members: arr }));
+  }, [processedMembers]);
 
   const filteredMembers = useMemo(() => {
     const term = String(debouncedMemberSearchTerm || '').trim();
@@ -195,6 +258,93 @@ export default function MembersView() {
       }, { merge: true });
     }, 'ปฏิเสธไม่สำเร็จ');
     toast.info('ปฏิเสธคำขอแต้มแล้ว');
+  };
+
+  // Reconciliation: credit a member's missing earn into pendingPoints so it goes
+  // through the normal approval gate. Never writes straight to the balance. The
+  // owner confirms per person (this runs from a ConfirmModal). For name-only
+  // customers with no doc yet, setDoc(merge) creates the doc keyed by name.
+  const creditGap = (member) => {
+    const gap = Number(member?.earnGap || 0);
+    if (gap < 1) return;
+    runDbAction(async () => {
+      const id = resolveMemberId(member);
+      if (!id) return;
+      const payload = {
+        name: member.name || 'ลูกค้าทั่วไป',
+        pendingPoints: increment(gap),
+        pendingReason: 'recalc',
+      };
+      const phone = String(member.phone || '').trim();
+      if (phone) payload.phone = phone;
+      if (String(member.id || '').startsWith('name-only:')) payload.createdAt = serverTimestamp();
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', id), payload, { merge: true });
+    }, 'เติมแต้มย้อนหลังไม่สำเร็จ');
+    toast.success(`เติม +${gap} แต้ม (รออนุมัติ) ให้ ${member.name} แล้ว`);
+    setCreditTarget(null);
+  };
+
+  // Merge duplicate identities into one primary member: sum points + pending,
+  // concat history, re-point the losers' orders to the primary, then delete the
+  // loser docs. Bounded to a single batch (well under Firestore's 500-op cap for
+  // realistic customer histories). The owner picks the primary and confirms.
+  const mergeMembers = async (group, primaryId) => {
+    const base = ['artifacts', appId, 'public', 'data'];
+    const primary = group.members.find(m => (m.id || m.phone) === primaryId) || group.members[0];
+    const losers = group.members.filter(m => m !== primary);
+    const primaryDocId = resolveMemberId(primary);
+    if (!primaryDocId) { toast.warning('เลือกสมาชิกหลักไม่ได้'); return; }
+    const primaryPhone = String(primary.phone || '').trim();
+    const primaryName = primary.name || 'ลูกค้าทั่วไป';
+
+    await runDbAction(async () => {
+      const batch = writeBatch(db);
+      let addPoints = 0;
+      let addPending = 0;
+      const historyAdd = [];
+
+      losers.forEach(loser => {
+        addPoints += Number(loser.points || 0);
+        addPending += Number(loser.pendingPoints || 0);
+        (Array.isArray(loser.pointsHistory) ? loser.pointsHistory : []).forEach(e => historyAdd.push(e));
+
+        // Re-point this loser's orders onto the primary identity so purchase
+        // history follows the merge.
+        const loserPhone = String(loser.phone || '').trim();
+        const loserNameKey = getNameKey(loser.name);
+        orders.forEach(o => {
+          const matchByPhone = loserPhone && o.memberPhone === loserPhone;
+          const matchByName = !o.memberPhone && loserNameKey && getNameKey(o.memberNickname) === loserNameKey;
+          if (matchByPhone || matchByName) {
+            batch.update(doc(db, ...base, 'orders', o.id), {
+              memberPhone: primaryPhone,
+              memberNickname: primaryName,
+            });
+          }
+        });
+
+        // Remove the loser's own doc (name-only rows have no doc to delete).
+        if (!String(loser.id || '').startsWith('name-only:') && (loser.id || loser.phone)) {
+          batch.delete(doc(db, ...base, 'members', loser.id || loser.phone));
+        }
+      });
+
+      const primaryPayload = {
+        name: primaryName,
+        createdAt: primary.createdAt || serverTimestamp(),
+      };
+      if (primaryPhone) primaryPayload.phone = primaryPhone;
+      if (addPoints !== 0) primaryPayload.points = increment(addPoints);
+      if (addPending !== 0) primaryPayload.pendingPoints = increment(addPending);
+      const mergeMarker = historyEntry(0, 'recalc');
+      primaryPayload.pointsHistory = arrayUnion(...historyAdd, mergeMarker);
+      batch.set(doc(db, ...base, 'members', primaryDocId), primaryPayload, { merge: true });
+
+      await batch.commit();
+    }, 'รวมสมาชิกไม่สำเร็จ');
+    toast.success(`รวม ${losers.length + 1} รายการเข้าเป็น "${primaryName}" แล้ว`);
+    setMergeGroup(null);
+    setMergePrimaryId(null);
   };
 
   // Wrong member entered on a bill → detach it from this member (revenue is
@@ -359,6 +509,20 @@ export default function MembersView() {
         </div>
         <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto">
           <Button
+            onClick={() => setShowReconcile(v => !v)}
+            variant={showReconcile ? 'primary' : 'outline'}
+            size="md"
+            leftIcon={<Calculator size={14} />}
+            title="ตรวจแต้มที่ซื้อแล้วไม่ขึ้น และรวมสมาชิกซ้ำ"
+          >
+            <span className="hidden sm:inline">กระทบยอด</span>แต้ม
+            {(reconcileList.length > 0 || duplicateGroups.length > 0) && (
+              <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black">
+                {reconcileList.length + duplicateGroups.length}
+              </span>
+            )}
+          </Button>
+          <Button
             onClick={addMember}
             variant="primary"
             size="md"
@@ -423,6 +587,89 @@ export default function MembersView() {
           <p className="text-xs md:text-xs opacity-70 mt-0.5">แต้มรวม: {totalPoints.toLocaleString()}</p>
         </div>
       </div>
+      {/* Reconciliation + Merge Tools */}
+      {showReconcile && (
+        <div className="px-3 md:px-6 lg:px-8 pt-3 md:pt-4 shrink-0 space-y-3">
+          {/* Missing points (bought but points didn't show) */}
+          <div className="bg-white border border-emerald-200 rounded-2xl p-3 md:p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-1 text-emerald-700 font-black text-sm md:text-base uppercase tracking-wider">
+              <Calculator size={18} />
+              <span>แต้มที่ซื้อแล้วไม่ขึ้น</span>
+            </div>
+            <p className="text-xs text-gray-400 font-bold mb-3">
+              เทียบยอดซื้อจริงกับแต้มที่ระบบบันทึกไว้ — เติมส่วนที่ขาดเข้า “รออนุมัติ” แล้วค่อยกดอนุมัติอีกที (฿10 = 1 แต้ม)
+            </p>
+            {reconcileList.length === 0 ? (
+              <div className="text-center py-6 text-gray-400 font-bold text-sm flex items-center justify-center gap-2">
+                <Check size={16} className="text-emerald-500" /> แต้มตรงกับยอดซื้อทุกคนแล้ว
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3 max-h-64 overflow-y-auto scrollbar-hide">
+                {reconcileList.map(m => (
+                  <div key={`gap-${m.phone || m.id}`} className="bg-emerald-50/60 rounded-2xl border border-emerald-100 p-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-black text-gray-800 text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
+                      <p className="text-xs font-bold text-gray-400">
+                        {m.phone ? String(m.phone) : 'ไม่มีเบอร์'} · ควรได้ {Number(m.expectedEarn || 0)} · ขาด
+                        <span className="text-emerald-600"> {Number(m.earnGap)}</span> แต้ม
+                      </p>
+                    </div>
+                    <Button onClick={() => setCreditTarget(m)} variant="primary" size="sm" leftIcon={<Check size={14} />}>
+                      เติม +{Number(m.earnGap)}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Duplicate identities to merge */}
+          {duplicateGroups.length > 0 && (
+            <div className="bg-white border border-violet-200 rounded-2xl p-3 md:p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-1 text-violet-700 font-black text-sm md:text-base uppercase tracking-wider">
+                <GitMerge size={18} />
+                <span>สมาชิกซ้ำ (ชื่อเดียวกัน)</span>
+              </div>
+              <p className="text-xs text-gray-400 font-bold mb-3">
+                คนเดียวกันแต่แยกเป็นหลายรายการ (เบอร์/ชื่อ) — เลือกตัวหลักแล้วกดรวม แต้มและประวัติจะยุบรวมกัน
+              </p>
+              <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-hide">
+                {duplicateGroups.map(group => (
+                  <div key={`dup-${group.key}`} className="bg-violet-50/60 rounded-2xl border border-violet-100 p-3">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <p className="font-black text-gray-800 text-sm truncate flex items-center gap-2">
+                        <AlertTriangle size={14} className="text-violet-500 shrink-0" /> {group.key}
+                        <span className="text-xs font-bold text-gray-400">({group.members.length} รายการ)</span>
+                      </p>
+                      <Button
+                        onClick={() => {
+                          const primary = group.members.find(m => String(m.phone || '').trim()) || group.members[0];
+                          setMergeGroup(group);
+                          setMergePrimaryId(primary.id || primary.phone);
+                        }}
+                        variant="primary"
+                        size="sm"
+                        leftIcon={<GitMerge size={14} />}
+                      >
+                        รวม
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.members.map(m => (
+                        <span key={`dupm-${m.id || m.phone}`} className="text-xs bg-white px-2 py-1 rounded-lg border border-violet-100 font-bold text-gray-600">
+                          {m.phone ? String(m.phone) : 'ไม่มีเบอร์'} · {Number(m.points || 0)}
+                          {Number(m.pendingPoints || 0) > 0 ? `(+${Number(m.pendingPoints)})` : ''} แต้ม
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Pending Approval Section */}
       {processedMembers.some(m => Number(m.pendingPoints) > 0) && (
         <div className="px-3 md:px-6 lg:px-8 pt-3 md:pt-4 shrink-0">
@@ -437,7 +684,7 @@ export default function MembersView() {
                   <div className="min-w-0">
                     <p className="font-black text-gray-800 text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
                     <span className="inline-block mt-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-700 font-black text-xs">
-                      รออนุมัติ +{Number(m.pendingPoints)} · {m.pendingReason === 'order' ? 'จากการซื้อ' : 'รีวิว'}
+                      รออนุมัติ +{Number(m.pendingPoints)} · {m.pendingReason === 'order' ? 'จากการซื้อ' : m.pendingReason === 'recalc' ? 'กระทบยอดย้อนหลัง' : 'รีวิว'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -813,6 +1060,67 @@ export default function MembersView() {
         cancelText="ยกเลิก"
         variant="danger"
       />
+
+      {/* Credit missing points confirm */}
+      <ConfirmModal
+        isOpen={!!creditTarget}
+        onClose={() => setCreditTarget(null)}
+        onConfirm={() => creditGap(creditTarget)}
+        title="เติมแต้มย้อนหลัง"
+        message={creditTarget
+          ? `${creditTarget.name || 'ลูกค้า'} ซื้อจริงควรได้ ${Number(creditTarget.expectedEarn || 0)} แต้ม แต่ระบบบันทึกไว้ไม่ครบ — เติมส่วนที่ขาด +${Number(creditTarget.earnGap || 0)} แต้มเข้า "รออนุมัติ" ใช่หรือไม่? (ยังต้องกดอนุมัติอีกครั้ง)`
+          : ''}
+        confirmText={`เติม +${Number(creditTarget?.earnGap || 0)}`}
+        cancelText="ยกเลิก"
+        variant="primary"
+      />
+
+      {/* Merge duplicates — pick the primary identity */}
+      <Modal
+        isOpen={!!mergeGroup}
+        onClose={() => { setMergeGroup(null); setMergePrimaryId(null); }}
+        size="md"
+        title="รวมสมาชิกซ้ำ"
+      >
+        {mergeGroup && (
+          <div className="space-y-4">
+            <p className="text-sm font-bold text-gray-500">
+              เลือกรายการหลัก (แต้ม + ประวัติของรายการอื่นจะถูกยุบรวมเข้ารายการนี้ และออเดอร์จะย้ายมาผูกกับรายการหลัก)
+            </p>
+            <div className="space-y-2">
+              {mergeGroup.members.map(m => {
+                const rid = m.id || m.phone;
+                const selected = rid === mergePrimaryId;
+                return (
+                  <button
+                    key={`merge-${rid}`}
+                    onClick={() => setMergePrimaryId(rid)}
+                    className={`w-full text-left p-3 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 ${selected ? 'border-violet-500 bg-violet-50' : 'border-gray-100 bg-white hover:border-violet-200'}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-black text-gray-800 text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
+                      <p className="text-xs font-bold text-gray-400">
+                        {m.phone ? String(m.phone) : 'ไม่มีเบอร์'} · {Number(m.points || 0)} แต้ม
+                        {Number(m.pendingPoints || 0) > 0 ? ` (+${Number(m.pendingPoints)} รอ)` : ''}
+                        {String(m.id || '').startsWith('name-only:') ? ' · ยังไม่มีบัญชี' : ''}
+                      </p>
+                    </div>
+                    {selected && <Check size={18} className="text-violet-600 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button onClick={() => { setMergeGroup(null); setMergePrimaryId(null); }} variant="secondary" size="lg" fullWidth>
+                ยกเลิก
+              </Button>
+              <Button onClick={() => mergeMembers(mergeGroup, mergePrimaryId)} variant="primary" size="lg" fullWidth leftIcon={<GitMerge size={16} />}>
+                รวมเป็นหนึ่งเดียว
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
