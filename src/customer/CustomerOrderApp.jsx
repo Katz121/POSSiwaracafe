@@ -238,6 +238,15 @@ const dispField = (obj, lang, field = 'name') => {
   return lang === 'en' && en ? en : (obj[field] || '');
 };
 
+// Modifier-group headings are a small fixed set (not their own Firestore docs),
+// so they are translated with a static map rather than a `nameEn` field.
+const GROUP_EN = {
+  'เมล็ดกาแฟ': 'Coffee Beans',
+  'ผงมัทฉะ': 'Matcha Powder',
+  'ส้ม': 'Orange',
+};
+const dispGroup = (name, lang) => (lang === 'en' && GROUP_EN[name]) ? GROUP_EN[name] : (name || '');
+
 // ---------------------------------------------------------------------------
 // Sub-component: LanguageToggle — TH/EN switch shown in the header
 // ---------------------------------------------------------------------------
@@ -588,7 +597,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
           <p className="text-sm text-gray-500">{t('chooseOptionFor')} <strong>{dispField(item, lang)}</strong></p>
           {groups.map((group) => (
             <div key={group.name} className="space-y-2">
-              {multi && <p className="text-xs font-black uppercase tracking-widest text-gray-400 ml-1">{group.name}</p>}
+              {multi && <p className="text-xs font-black uppercase tracking-widest text-gray-400 ml-1">{dispGroup(group.name, lang)}</p>}
               {group.mods.map(({ mod, surcharge }) => {
                 const selected = selections[group.name]?.id === mod.id;
                 // กลุ่มเดียว = แตะแล้วเพิ่มทันที (UX เดิม); หลายกลุ่ม = แตะเพื่อเลือกในกลุ่ม
