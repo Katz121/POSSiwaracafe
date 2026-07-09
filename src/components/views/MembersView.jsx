@@ -266,24 +266,26 @@ export default function MembersView() {
   };
   const historyEntry = (delta, reason) => ({ delta: Number(delta), reason, at: new Date().toISOString() });
 
-  const approvePending = (member) => {
+  const approvePending = async (member) => {
     const pending = Number(member.pendingPoints || 0);
     if (pending <= 0) return;
-    runDbAction(async () => {
+    const ok = await runDbAction(async () => {
       const id = resolveMemberId(member);
       if (!id) return;
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', id), {
         points: increment(pending),
         pendingPoints: 0,
+        pendingReason: '',
         pointsHistory: arrayUnion(historyEntry(pending, member.pendingReason || 'review'))
       }, { merge: true });
     }, 'อนุมัติแต้มไม่สำเร็จ');
-    toast.success(`อนุมัติ +${pending} แต้มให้ ${member.name} แล้ว`);
+    if (ok) toast.success(`อนุมัติ +${pending} แต้มให้ ${member.name} แล้ว`);
+    else toast.error('อนุมัติแต้มไม่สำเร็จ');
   };
 
-  const rejectPending = (member) => {
+  const rejectPending = async (member) => {
     const pending = Number(member.pendingPoints || 0);
-    runDbAction(async () => {
+    const ok = await runDbAction(async () => {
       const id = resolveMemberId(member);
       if (!id) return;
       const payload = { pendingPoints: 0 };
@@ -294,17 +296,18 @@ export default function MembersView() {
       }
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', id), payload, { merge: true });
     }, 'ปฏิเสธไม่สำเร็จ');
-    toast.info('ปฏิเสธคำขอแต้มแล้ว');
+    if (ok) toast.info('ปฏิเสธคำขอแต้มแล้ว');
+    else toast.error('ปฏิเสธไม่สำเร็จ');
   };
 
   // Reconciliation: credit a member's missing earn into pendingPoints so it goes
   // through the normal approval gate. Never writes straight to the balance. The
   // owner confirms per person (this runs from a ConfirmModal). For name-only
   // customers with no doc yet, setDoc(merge) creates the doc keyed by name.
-  const creditGap = (member) => {
+  const creditGap = async (member) => {
     const gap = Number(member?.earnGap || 0);
     if (gap < 1) return;
-    runDbAction(async () => {
+    const ok = await runDbAction(async () => {
       const id = resolveMemberId(member);
       if (!id) return;
       const payload = {
@@ -317,7 +320,8 @@ export default function MembersView() {
       if (String(member.id || '').startsWith('name-only:')) payload.createdAt = serverTimestamp();
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', id), payload, { merge: true });
     }, 'เติมแต้มย้อนหลังไม่สำเร็จ');
-    toast.success(`เติม +${gap} แต้ม (รออนุมัติ) ให้ ${member.name} แล้ว`);
+    if (ok) toast.success(`เติม +${gap} แต้ม (รออนุมัติ) ให้ ${member.name} แล้ว`);
+    else toast.error('เติมแต้มย้อนหลังไม่สำเร็จ');
     setCreditTarget(null);
   };
 
@@ -389,9 +393,9 @@ export default function MembersView() {
   // bill earned were credited to the wrong member, so claw them back too —
   // from pendingPoints first (not yet approved), then from points, never below
   // zero. Redemptions aren't reversed (orders don't record a redeem flag).
-  const unlinkOrderFromMember = (order) => {
+  const unlinkOrderFromMember = async (order) => {
     const member = selectedMemberForFavorites;
-    runDbAction(async () => {
+    const ok = await runDbAction(async () => {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id), {
         memberPhone: '', memberNickname: ''
       });
@@ -415,7 +419,8 @@ export default function MembersView() {
       }
     }, 'ถอดออเดอร์ออกจากสมาชิกไม่สำเร็จ');
     const earned = Math.floor(Number(order.total || 0) / 10);
-    toast.success(earned > 0 ? `ถอดออเดอร์ออกแล้ว และหักแต้มที่ได้จากบิลนี้ ${earned} แต้ม` : 'ถอดออเดอร์ออกจากสมาชิกแล้ว');
+    if (ok) toast.success(earned > 0 ? `ถอดออเดอร์ออกแล้ว และหักแต้มที่ได้จากบิลนี้ ${earned} แต้ม` : 'ถอดออเดอร์ออกจากสมาชิกแล้ว');
+    else toast.error('ถอดออเดอร์ออกจากสมาชิกไม่สำเร็จ');
   };
 
   // Delete a whole bill (reuses the app-level confirm + stock restore flow).
@@ -479,6 +484,7 @@ export default function MembersView() {
 
     const newId = nextPhone || `name:${nameKey}`;
     const currentId = member?.id || member?.phone;
+    const idChanged = currentId && currentId !== newId && !String(currentId).startsWith('name-only:');
     const newPoints = formData.points != null && formData.points !== '' ? Number(formData.points) || 0 : Number(member?.points || 0);
     const oldPoints = Number(editingMember?.points || 0);
     const data = {
@@ -487,13 +493,21 @@ export default function MembersView() {
       points: newPoints,
       createdAt: member?.createdAt || serverTimestamp(),
     };
-    if (newPoints - oldPoints !== 0) {
+    if (idChanged) {
+      // Moving to a new doc id — carry over pending points and full history so
+      // they aren't lost when the old doc is deleted below.
+      data.pendingPoints = Number(member?.pendingPoints || 0);
+      data.pendingReason = member?.pendingReason || '';
+      const history = Array.isArray(member?.pointsHistory) ? [...member.pointsHistory] : [];
+      if (newPoints - oldPoints !== 0) history.push(historyEntry(newPoints - oldPoints, 'manual'));
+      data.pointsHistory = history;
+    } else if (newPoints - oldPoints !== 0) {
       data.pointsHistory = arrayUnion(historyEntry(newPoints - oldPoints, 'manual'));
     }
 
     await runDbAction(async () => {
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', newId), data, { merge: true });
-      if (currentId && currentId !== newId && !String(currentId).startsWith('name-only:')) {
+      if (idChanged) {
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', currentId));
       }
     }, 'ไม่สามารถแก้ไขสมาชิกได้');
@@ -516,6 +530,14 @@ export default function MembersView() {
     }
 
     const memberId = phone || `name:${nameKey}`;
+
+    // Never overwrite an existing member — setDoc without merge would wipe
+    // their points/pendingPoints/pointsHistory.
+    if (members.some(m => (m.id || m.phone) === memberId)) {
+      toast.error('เบอร์นี้มีสมาชิกอยู่แล้ว');
+      return;
+    }
+
     const data = {
       name,
       phone,
@@ -530,9 +552,11 @@ export default function MembersView() {
   };
 
   // Stats calculation
-  const totalPoints = processedMembers.reduce((sum, m) => sum + Number(m.points || 0), 0);
-  const totalSpentAll = processedMembers.reduce((sum, m) => sum + Number(m.totalSpent || 0), 0);
-  const redeemableMembers = processedMembers.filter(m => Number(m.points || 0) >= REDEEM_POINTS_THRESHOLD).length;
+  const { totalPoints, totalSpentAll, redeemableMembers } = useMemo(() => ({
+    totalPoints: processedMembers.reduce((sum, m) => sum + Number(m.points || 0), 0),
+    totalSpentAll: processedMembers.reduce((sum, m) => sum + Number(m.totalSpent || 0), 0),
+    redeemableMembers: processedMembers.filter(m => Number(m.points || 0) >= REDEEM_POINTS_THRESHOLD).length,
+  }), [processedMembers, REDEEM_POINTS_THRESHOLD]);
 
   return (
     <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-gray-800">

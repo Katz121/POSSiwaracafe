@@ -56,6 +56,11 @@ import { getNameKey } from '../utils/calculations';
 // ---------------------------------------------------------------------------
 const QR_LANG_STORAGE_KEY = 'qr_lang';
 
+// Feature flag — set to true to bring back the auto-running welcome popup.
+// Disabled for now per request; all popup code stays intact but costs nothing
+// while the flag is off (JSX and welcomeItems computation are both gated).
+const WELCOME_POPUP_ENABLED = false;
+
 const TX = {
   th: {
     appLoading: 'กำลังโหลดเมนู...',
@@ -536,11 +541,16 @@ function WelcomePopup({ isOpen, items, settingsData, onClose, t, lang = 'th' }) 
 function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang = 'th' }) {
   // เลือกตัวเลือกต่อกลุ่ม (เช่น { 'ส้ม': mod, 'เมล็ดกาแฟ': mod })
   const [selections, setSelections] = useState({});
-  // เคลียร์ตัวเลือกทุกครั้งที่เปิดเมนูใหม่ (ปรับ state ตอน render ตามแนวทาง React)
+  // เคลียร์ตัวเลือกทุกครั้งที่เปิดเมนูใหม่ หรือเปิด modal ขึ้นมาใหม่ (แม้เป็นเมนูเดิม)
+  // (ปรับ state ตอน render ตามแนวทาง React)
   const [lastItemId, setLastItemId] = useState(item?.id);
-  if (item?.id !== lastItemId) {
-    setLastItemId(item?.id);
-    setSelections({});
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  const itemChanged = item?.id !== lastItemId;
+  const justOpened = isOpen && !wasOpen;
+  if (itemChanged || isOpen !== wasOpen) {
+    if (itemChanged) setLastItemId(item?.id);
+    if (isOpen !== wasOpen) setWasOpen(isOpen);
+    if (itemChanged || justOpened) setSelections({});
   }
 
   const itemBase = Number(item?.price) || 0;
@@ -1260,8 +1270,10 @@ function CustomerOrderApp() {
   // (1 Firestore read) instead of realtime listeners on 4 sources. Falls back to
   // reading the 4 sources once if the bundle has not been published yet.
   // ---------------------------------------------------------------------------
-  // `cancelledRef` lets a re-trigger (load()) ignore stale results from a prior run.
-  const cancelledRef = useRef(false);
+  // Each load() run takes its own sequence number; bumping the counter (a newer
+  // run starting, or unmount) cancels older in-flight runs without a later run
+  // ever "un-cancelling" an earlier one (which a shared boolean ref would do).
+  const loadSeqRef = useRef(0);
 
   const applySettings = useCallback((data = {}) => {
     setSettings({
@@ -1280,7 +1292,8 @@ function CustomerOrderApp() {
 
   const load = useCallback(async () => {
     const base = ['artifacts', appId, 'public', 'data'];
-    cancelledRef.current = false;
+    const seq = ++loadSeqRef.current;
+    const isStale = () => loadSeqRef.current !== seq;
 
     // 1) Paint instantly from the per-device cache for a fast first frame, then
     //    ALWAYS revalidate against the latest bundle below (step 2). The shop
@@ -1306,7 +1319,7 @@ function CustomerOrderApp() {
       // the source-collection fallback below instead of showing an empty menu.
       bundle = null;
     }
-    if (cancelledRef.current) return;
+    if (isStale()) return;
 
     if (bundle) {
       applyBundle(bundle);
@@ -1321,7 +1334,7 @@ function CustomerOrderApp() {
           getDocs(collection(db, ...base, 'beanModifiers')),
           getDoc(doc(db, ...base, 'config', 'settings')),
         ]);
-        if (cancelledRef.current) return;
+        if (isStale()) return;
         setMenu(menuSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setCategories(catsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setBeanModifiers(beansSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -1336,23 +1349,29 @@ function CustomerOrderApp() {
         // Both paths failed — keep whatever defaults we have so the page renders.
       }
     }
-    if (!cancelledRef.current) setLoading(false);
+    if (!isStale()) setLoading(false);
   }, [applyBundle, applySettings]);
+
+  // Invalidate any in-flight load() run (unmount / effect re-run).
+  const cancelLoad = useCallback(() => {
+    loadSeqRef.current++;
+  }, []);
 
   useEffect(() => {
     if (!authed) return;
     load();
-    return () => {
-      cancelledRef.current = true;
-    };
-  }, [authed, load]);
+    return cancelLoad;
+  }, [authed, load, cancelLoad]);
 
   // ---------------------------------------------------------------------------
   // Derived: filtered menu
   // ---------------------------------------------------------------------------
-  const availableMenu = menu.filter((item) => item.available !== false);
+  const availableMenu = useMemo(
+    () => menu.filter((item) => item.available !== false),
+    [menu],
+  );
 
-  const filteredMenu = availableMenu
+  const filteredMenu = useMemo(() => availableMenu
     .filter((item) => {
       const matchCat = activeCategory === 'ทั้งหมด' || item.category === activeCategory;
       const q = searchQuery.trim().toLowerCase();
@@ -1369,7 +1388,7 @@ function CustomerOrderApp() {
     .sort((a, b) =>
       (Number(b.soldCount || 0) - Number(a.soldCount || 0)) ||
       String(a.name || '').localeCompare(String(b.name || ''), 'th'),
-    );
+    ), [availableMenu, activeCategory, searchQuery]);
 
   // ---------------------------------------------------------------------------
   // Highlights: ขายดี (by soldCount) + แนะนำ (isFeatured)
@@ -1388,7 +1407,9 @@ function CustomerOrderApp() {
   const showHighlights = activeCategory === 'ทั้งหมด' && searchQuery.trim() === '';
 
   // Welcome popup items = ขายดี first, then แนะนำ (deduped). Showcase only.
+  // Skipped entirely while the popup feature flag is off.
   const welcomeItems = useMemo(() => {
+    if (!WELCOME_POPUP_ENABLED) return [];
     const seen = new Set();
     return [...bestSellers, ...featuredItems].filter((m) => {
       if (seen.has(m.id)) return false;
@@ -1396,10 +1417,6 @@ function CustomerOrderApp() {
       return true;
     });
   }, [bestSellers, featuredItems]);
-
-  // Feature flag — set to true to bring back the auto-running welcome popup.
-  // Disabled for now per request; all popup code below stays intact.
-  const WELCOME_POPUP_ENABLED = false;
 
   // Auto-open once per browser session (sessionStorage) once the menu has loaded
   // and there is something to highlight. Closing it marks the session as seen.
@@ -1429,7 +1446,7 @@ function CustomerOrderApp() {
 
   // Re-render every minute so the Happy Hour banner (and sale prices) appear and
   // disappear automatically as the time window opens/closes during a session.
-  const [, setNowTick] = useState(0);
+  const [nowTick, setNowTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setNowTick((n) => n + 1), 60000);
     return () => clearInterval(id);
@@ -1479,7 +1496,7 @@ function CustomerOrderApp() {
     const phone = customerPhone.trim();
     if (phone.length < 9) { setMember(null); return; }
     let cancelled = false;
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', phone));
         if (!cancelled) setMember(snap.exists() ? { id: snap.id, ...snap.data() } : null);
@@ -1487,7 +1504,7 @@ function CustomerOrderApp() {
         if (!cancelled) setMember(null);
       }
     }, 500);
-    return () => { cancelled = true; clearTimeout(t); };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [customerPhone]);
 
   const memberPoints = Number(member?.points || 0);
@@ -1496,34 +1513,49 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   // Cart totals
   // ---------------------------------------------------------------------------
-  const subtotal = cart.reduce((s, i) => s + Number(i.price) * Number(i.quantity), 0);
-  // Both the combo "set" promo (see getComboDiscount) and the spend-threshold promo
-  // discount the whole cart as one bundle (cake + drink together). The only exception is
-  // while Happy Hour is running: cakes already carry a per-item discount in their price,
-  // so the spend promo falls back to the non-cake (drinks) portion to avoid double-discount.
-  const nonCakeSubtotal = cart.reduce(
-    (s, i) => (isCakeCategory(i.category, settingsData) ? s : s + Number(i.price) * Number(i.quantity)),
-    0,
-  );
-  const combo = getComboDiscount(cart, settingsData);
-  const rawComboDiscount = combo.applies ? combo.amount : 0;
-  const pointsDiscount = (pointsEligible && usePoints) ? redeemDiscountValue : 0;
-  // Spend-threshold discount: order ≥ X → get Y% off (0 = disabled)
-  const spendThreshold = Number(settingsData.spendThreshold) || 0;
-  const spendDiscountPercent = Number(settingsData.spendDiscount) || 0; // a % off once the threshold is reached
-  const spendActive = spendThreshold > 0 && spendDiscountPercent > 0;
-  const spendBase = isCakeSaleActive(settingsData) ? nonCakeSubtotal : subtotal;
-  const rawSpendDiscount = (spendActive && subtotal >= spendThreshold) ? Math.round(spendBase * spendDiscountPercent / 100) : 0;
-  const spendRemaining = (spendActive && subtotal > 0 && subtotal < spendThreshold) ? (spendThreshold - subtotal) : 0;
-  // Combo and spend-threshold do NOT stack — keep only the bigger of the two so the
-  // order-level discount can't balloon. Happy-hour is already in item prices; points
-  // (a redeemed member reward) still stacks. These effective values also drive the UI.
-  const comboWins = rawComboDiscount >= rawSpendDiscount;
-  const comboDiscount = comboWins ? rawComboDiscount : 0;
-  const spendDiscount = comboWins ? 0 : rawSpendDiscount;
-  const discount = Math.min(subtotal, comboDiscount + pointsDiscount + spendDiscount);
-  const vat = settings.vatEnabled ? Math.round(Math.max(0, subtotal - discount) * VAT_RATE) : 0;
-  const total = Math.max(0, subtotal - discount + vat);
+  // Memoised in one pass — these figures were previously recomputed several
+  // times per render (grid, banners, cart bar, drawer, checkout all read them).
+  const totals = useMemo(() => {
+    const subtotal = cart.reduce((s, i) => s + Number(i.price) * Number(i.quantity), 0);
+    // Both the combo "set" promo (see getComboDiscount) and the spend-threshold promo
+    // discount the whole cart as one bundle (cake + drink together). The only exception is
+    // while Happy Hour is running: cakes already carry a per-item discount in their price,
+    // so the spend promo falls back to the non-cake (drinks) portion to avoid double-discount.
+    const nonCakeSubtotal = cart.reduce(
+      (s, i) => (isCakeCategory(i.category, settingsData) ? s : s + Number(i.price) * Number(i.quantity)),
+      0,
+    );
+    const combo = getComboDiscount(cart, settingsData);
+    const rawComboDiscount = combo.applies ? combo.amount : 0;
+    const pointsDiscount = (pointsEligible && usePoints) ? redeemDiscountValue : 0;
+    // Spend-threshold discount: order ≥ X → get Y% off (0 = disabled)
+    const spendThreshold = Number(settingsData.spendThreshold) || 0;
+    const spendDiscountPercent = Number(settingsData.spendDiscount) || 0; // a % off once the threshold is reached
+    const spendActive = spendThreshold > 0 && spendDiscountPercent > 0;
+    const spendBase = isCakeSaleActive(settingsData) ? nonCakeSubtotal : subtotal;
+    const rawSpendDiscount = (spendActive && subtotal >= spendThreshold) ? Math.round(spendBase * spendDiscountPercent / 100) : 0;
+    const spendRemaining = (spendActive && subtotal > 0 && subtotal < spendThreshold) ? (spendThreshold - subtotal) : 0;
+    // Combo and spend-threshold do NOT stack — keep only the bigger of the two so the
+    // order-level discount can't balloon. Happy-hour is already in item prices; points
+    // (a redeemed member reward) still stacks. These effective values also drive the UI.
+    const comboWins = rawComboDiscount >= rawSpendDiscount;
+    const comboDiscount = comboWins ? rawComboDiscount : 0;
+    const spendDiscount = comboWins ? 0 : rawSpendDiscount;
+    const discount = Math.min(subtotal, comboDiscount + pointsDiscount + spendDiscount);
+    const vat = settings.vatEnabled ? Math.round(Math.max(0, subtotal - discount) * VAT_RATE) : 0;
+    const total = Math.max(0, subtotal - discount + vat);
+    return {
+      subtotal, combo, pointsDiscount, spendThreshold, spendDiscountPercent,
+      spendActive, spendRemaining, comboDiscount, spendDiscount, discount, vat, total,
+    };
+    // `nowTick` is a deliberate extra dep: getComboDiscount/isCakeSaleActive read the
+    // wall clock, so totals must refresh as the Happy Hour window opens/closes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, settingsData, pointsEligible, usePoints, redeemDiscountValue, settings.vatEnabled, nowTick]);
+  const {
+    subtotal, combo, pointsDiscount, spendThreshold, spendDiscountPercent,
+    spendActive, spendRemaining, comboDiscount, spendDiscount, discount, vat, total,
+  } = totals;
 
   // ---------------------------------------------------------------------------
   // Cart operations
@@ -1701,7 +1733,7 @@ function CustomerOrderApp() {
         customerName: customerName.trim(),
         status: 'pending',
         promotionTitle: combo.applies ? COMBO_PROMO_TITLE : '',
-        promotionDiscountPercent: 0,
+        promotionDiscountPercent: combo.applies ? combo.percent : 0,
         bringOwnGlass: false,
         createdAt: serverTimestamp(),
         date: getISODate(),
@@ -1743,7 +1775,10 @@ function CustomerOrderApp() {
           // `member` state is only ever loaded by phone lookup, so a name-based
           // id never resolves to an existing member here — that's fine, it just
           // means createdAt gets (re)stamped, matching PosView's !existingMember path.
-          const isExisting = !!member && phoneValid && member.phone === phone;
+          // Compare against the doc id (always the phone it was looked up by), NOT a
+          // stored `phone` field — older member docs whose id IS the phone may lack
+          // that field, and re-stamping createdAt would destroy their join date.
+          const isExisting = !!member && phoneValid && member.id === phone;
           const memberPayload = {
             name: customerName.trim(),
             lastOrderAt: serverTimestamp(),
@@ -2123,15 +2158,17 @@ function CustomerOrderApp() {
         lang={lang}
       />
 
-      {/* ---- Welcome popup: auto-running ขายดี + แนะนำ showcase ---- */}
-      <WelcomePopup
-        isOpen={welcomeOpen}
-        items={welcomeItems}
-        settingsData={settingsData}
-        onClose={closeWelcome}
-        t={t}
-        lang={lang}
-      />
+      {/* ---- Welcome popup: auto-running ขายดี + แนะนำ showcase (feature-flagged) ---- */}
+      {WELCOME_POPUP_ENABLED && (
+        <WelcomePopup
+          isOpen={welcomeOpen}
+          items={welcomeItems}
+          settingsData={settingsData}
+          onClose={closeWelcome}
+          t={t}
+          lang={lang}
+        />
+      )}
 
       {/* ---- Bean modifier modal ---- */}
       <BeanModifierModal

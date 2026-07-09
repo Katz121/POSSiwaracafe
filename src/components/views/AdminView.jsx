@@ -155,11 +155,23 @@ export default function AdminView() {
   useEffect(() => {
     if (adminTab) {
       setAdminPanels(prev => ({ ...prev, [adminTab]: true }));
-      // Scroll to the panel if needed (optional but helpful)
-      const element = document.getElementById(`panel-${adminTab}`);
-      if (element) {
-        setTimeout(() => element.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-      }
+      // Each panel only renders under a specific admin tab — switch to it first,
+      // otherwise the deep link silently does nothing when another tab is active.
+      const panelTabs = {
+        daily: 'stats',
+        monthly: 'stats',
+        expenses: 'stats',
+        backdatedSales: 'manage',
+        beanModifiers: 'manage',
+        quickExpenses: 'manage',
+        settings: 'settings',
+      };
+      if (panelTabs[adminTab]) setActiveAdminTab(panelTabs[adminTab]);
+      // Scroll to the panel after the tab/panel has rendered
+      setTimeout(() => {
+        const element = document.getElementById(`panel-${adminTab}`);
+        if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
       // Reset the tab in parent to avoid re-triggering
       setAdminTab(null);
     }
@@ -296,10 +308,10 @@ export default function AdminView() {
 
   const handleSeedDatabase = async () => {
     setShowSeedConfirm(false);
-    await runDbAction(async () => {
+    const ok = await runDbAction(async () => {
       await seedDatabase(db, appId);
     }, 'กู้คืนข้อมูลไม่สำเร็จ');
-    toast.success('กู้คืนข้อมูลเริ่มต้นสำเร็จ');
+    if (ok) toast.success('กู้คืนข้อมูลเริ่มต้นสำเร็จ');
   };
 
   // Backfill best-seller counter from full order history
@@ -768,7 +780,6 @@ export default function AdminView() {
               doc.body.appendChild(urlText);
 
               win.onload = () => win.print();
-              win.print();
             };
             const handleCopyLink = async () => {
               try {

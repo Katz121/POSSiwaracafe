@@ -1,4 +1,4 @@
-import { forwardRef, useState } from 'react';
+import { forwardRef, useId, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 
@@ -40,7 +40,10 @@ const Input = forwardRef(({
   const [showPassword, setShowPassword] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
 
-  const inputId = id || name || label?.toLowerCase().replace(/\s/g, '-');
+  // useId fallback — label ภาษาไทยซ้ำกันจะไม่ชน id กัน
+  const reactId = useId();
+  const inputId = id || name || reactId;
+  const describedById = `${inputId}-description`;
   const isPassword = type === 'password';
   const inputType = isPassword && showPassword ? 'text' : type;
 
@@ -100,6 +103,8 @@ const Input = forwardRef(({
           max={max}
           step={step}
           maxLength={maxLength}
+          aria-invalid={!!error}
+          aria-describedby={error || hint ? describedById : undefined}
           className={`
             w-full
             bg-gray-50 dark:bg-gray-900
@@ -150,6 +155,7 @@ const Input = forwardRef(({
       <AnimatePresence>
         {(error || hint) && (
           <motion.div
+            id={describedById}
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -5 }}
@@ -183,9 +189,13 @@ export const Textarea = forwardRef(({
   size = 'md',
   fullWidth = true,
   className = '',
+  id,
   ...props
 }, ref) => {
-  const inputId = label?.toLowerCase().replace(/\s/g, '-');
+  // useId fallback — label ภาษาไทยซ้ำกันจะไม่ชน id กัน
+  const reactId = useId();
+  const inputId = id || reactId;
+  const describedById = `${inputId}-description`;
 
   const resizeClasses = {
     none: 'resize-none',
@@ -214,10 +224,16 @@ export const Textarea = forwardRef(({
         placeholder={placeholder}
         disabled={disabled}
         rows={rows}
+        aria-invalid={!!error}
+        aria-describedby={error || hint ? describedById : undefined}
         className={`
           w-full
           bg-gray-50 dark:bg-gray-900
-          border-2 border-gray-200 dark:border-gray-700
+          border-2
+          ${error
+            ? 'border-red-400 dark:border-red-500'
+            : 'border-gray-200 dark:border-gray-700'
+          }
           text-gray-900 dark:text-white
           placeholder-gray-400 dark:placeholder-gray-500
           transition-all duration-200
@@ -225,7 +241,6 @@ export const Textarea = forwardRef(({
           disabled:opacity-50 disabled:cursor-not-allowed
           ${sizes[size]}
           ${resizeClasses[resize]}
-          ${error ? 'border-red-400' : ''}
         `}
         {...props}
       />
@@ -233,6 +248,7 @@ export const Textarea = forwardRef(({
       <AnimatePresence>
         {(error || hint) && (
           <motion.div
+            id={describedById}
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -5 }}

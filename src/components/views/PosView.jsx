@@ -263,6 +263,7 @@ export default function PosView() {
   const featuredItemsRef = useRef(featuredItems);
   featuredItemsRef.current = featuredItems;
   const handleCheckoutRef = useRef(null);
+  const handleClearCartRef = useRef(null);
 
   useEffect(() => {
     const handlePosShortcut = (event) => {
@@ -272,7 +273,7 @@ export default function PosView() {
           if (cartRef.current.length > 0) handleCheckoutRef.current();
           break;
         case 'clear':
-          setCart([]); setUsePoints(false); setBringOwnGlass(false);
+          handleClearCartRef.current();
           break;
         case 'remove_last':
           if (cartRef.current.length > 0) {
@@ -375,6 +376,22 @@ export default function PosView() {
     setIsRefreshingMembers(true);
     setTimeout(() => setIsRefreshingMembers(false), 1000);
   };
+
+  // Clear the whole in-progress sale — including edit mode. Leaving editingOrderId
+  // set after "ล้าง" made the next customer's checkout OVERWRITE the previously
+  // edited order (data corruption). Also drop member/redeem/review state tied to
+  // the abandoned sale so it can't leak onto the next bill.
+  const handleClearCart = () => {
+    setCart([]);
+    setUsePoints(false);
+    setBringOwnGlass(false);
+    setReviewDiscount(false);
+    setMemberPhone('');
+    setMemberNickname('');
+    setCurrentMember(null);
+    setEditingOrderId(null);
+  };
+  handleClearCartRef.current = handleClearCart;
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
@@ -480,7 +497,9 @@ export default function PosView() {
           orderData.pointsRedeemAmount = redeemAmount;
         }
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), orderData);
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue'), { current: Number(queueCounter) + 1 });
+        // Atomic increment — prevents duplicate queue numbers when POS and QR checkout race.
+        const queueRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue');
+        await updateDoc(queueRef, { current: increment(1) });
         // Best-selling counter (best-effort; never blocks the sale)
         bumpMenuSoldCount(cart);
       }
@@ -521,6 +540,7 @@ export default function PosView() {
       }
     } catch (error) {
       console.error('Smart Upsell Error:', error);
+      toast.error('แนะนำเมนูไม่สำเร็จ กรุณาลองใหม่');
     } finally {
       setIsRecommending(false);
     }
@@ -936,9 +956,15 @@ export default function PosView() {
                       </div>
                     )}
                     <div className="aspect-[4/3] md:aspect-[4/3] bg-[var(--bg-tertiary)] overflow-hidden shrink-0">
-                      <img src={item.image || 'https://via.placeholder.com/300x300?text=No+Image'}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                        alt={item.name} loading="lazy" />
+                      {item.image ? (
+                        <img src={item.image}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                          alt={item.name} loading="lazy" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
+                          <Coffee size={32} />
+                        </div>
+                      )}
                     </div>
                     <div className="p-3.5 space-y-1">
                       <div className="text-[13px] leading-tight font-bold line-clamp-2 min-h-[2.4em] text-[var(--text-primary)]">{String(item.name)}</div>
@@ -1006,7 +1032,7 @@ export default function PosView() {
                   <div className="text-[11px] text-[var(--text-muted)] truncate">{cartCount} รายการ · คิว #{currentQueue}</div>
                 </div>
               </div>
-              <button onClick={() => { setCart([]); setUsePoints(false); setBringOwnGlass(false); }}
+              <button onClick={handleClearCart}
                 className="text-xs font-bold flex items-center gap-1 text-[var(--text-muted)] hover:text-red-500 transition-colors px-2 py-1.5 rounded-lg">
                 <Trash2 size={13} strokeWidth={2.5} /> ล้าง
               </button>
@@ -1076,7 +1102,7 @@ export default function PosView() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button onClick={() => { setCart([]); setUsePoints(false); setBringOwnGlass(false); }}
+                    <button onClick={handleClearCart}
                       className="text-xs font-bold text-[var(--text-muted)] hover:text-red-500 px-2 py-1.5 rounded-lg">
                       <Trash2 size={14} strokeWidth={2.5} />
                     </button>

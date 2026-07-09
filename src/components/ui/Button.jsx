@@ -44,6 +44,7 @@ const Button = forwardRef(({
       whileTap={{ scale: isDisabled ? 1 : 0.97 }}
       onClick={onClick}
       disabled={isDisabled}
+      aria-busy={loading}
       className={`
         inline-flex items-center justify-center gap-2
         font-bold tracking-wider

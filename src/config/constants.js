@@ -102,7 +102,10 @@ export const SHOP_NAME = 'ร้านของคุณ';               // ช�
  * Helper function to format currency
  */
 export const formatCurrency = (amount) => {
-  return `${CURRENCY_SYMBOL}${Number(amount || 0).toLocaleString(CURRENCY_LOCALE)}`;
+  return `${CURRENCY_SYMBOL}${Number(amount || 0).toLocaleString(CURRENCY_LOCALE, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2, // cap fraction digits to avoid float residue like 123.45000000000002
+  })}`;
 };
 
 /**

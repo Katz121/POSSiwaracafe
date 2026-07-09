@@ -115,7 +115,8 @@ export default function CategorySummaryView() {
       Number(cat.revenue) || 0,
     ].join(',')));
     const rangeInfo = `# range: ${getCategoryRangeLabel()}`;
-    const csv = [rangeInfo, headers.join(','), ...rows].join('\n');
+    // UTF-8 BOM so Excel opens Thai text correctly
+    const csv = '﻿' + [rangeInfo, headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

@@ -168,9 +168,11 @@ export default function App() {
     try {
       await action();
       setErrorMessage('');
+      return true;
     } catch (err) {
       console.error(err);
       setErrorMessage(errorMsg);
+      return false;
     }
   }, []);
 
@@ -240,13 +242,13 @@ export default function App() {
 
   const handleViewChange = useCallback((newView) => {
     // If the whole app is already unlocked for this session, skip the per-view PIN prompt
-    if (pinEnabled && ADMIN_PIN && !appUnlocked && !deviceRemembered && protectedViews.includes(newView)) {
+    if (needsLock && protectedViews.includes(newView)) {
       setTargetView(newView);
       setShowPinModal(true);
     } else {
       setView(newView);
     }
-  }, [pinEnabled, ADMIN_PIN, appUnlocked, deviceRemembered, protectedViews]);
+  }, [needsLock, protectedViews]);
 
   // Keyboard Shortcuts (include handleViewChange in deps to avoid stale closure)
   const keyboardHandlers = useMemo(() => ({
@@ -307,8 +309,11 @@ export default function App() {
 
     // Show rate limit message to user
     if (result.rateLimited) {
-      setErrorMessage(`กรุณารอ ${Math.ceil(result.waitTime / 1000)} วินาที`);
-      setTimeout(() => setErrorMessage(''), 2000);
+      const rateLimitMsg = `กรุณารอ ${Math.ceil(result.waitTime / 1000)} วินาที`;
+      setErrorMessage(rateLimitMsg);
+      // Only auto-clear if the message is still this rate-limit message —
+      // don't wipe a newer, unrelated error that appeared in the meantime.
+      setTimeout(() => setErrorMessage(prev => (prev === rateLimitMsg ? '' : prev)), 2000);
     }
 
     return result;

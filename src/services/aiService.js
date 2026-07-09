@@ -31,10 +31,19 @@ const responseCache = new Map();
 const chatHistory = [];
 
 // --- Cache Management ---
+// djb2 string hash — hashes the FULL prompt so two prompts that share the same
+// length + first 50 chars can no longer collide into one cache entry.
+const hashString = (str) => {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0; // hash * 33 + c
+  }
+  return (hash >>> 0).toString(36);
+};
+
 const getCacheKey = (prompt, parseAsJson) => {
-  // Create a hash-like key from the prompt
-  const normalized = prompt.trim().toLowerCase().substring(0, 500);
-  return `${normalized.length}_${parseAsJson}_${normalized.substring(0, 50)}`;
+  const normalized = prompt.trim().toLowerCase();
+  return `${normalized.length}_${parseAsJson}_${hashString(normalized)}`;
 };
 
 const getFromCache = (key) => {
@@ -211,7 +220,11 @@ export const buildHistoricalContext = (orders, expenses, selectedMonth) => {
   // Day of week analysis
   const dayStats = {};
   currentMonthOrders.forEach(o => {
-    const day = new Date(o.date || o.createdAt?.seconds * 1000).getDay();
+    const ts = o.date || (o.createdAt?.seconds ? o.createdAt.seconds * 1000 : null);
+    if (!ts) return; // no resolvable date → skip instead of polluting a NaN bucket
+    const parsed = new Date(ts);
+    if (isNaN(parsed.getTime())) return;
+    const day = parsed.getDay();
     dayStats[day] = (dayStats[day] || 0) + (Number(o.total) || 0);
   });
 
@@ -303,6 +316,11 @@ export const callGeminiAPISecure = async (apiKey, prompt, options = {}) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: enhancedPrompt, parseAsJson })
         });
+        if (!response.ok) {
+          // A 5xx from the proxy returns an HTML error page — response.json()
+          // would throw an unhelpful parse error. Fail with the status instead.
+          throw new Error(`Proxy error: HTTP ${response.status} ${response.statusText}`);
+        }
         const data = await response.json();
         if (data.error) throw new Error(data.error);
         text = data.text;

@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components -- exports useToast hook + ToastProvider together by design */
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
@@ -32,7 +32,7 @@ const toastConfig = {
 
 // Single Toast Component
 const ToastItem = ({ id, type, message, onDismiss }) => {
-  const config = toastConfig[type];
+  const config = toastConfig[type] || toastConfig.info;
   const Icon = config.icon;
 
   return (
@@ -62,10 +62,16 @@ const ToastItem = ({ id, type, message, onDismiss }) => {
   );
 };
 
+ToastItem.displayName = 'ToastItem';
+
 // Toast Container
 const ToastContainer = ({ toasts, removeToast }) => {
   return (
-    <div className="fixed top-4 right-4 z-[400] flex flex-col gap-2">
+    <div
+      className="fixed top-4 right-4 z-[400] flex flex-col gap-2"
+      role="status"
+      aria-live="polite"
+    >
       <AnimatePresence mode="popLayout">
         {toasts.map((toast) => (
           <ToastItem
@@ -79,9 +85,12 @@ const ToastContainer = ({ toasts, removeToast }) => {
   );
 };
 
+ToastContainer.displayName = 'ToastContainer';
+
 // Toast Provider
 export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
+  const timersRef = useRef(new Set());
 
   const addToast = useCallback((type, message, duration = 4000) => {
     const id = Date.now() + Math.random();
@@ -89,9 +98,11 @@ export const ToastProvider = ({ children }) => {
     setToasts((prev) => [...prev, { id, type, message }]);
 
     if (duration > 0) {
-      setTimeout(() => {
+      const timerId = setTimeout(() => {
+        timersRef.current.delete(timerId);
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, duration);
+      timersRef.current.add(timerId);
     }
 
     return id;
@@ -101,14 +112,23 @@ export const ToastProvider = ({ children }) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const toast = {
+  // Clear pending timers on unmount
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      timers.forEach((timerId) => clearTimeout(timerId));
+      timers.clear();
+    };
+  }, []);
+
+  const toast = useMemo(() => ({
     success: (message, duration) => addToast('success', message, duration),
     error: (message, duration) => addToast('error', message, duration),
     warning: (message, duration) => addToast('warning', message, duration),
     info: (message, duration) => addToast('info', message, duration),
     dismiss: removeToast,
     dismissAll: () => setToasts([]),
-  };
+  }), [addToast, removeToast]);
 
   return (
     <ToastContext.Provider value={toast}>
@@ -117,6 +137,8 @@ export const ToastProvider = ({ children }) => {
     </ToastContext.Provider>
   );
 };
+
+ToastProvider.displayName = 'ToastProvider';
 
 // Hook to use toast
 export const useToast = () => {

@@ -59,13 +59,17 @@ export async function publishPublicMenu(db, appId, input, prevSerialized) {
   const serialized = JSON.stringify(bundle);
   if (serialized === prevSerialized) return null; // unchanged → no write
 
-  if (serialized.length > PUBLIC_MENU_SAFE_BYTES) {
+  // Measure real UTF-8 bytes: serialized.length counts UTF-16 code units, but
+  // Thai text is 3 bytes/char in UTF-8, so a length check can pass while the
+  // actual document exceeds Firestore's 1 MiB limit.
+  const byteSize = new TextEncoder().encode(serialized).length;
+  if (byteSize > PUBLIC_MENU_SAFE_BYTES) {
     // Almost certainly base64 menu images pushing the doc over 1 MiB. Writing
     // would throw, so skip and make the cause obvious. Customers keep working
     // via the per-collection fallback. Fix: shrink menu images or move them to
     // Firebase Storage / a CDN and store URLs instead of base64.
     console.warn(
-      `[publicMenu] bundle is ${(serialized.length / 1024).toFixed(0)} KB — exceeds the ` +
+      `[publicMenu] bundle is ${(byteSize / 1024).toFixed(0)} KB — exceeds the ` +
       `single-document budget; skipping publish (customers fall back to per-collection reads).`,
     );
     // Remove any previously-published (now-stale) bundle, otherwise customers

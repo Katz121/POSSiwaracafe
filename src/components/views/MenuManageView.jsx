@@ -40,6 +40,7 @@ export default function MenuManageView() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSuggestingStock, setIsSuggestingStock] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isMagicWriting, setIsMagicWriting] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
 
   // Local states - Collapsed categories
@@ -219,7 +220,19 @@ export default function MenuManageView() {
     const groups = (Array.isArray(newItem.modifierGroups) && newItem.modifierGroups.length)
       ? newItem.modifierGroups
       : [newItem.modifierGroup || 'เมล็ดกาแฟ'];
-    const data = { ...newItem, price: Number(newItem.price), beanExtra: Number(newItem.beanExtra) || 0, baseBeanIds: Array.isArray(newItem.baseBeanIds) ? newItem.baseBeanIds : [], modifierGroups: groups, modifierGroup: groups[0] };
+    // Strip the doc's own `id` (must not be written back as a field) and coerce
+    // numeric inputs — text inputs yield strings, which would corrupt calculations.
+    const { id: _id, ...rest } = newItem;
+    const data = {
+      ...rest,
+      price: Number(newItem.price),
+      additionalCost: Number(newItem.additionalCost) || 0,
+      beanExtra: Number(newItem.beanExtra) || 0,
+      baseBeanIds: Array.isArray(newItem.baseBeanIds) ? newItem.baseBeanIds : [],
+      stockLinks: (newItem.stockLinks || []).map(l => ({ ...l, usage: Number(l.usage) || 0 })),
+      modifierGroups: groups,
+      modifierGroup: groups[0]
+    };
     if (!data.category && dynamicCategories.length > 0) data.category = dynamicCategories[0].name;
     await runDbAction(async () => {
       if (editingItem) await updateDoc(doc(col, editingItem.id), data); else await addDoc(col, data);
@@ -826,7 +839,7 @@ ${withDescription
                 </button>
                 {!collapsedCategories[group.name] && group.items.map(i => (
                   <div key={i.id} className={`p-6 flex items-center gap-8 group rounded-[2.5rem] transition-all my-2 ${i.available === false ? 'opacity-50 grayscale' : 'hover:bg-gray-50'}`}>
-                    <div className="relative shadow-xl rounded-3xl overflow-hidden border-2 border-white"><img src={i.image || 'https://via.placeholder.com/100'} className="w-24 h-24 object-cover" />{i.available === false && <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white font-black text-xs uppercase tracking-widest text-center">เมนูหมด</div>}</div>
+                    <div className="relative shadow-xl rounded-3xl overflow-hidden border-2 border-white">{i.image ? <img src={i.image} className="w-24 h-24 object-cover" /> : <div className="w-24 h-24 flex items-center justify-center bg-gray-100 text-gray-300"><Coffee size={32} /></div>}{i.available === false && <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white font-black text-xs uppercase tracking-widest text-center">เมนูหมด</div>}</div>
                     <div className="flex-1 font-black text-gray-800 text-xl leading-tight">
                       <div className="flex items-center gap-2 mb-2">
                         <p className="leading-none">{String(i.name)}</p>
@@ -881,6 +894,7 @@ ${withDescription
                 <span>คำบรรยาย (Description)</span>
                 <button
                   type="button"
+                  disabled={isMagicWriting}
                   onClick={async () => {
                     if (!newItem.name || !newItem.category) {
                       toast.warning('กรุณาระบุชื่อและหมวดหมู่ก่อนใช้ Magic Write');
@@ -891,9 +905,7 @@ ${withDescription
                       return;
                     }
 
-                    const btn = document.getElementById('magic-write-btn');
-                    if (btn) btn.innerText = '✨ กำลังเสก...';
-
+                    setIsMagicWriting(true);
                     try {
                       const prompt = `Write a short, appetizing, and premium description for a menu item named '${newItem.name}' in the category '${newItem.category}' for a modern cafe. Keep it under 150 characters. Thai language.`;
 
@@ -907,13 +919,12 @@ ${withDescription
                     } catch (error) {
                       toast.error('เกิดข้อผิดพลาด: ' + error.message);
                     } finally {
-                      if (btn) btn.innerText = '✨ Magic Write';
+                      setIsMagicWriting(false);
                     }
                   }}
-                  id="magic-write-btn"
-                  className="text-xs bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white px-3 py-1 rounded-xl shadow-lg shadow-violet-500/30 hover:scale-105 transition-transform flex items-center gap-1"
+                  className="text-xs bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white px-3 py-1 rounded-xl shadow-lg shadow-violet-500/30 hover:scale-105 transition-transform flex items-center gap-1 disabled:opacity-60"
                 >
-                  <Zap size={12} fill="currentColor" /> Magic Write
+                  <Zap size={12} fill="currentColor" /> {isMagicWriting ? 'กำลังเสก...' : 'Magic Write'}
                 </button>
               </label>
               <textarea

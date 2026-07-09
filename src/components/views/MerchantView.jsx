@@ -40,7 +40,7 @@ export default function MerchantView() {
           </div>
           <div className="text-right">
             <p className="text-xs md:text-xs text-gray-500 uppercase tracking-widest font-black mb-1 md:mb-2">ออเดอร์ล่าสุด</p>
-            <p className="text-xl md:text-2xl lg:text-3xl font-black text-orange-400 drop-shadow-md">#{queueCounter - 1}</p>
+            <p className="text-xl md:text-2xl lg:text-3xl font-black text-orange-400 drop-shadow-md">#{Math.max(queueCounter - 1, 0)}</p>
           </div>
         </div>
       </header>

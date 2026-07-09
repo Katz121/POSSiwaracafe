@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, forwardRef } from 'react';
+import { useState, useEffect, useCallback, useId, forwardRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, AlertTriangle, Trash2, CheckCircle2, Info, Edit as EditIcon } from 'lucide-react';
 import IconButton from './IconButton';
@@ -29,6 +29,8 @@ const Modal = forwardRef(({
   bodyClassName = '',
   footer,
 }, ref) => {
+  const titleId = useId();
+
   // Handle escape key
   const handleEscape = useCallback((e) => {
     if (e.key === 'Escape' && closeOnEscape) {
@@ -37,13 +39,15 @@ const Modal = forwardRef(({
   }, [onClose, closeOnEscape]);
 
   useEffect(() => {
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'hidden';
-    }
+    if (!isOpen) return;
+
+    const prevOverflow = document.body.style.overflow;
+    document.addEventListener('keydown', handleEscape);
+    document.body.style.overflow = 'hidden';
+
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = prevOverflow;
     };
   }, [isOpen, handleEscape]);
 
@@ -66,7 +70,7 @@ const Modal = forwardRef(({
           onClick={handleBackdropClick}
           role="dialog"
           aria-modal="true"
-          aria-labelledby={title ? 'modal-title' : undefined}
+          aria-labelledby={title ? titleId : undefined}
         >
           {/* Backdrop */}
           <motion.div
@@ -96,7 +100,7 @@ const Modal = forwardRef(({
               <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-gray-200 dark:border-gray-700">
                 {title && (
                   <h2
-                    id="modal-title"
+                    id={titleId}
                     className="text-xl font-bold text-gray-900 dark:text-white"
                   >
                     {title}
@@ -147,6 +151,7 @@ export const ConfirmModal = ({
   variant = 'danger',
   icon: Icon,
   loading = false,
+  className = '',
 }) => {
   // Auto-select icon based on variant
   const iconMap = {
@@ -156,6 +161,9 @@ export const ConfirmModal = ({
     info: Info,
   };
   const IconComponent = Icon || iconMap[variant] || AlertTriangle;
+
+  // Button ไม่มี variant 'info' — map ไปใช้ 'primary' (icon ยังคงเป็น info)
+  const buttonVariant = variant === 'info' ? 'primary' : variant;
 
   const iconBgColors = {
     danger: 'bg-red-50 dark:bg-red-900/30 text-red-500',
@@ -171,6 +179,7 @@ export const ConfirmModal = ({
       size="sm"
       showClose={false}
       closeOnBackdrop={false}
+      className={className}
     >
       <div className="text-center py-4">
         <div className={`w-20 h-20 rounded-full mx-auto flex items-center justify-center mb-6 shadow-inner ${iconBgColors[variant]}`}>
@@ -184,7 +193,7 @@ export const ConfirmModal = ({
           <Button variant="secondary" size="lg" onClick={onClose} disabled={loading}>
             {cancelText}
           </Button>
-          <Button variant={variant} size="lg" onClick={onConfirm} loading={loading}>
+          <Button variant={buttonVariant} size="lg" onClick={onConfirm} loading={loading}>
             {confirmText}
           </Button>
         </div>
@@ -192,6 +201,8 @@ export const ConfirmModal = ({
     </Modal>
   );
 };
+
+ConfirmModal.displayName = 'ConfirmModal';
 
 // Input Modal Variant - สวยกว่า window.prompt()
 export const InputModal = ({
@@ -206,6 +217,7 @@ export const InputModal = ({
   variant = 'primary',
   icon: Icon,
   loading = false,
+  className = '',
 }) => {
   const IconComponent = Icon || EditIcon;
 
@@ -248,6 +260,7 @@ export const InputModal = ({
       size="sm"
       showClose={false}
       closeOnBackdrop={false}
+      className={className}
     >
       <form onSubmit={handleSubmit} className="py-2">
         <div className="text-center mb-6">
@@ -287,5 +300,7 @@ export const InputModal = ({
     </Modal>
   );
 };
+
+InputModal.displayName = 'InputModal';
 
 export default Modal;

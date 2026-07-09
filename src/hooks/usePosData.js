@@ -92,11 +92,11 @@ export default function usePosData(user, appId) {
         setSettingsRaw(data);
         setPinEnabled(data.pinEnabled !== false);
         setVatEnabled(data.vatEnabled !== false);
-        if (data.adminPin) setAdminPin(String(data.adminPin));
+        if (data.adminPin != null) setAdminPin(String(data.adminPin));
         if (data.redeemPointsThreshold != null) setRedeemPointsThreshold(Number(data.redeemPointsThreshold));
         if (data.redeemDiscountValue != null) setRedeemDiscountValue(Number(data.redeemDiscountValue));
         if (data.ownGlassDiscount != null) setOwnGlassDiscount(Number(data.ownGlassDiscount));
-        if (data.geminiApiKey) setGeminiApiKey(String(data.geminiApiKey));
+        if (data.geminiApiKey != null) setGeminiApiKey(String(data.geminiApiKey));
         if (data.startingCash != null) setStartingCash(Number(data.startingCash));
         if (data.reviewUrl != null) setReviewUrl(String(data.reviewUrl));
         setCakeSaleEnabled(data.cakeSaleEnabled === true);

@@ -1,5 +1,17 @@
 import { motion } from 'framer-motion';
 
+// Static lookup — ต้องเป็น full class string เพื่อให้ Tailwind JIT scan ได้
+const roundedClasses = {
+  none: 'rounded-none',
+  sm: 'rounded-sm',
+  md: 'rounded-md',
+  lg: 'rounded-lg',
+  xl: 'rounded-xl',
+  '2xl': 'rounded-2xl',
+  '3xl': 'rounded-3xl',
+  full: 'rounded-full',
+};
+
 const shimmer = {
   initial: { x: '-100%' },
   animate: { x: '100%' },
@@ -23,7 +35,7 @@ const Skeleton = ({
       className={`
         relative overflow-hidden
         bg-gray-200 dark:bg-gray-700
-        rounded-${rounded}
+        ${roundedClasses[rounded] ?? 'rounded-lg'}
         ${className}
       `}
       style={{ width, height }}
@@ -37,6 +49,8 @@ const Skeleton = ({
     </div>
   );
 };
+
+Skeleton.displayName = 'Skeleton';
 
 // Text Skeleton
 Skeleton.Text = ({ lines = 1, className = '' }) => {
@@ -54,6 +68,8 @@ Skeleton.Text = ({ lines = 1, className = '' }) => {
   );
 };
 
+Skeleton.Text.displayName = 'Skeleton.Text';
+
 // Avatar Skeleton
 Skeleton.Avatar = ({ size = 'md' }) => {
   const sizes = {
@@ -65,6 +81,8 @@ Skeleton.Avatar = ({ size = 'md' }) => {
 
   return <Skeleton rounded="full" className={sizes[size]} />;
 };
+
+Skeleton.Avatar.displayName = 'Skeleton.Avatar';
 
 // Card Skeleton
 Skeleton.Card = ({ className = '' }) => {
@@ -85,6 +103,8 @@ Skeleton.Card = ({ className = '' }) => {
     </div>
   );
 };
+
+Skeleton.Card.displayName = 'Skeleton.Card';
 
 // Table Skeleton
 Skeleton.Table = ({ rows = 5, cols = 4, className = '' }) => {
@@ -113,6 +133,8 @@ Skeleton.Table = ({ rows = 5, cols = 4, className = '' }) => {
   );
 };
 
+Skeleton.Table.displayName = 'Skeleton.Table';
+
 // Menu Item Skeleton (for POS)
 Skeleton.MenuItem = ({ className = '' }) => {
   return (
@@ -123,6 +145,8 @@ Skeleton.MenuItem = ({ className = '' }) => {
     </div>
   );
 };
+
+Skeleton.MenuItem.displayName = 'Skeleton.MenuItem';
 
 // Menu Grid Skeleton
 Skeleton.MenuGrid = ({ items = 6, className = '' }) => {
@@ -135,6 +159,8 @@ Skeleton.MenuGrid = ({ items = 6, className = '' }) => {
   );
 };
 
+Skeleton.MenuGrid.displayName = 'Skeleton.MenuGrid';
+
 // Stats Card Skeleton
 Skeleton.Stats = ({ className = '' }) => {
   return (
@@ -145,6 +171,8 @@ Skeleton.Stats = ({ className = '' }) => {
     </div>
   );
 };
+
+Skeleton.Stats.displayName = 'Skeleton.Stats';
 
 // Order Card Skeleton
 Skeleton.OrderCard = ({ className = '' }) => {
@@ -165,5 +193,7 @@ Skeleton.OrderCard = ({ className = '' }) => {
     </div>
   );
 };
+
+Skeleton.OrderCard.displayName = 'Skeleton.OrderCard';
 
 export default Skeleton;

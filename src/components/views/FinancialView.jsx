@@ -6,6 +6,7 @@ import {
 import { useAppContext } from '../../context/AppContext';
 import { collection, addDoc, getDocs, query, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
+import { getOrderDate, getISODate } from '../../utils/calculations';
 import { ConfirmModal, useToast } from '../ui';
 
 const FinancialView = () => {
@@ -13,7 +14,7 @@ const FinancialView = () => {
     const toast = useToast();
 
     // States
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
+    const [selectedMonth, setSelectedMonth] = useState(getISODate().substring(0, 7));
     const [fixedCosts, setFixedCosts] = useState({
         rent: 0,
         untrackedSalaries: 0,
@@ -29,7 +30,7 @@ const FinancialView = () => {
     const currentFinancials = useMemo(() => {
         const currentMonth = selectedMonth;
 
-        const monthOrders = orders.filter(o => o.status === 'completed' && String(o.date || o.createdAt?.seconds).substring(0, 7) === currentMonth);
+        const monthOrders = orders.filter(o => o.status === 'completed' && getOrderDate(o).substring(0, 7) === currentMonth);
         const monthExpenses = expenses.filter(e => String(e.date).substring(0, 7) === currentMonth);
 
         const revenue = monthOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
@@ -337,7 +338,7 @@ const FinancialView = () => {
 
                             {/* Allocation Cards */}
                             <div className="grid grid-cols-2 gap-4">
-                                {Object.entries(aiPlan.allocations).map(([key, data]) => {
+                                {Object.entries(aiPlan.allocations || {}).map(([key, data]) => {
                                     const labels = {
                                         emergency_reserve: '💰 เงินสำรองฉุกเฉิน (Cash Reserve)',
                                         marketing: '📣 งบการตลาด (Marketing)',
@@ -349,10 +350,10 @@ const FinancialView = () => {
                                         <div key={key} className="p-5 rounded-2xl bg-gray-50 border border-gray-100">
                                             <div className="flex justify-between items-start mb-2">
                                                 <span className="text-xs font-black text-gray-400 uppercase tracking-widest">{labels[key] || key}</span>
-                                                <span className="bg-white px-2 py-1 rounded-lg text-xs font-black shadow-sm">{data.percentage}%</span>
+                                                <span className="bg-white px-2 py-1 rounded-lg text-xs font-black shadow-sm">{data?.percentage ?? 0}%</span>
                                             </div>
-                                            <p className="text-2xl font-black text-gray-800 mb-2">฿{data.amount.toLocaleString()}</p>
-                                            <p className="text-xs text-gray-500 leading-relaxed">{data.reason}</p>
+                                            <p className="text-2xl font-black text-gray-800 mb-2">฿{Number(data?.amount || 0).toLocaleString()}</p>
+                                            <p className="text-xs text-gray-500 leading-relaxed">{data?.reason}</p>
                                         </div>
                                     );
                                 })}
@@ -364,7 +365,7 @@ const FinancialView = () => {
                                     <TrendingUp size={20} /> แผนปฏิบัติการเชิงกลยุทธ์ (Action Plan)
                                 </h3>
                                 <div className="space-y-3">
-                                    {aiPlan.action_plan.map((step, idx) => (
+                                    {(aiPlan.action_plan || []).map((step, idx) => (
                                         <div key={idx} className="flex gap-3 items-start">
                                             <div className="w-6 h-6 rounded-full bg-violet-200 text-violet-700 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
                                                 {idx + 1}

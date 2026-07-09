@@ -23,7 +23,10 @@ import { db, appId } from '../services/firebase';
  */
 export async function recomputeAllSoldCounts(menu = [], orders = []) {
   const totals = {};
-  for (const o of orders) {
+  // Only completed orders count — the incremental bump (bumpMenuSoldCount) runs
+  // on order completion, so the backfill must match or counts drift.
+  const completedOrders = orders.filter((o) => o && o.status === 'completed');
+  for (const o of completedOrders) {
     for (const it of (o && o.items) || []) {
       const id = it && it.id;
       const qty = Number(it && it.quantity) || 0;

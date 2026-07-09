@@ -1,4 +1,4 @@
-import { isValidElement } from 'react';
+import { forwardRef, isValidElement } from 'react';
 import { motion } from 'framer-motion';
 import { Package, Search, FileX, AlertCircle, ShoppingCart, Users, Receipt } from 'lucide-react';
 import Button from './Button';
@@ -13,7 +13,7 @@ const icons = {
   receipt: Receipt,
 };
 
-const EmptyState = ({
+const EmptyState = forwardRef(({
   icon = 'default',
   title = 'ไม่พบข้อมูล',
   description,
@@ -22,7 +22,8 @@ const EmptyState = ({
   onAction,
   size = 'md',
   className = '',
-}) => {
+  ...props
+}, ref) => {
   const Icon = typeof icon === 'string' ? icons[icon] || icons.default : icon;
 
   const sizes = {
@@ -50,6 +51,7 @@ const EmptyState = ({
 
   return (
     <motion.div
+      ref={ref}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className={`
@@ -57,6 +59,7 @@ const EmptyState = ({
         ${s.padding}
         ${className}
       `}
+      {...props}
     >
       <div className="mb-4 p-4 rounded-full bg-gray-100 dark:bg-gray-800">
         <Icon
@@ -95,6 +98,8 @@ const EmptyState = ({
       )}
     </motion.div>
   );
-};
+});
+
+EmptyState.displayName = 'EmptyState';
 
 export default EmptyState;

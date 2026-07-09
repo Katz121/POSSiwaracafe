@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { DollarSign, Calendar, Trash2, BarChart3, RefreshCcw, Zap, X } from 'lucide-react';
 import { collection, doc, addDoc, deleteDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate } from '../../utils/calculations';
-import { Button, Modal, Input, Select, Card, Spinner, EmptyState, useToast } from '../ui';
+import { Button, EmptyState, useToast } from '../ui';
 import { EXPENSE_CATEGORIES } from '../../config/constants';
 
 export default function ExpensesView() {
@@ -22,6 +22,10 @@ export default function ExpensesView() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const [validationErrors, setValidationErrors] = useState({});
+  const syncMessageTimerRef = useRef(null);
+
+  // Clear the auto-hide timer on unmount so it never fires on an unmounted view
+  useEffect(() => () => clearTimeout(syncMessageTimerRef.current), []);
 
   // Validation helper
   const validateExpense = useCallback((expense) => {
@@ -66,7 +70,6 @@ export default function ExpensesView() {
 
     // Edge case: ถ้าสต็อกเดิมเป็น 0 ให้ใช้ราคาใหม่
     if (oldQty === 0) return newPrice;
-    if (oldQty === 0 && newQty === 0) return newPrice;
 
     // สูตร: ((oldQty * oldCost) + (newQty * newPrice)) / (oldQty + newQty)
     const totalCost = (oldQty * oldCost) + (newQty * newPrice);
@@ -99,7 +102,7 @@ export default function ExpensesView() {
           expense.pricePerUnit
         );
 
-        await runDbAction(async () => {
+        const ok = await runDbAction(async () => {
           await updateDoc(
             doc(db, 'artifacts', appId, 'public', 'data', 'stock', existingStock.id),
             {
@@ -109,6 +112,7 @@ export default function ExpensesView() {
             }
           );
         }, 'อัพเดตสต็อกจากรายจ่ายไม่สำเร็จ');
+        if (!ok) return { success: false, action: 'error', error: 'db-write-failed' };
 
         return {
           success: true,
@@ -119,7 +123,7 @@ export default function ExpensesView() {
         };
       } else {
         // สร้างสต็อกใหม่
-        await runDbAction(async () => {
+        const ok = await runDbAction(async () => {
           await addDoc(
             collection(db, 'artifacts', appId, 'public', 'data', 'stock'),
             {
@@ -131,6 +135,7 @@ export default function ExpensesView() {
             }
           );
         }, 'สร้างสต็อกใหม่จากรายจ่ายไม่สำเร็จ');
+        if (!ok) return { success: false, action: 'error', error: 'db-write-failed' };
 
         return {
           success: true,
@@ -314,8 +319,9 @@ export default function ExpensesView() {
             setSyncMessage(`✓ อัพเดตสต็อก "${syncResult.stockName}" เป็น ${syncResult.quantity} ${syncResult.unit} สำเร็จ`);
           }
 
-          // Auto-hide message after 5 seconds
-          setTimeout(() => setSyncMessage(''), 5000);
+          // Auto-hide message after 5 seconds (reset any previous timer)
+          clearTimeout(syncMessageTimerRef.current);
+          syncMessageTimerRef.current = setTimeout(() => setSyncMessage(''), 5000);
         }
       }
 

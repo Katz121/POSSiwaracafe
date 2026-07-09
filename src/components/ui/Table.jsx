@@ -92,6 +92,11 @@ const Table = ({
     setCurrentPage(1);
   }
 
+  // Clamp page when data shrinks so we never render an out-of-range (empty) page
+  if (pagination && currentPage > 1 && currentPage > totalPages) {
+    setCurrentPage(Math.max(1, totalPages));
+  }
+
   const cellPadding = compact ? 'px-3 py-2' : 'px-4 py-3';
 
   return (
@@ -120,6 +125,7 @@ const Table = ({
               {columns.map((column) => (
                 <th
                   key={column.key}
+                  scope="col"
                   onClick={() => column.sortable !== false && handleSort(column.key)}
                   className={`
                     ${cellPadding}
@@ -128,7 +134,6 @@ const Table = ({
                     ${column.sortable !== false && sortable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700' : ''}
                     ${column.align === 'right' ? 'text-right' : ''}
                     ${column.align === 'center' ? 'text-center' : ''}
-                    ${column.width ? `w-[${column.width}]` : ''}
                   `}
                   style={column.width ? { width: column.width } : undefined}
                 >
@@ -276,5 +281,7 @@ const Table = ({
     </div>
   );
 };
+
+Table.displayName = 'Table';
 
 export default Table;

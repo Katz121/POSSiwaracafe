@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
 
 const variants = {
@@ -16,7 +17,19 @@ const sizes = {
   lg: 'px-3 py-1.5 text-base',
 };
 
-const Badge = ({
+// Static lookup — ต้องเป็น full class string เพื่อให้ Tailwind JIT scan ได้
+const roundedClasses = {
+  none: 'rounded-none',
+  sm: 'rounded-sm',
+  md: 'rounded-md',
+  lg: 'rounded-lg',
+  xl: 'rounded-xl',
+  '2xl': 'rounded-2xl',
+  '3xl': 'rounded-3xl',
+  full: 'rounded-full',
+};
+
+const Badge = forwardRef(({
   children,
   variant = 'neutral',
   size = 'sm',
@@ -28,7 +41,8 @@ const Badge = ({
   animate = false,
   pulse = false,
   className = '',
-}) => {
+  ...props
+}, ref) => {
   const Component = animate ? motion.span : 'span';
   const animationProps = animate ? {
     initial: { scale: 0.8, opacity: 0 },
@@ -38,14 +52,16 @@ const Badge = ({
 
   return (
     <Component
+      ref={ref}
       className={`
         inline-flex items-center gap-1.5 font-medium
-        rounded-${rounded}
+        ${roundedClasses[rounded] ?? 'rounded-full'}
         ${variants[variant]}
         ${sizes[size]}
         ${className}
       `}
       {...animationProps}
+      {...props}
     >
       {/* Dot indicator */}
       {dot && (
@@ -82,10 +98,12 @@ const Badge = ({
       )}
     </Component>
   );
-};
+});
+
+Badge.displayName = 'Badge';
 
 // Status Badge - predefined statuses
-export const StatusBadge = ({ status, ...props }) => {
+export const StatusBadge = forwardRef(({ status, ...props }, ref) => {
   const statusConfig = {
     pending: { variant: 'warning', label: 'รอดำเนินการ', dot: true },
     preparing: { variant: 'info', label: 'กำลังทำ', dot: true, pulse: true },
@@ -103,6 +121,7 @@ export const StatusBadge = ({ status, ...props }) => {
 
   return (
     <Badge
+      ref={ref}
       variant={config.variant}
       dot={config.dot}
       pulse={config.pulse}
@@ -111,26 +130,31 @@ export const StatusBadge = ({ status, ...props }) => {
       {config.label}
     </Badge>
   );
-};
+});
+
+StatusBadge.displayName = 'StatusBadge';
 
 // Count Badge - for notifications
-export const CountBadge = ({ count, max = 99, variant = 'danger', ...props }) => {
+export const CountBadge = forwardRef(({ count, max = 99, variant = 'danger', className = '', ...props }, ref) => {
   if (!count || count <= 0) return null;
 
   const displayCount = count > max ? `${max}+` : count;
 
   return (
     <Badge
+      ref={ref}
       variant={variant}
       size="xs"
       rounded="full"
       animate
-      className="min-w-[1.25rem] justify-center"
       {...props}
+      className={`min-w-[1.25rem] justify-center ${className}`}
     >
       {displayCount}
     </Badge>
   );
-};
+});
+
+CountBadge.displayName = 'CountBadge';
 
 export default Badge;

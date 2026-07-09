@@ -206,12 +206,16 @@ const DashboardView = () => {
     const menuPerformance = useMemo(() => {
         const monthOrders = orders.filter(o => o.status === 'completed' && String(getOrderDate(o)).startsWith(currentMonth));
 
+        // Index menu/stock once — avoids O(orders × items × links) nested .find() scans.
+        const menuByName = new Map(menu.map(m => [m.name, m]));
+        const stockById = new Map(stock.map(s => [s.id, s]));
+
         // Calculate performance per menu item
         const menuStats = {};
         monthOrders.forEach(order => {
             (order.items || []).forEach(item => {
                 const key = item.name;
-                const menuItem = menu.find(m => m.name === item.name);
+                const menuItem = menuByName.get(item.name);
 
                 // Cost from the ACTUAL order item's recipe so the chosen bean is
                 // reflected (its stockLinks were merged in at order time). Fall back
@@ -221,7 +225,7 @@ const DashboardView = () => {
                     : (menuItem?.stockLinks || []);
                 let itemCost = Number(menuItem?.additionalCost || 0);
                 links.forEach(link => {
-                    const stockItem = stock.find(s => s.id === link.stockId);
+                    const stockItem = stockById.get(link.stockId);
                     if (stockItem) {
                         itemCost += Number(stockItem.unitCost || 0) * Number(link.usage || 0);
                     }
@@ -830,11 +834,11 @@ const DashboardView = () => {
                             <h2 className="text-lg font-black text-gray-800 uppercase tracking-tight flex items-center gap-3"><Crown className="text-amber-500" /> สินค้าขายดีที่สุด (เดือนปัจจุบัน)</h2>
                         </div>
                         <div className="space-y-8 flex-1">
-                            {dashboardStats.topProducts.map((p, idx) => {
+                            {dashboardStats.topProducts.map((p) => {
                                 const max = Math.max(...dashboardStats.topProducts.map(x => x.count), 1);
                                 const percent = (p.count / max) * 100;
                                 return (
-                                    <div key={idx} className="space-y-3">
+                                    <div key={p.name} className="space-y-3">
                                         <div className="flex justify-between items-end">
                                             <span className="text-base font-black text-gray-700">{p.name}</span>
                                             <span className="text-sm font-black text-emerald-600">{p.count} ชิ้น</span>
@@ -934,7 +938,7 @@ const DashboardView = () => {
                             <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight mb-4">สินค้าทำกำไรสูงสุด 5 อันดับ</h3>
                             <div className="space-y-3">
                                 {dashboardStats.topProfitable.map((p, idx) => (
-                                    <div key={idx} className="flex justify-between items-center text-xs">
+                                    <div key={p.name} className="flex justify-between items-center text-xs">
                                         <span className="font-bold text-gray-600 truncate">{idx + 1}. {p.name}</span>
                                         <span className="font-black text-emerald-600 shrink-0 ml-4">฿{Math.round(p.totalProfit).toLocaleString()}</span>
                                     </div>

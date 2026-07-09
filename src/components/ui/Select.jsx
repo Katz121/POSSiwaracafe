@@ -37,8 +37,10 @@ const Select = forwardRef(({
       )
     : options;
 
-  // Close on outside click
+  // Close on outside click — attach listener only while open
   useEffect(() => {
+    if (!isOpen) return;
+
     const handleClickOutside = (e) => {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
         setIsOpen(false);
@@ -48,7 +50,7 @@ const Select = forwardRef(({
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isOpen]);
 
   // Focus input when opened
   useEffect(() => {
@@ -93,6 +95,8 @@ const Select = forwardRef(({
         onClick={() => !disabled && setIsOpen(!isOpen)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         className={`
           w-full flex items-center justify-between gap-2
           bg-gray-50 dark:bg-gray-900

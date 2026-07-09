@@ -18,6 +18,18 @@ const sizes = {
   xl: 'w-14 h-14 text-xl',
 };
 
+// Static lookup — ต้องเป็น full class string เพื่อให้ Tailwind JIT scan ได้
+const roundedClasses = {
+  none: 'rounded-none',
+  sm: 'rounded-sm',
+  md: 'rounded-md',
+  lg: 'rounded-lg',
+  xl: 'rounded-xl',
+  '2xl': 'rounded-2xl',
+  '3xl': 'rounded-3xl',
+  full: 'rounded-full',
+};
+
 const IconButton = forwardRef(({
   icon,
   variant = 'ghost',
@@ -39,7 +51,7 @@ const IconButton = forwardRef(({
       aria-label={ariaLabel}
       className={`
         inline-flex items-center justify-center
-        rounded-${rounded}
+        ${roundedClasses[rounded] ?? 'rounded-full'}
         transition-all duration-200
         focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2
         disabled:opacity-50 disabled:cursor-not-allowed

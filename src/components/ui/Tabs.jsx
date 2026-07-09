@@ -1,8 +1,17 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useId, useState } from 'react';
 import { motion } from 'framer-motion';
 
 // Tabs Context
 const TabsContext = createContext(null);
+
+// Null-guarded context access — throws a descriptive error like useToast
+const useTabsContext = (componentName) => {
+  const context = useContext(TabsContext);
+  if (!context) {
+    throw new Error(`${componentName} must be used within a <Tabs> component`);
+  }
+  return context;
+};
 
 // Main Tabs Container
 const Tabs = ({
@@ -16,6 +25,8 @@ const Tabs = ({
 }) => {
   const [internalValue, setInternalValue] = useState(defaultValue);
   const activeValue = value !== undefined ? value : internalValue;
+  // layoutId per-instance — สอง Tabs บนหน้าจอเดียวกันจะไม่ animate ข้ามกัน
+  const tabsId = useId();
 
   const handleChange = (newValue) => {
     if (value === undefined) {
@@ -25,7 +36,7 @@ const Tabs = ({
   };
 
   return (
-    <TabsContext.Provider value={{ value: activeValue, onChange: handleChange, variant, fullWidth }}>
+    <TabsContext.Provider value={{ value: activeValue, onChange: handleChange, variant, fullWidth, tabsId }}>
       <div className={className}>
         {children}
       </div>
@@ -35,7 +46,7 @@ const Tabs = ({
 
 // Tabs List
 const TabsList = ({ children, className = '' }) => {
-  const { variant, fullWidth } = useContext(TabsContext);
+  const { variant, fullWidth } = useTabsContext('Tabs.List');
 
   const variants = {
     default: 'bg-gray-100 dark:bg-gray-800 p-1 rounded-xl',
@@ -65,7 +76,7 @@ const Tab = ({
   icon,
   className = '',
 }) => {
-  const { value: activeValue, onChange, variant, fullWidth } = useContext(TabsContext);
+  const { value: activeValue, onChange, variant, fullWidth, tabsId } = useTabsContext('Tabs.Tab');
   const isActive = activeValue === value;
 
   const baseStyles = 'relative flex items-center justify-center gap-2 font-medium transition-all duration-200 focus:outline-none';
@@ -112,7 +123,7 @@ const Tab = ({
       {/* Active background for default variant */}
       {variant === 'default' && isActive && (
         <motion.div
-          layoutId="activeTabBg"
+          layoutId={`${tabsId}-activeTabBg`}
           className="absolute inset-0 bg-white dark:bg-gray-700 rounded-lg shadow-sm"
           transition={{ type: 'spring', stiffness: 400, damping: 30 }}
         />
@@ -133,7 +144,7 @@ const TabPanel = ({
   className = '',
   keepMounted = false,
 }) => {
-  const { value: activeValue } = useContext(TabsContext);
+  const { value: activeValue } = useTabsContext('Tabs.Panel');
   const isActive = activeValue === value;
 
   if (!isActive && !keepMounted) {
@@ -153,6 +164,11 @@ const TabPanel = ({
     </motion.div>
   );
 };
+
+Tabs.displayName = 'Tabs';
+TabsList.displayName = 'Tabs.List';
+Tab.displayName = 'Tabs.Tab';
+TabPanel.displayName = 'Tabs.Panel';
 
 // Attach sub-components
 Tabs.List = TabsList;

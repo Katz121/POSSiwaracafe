@@ -56,6 +56,12 @@ export default function StockView() {
   const handleAdjustStock = async () => {
     if (!stockToAdjust || !adjustmentInput.amount) return;
     const amount = Number(adjustmentInput.amount);
+    // Guard: a negative/zero/NaN amount would INCREASE stock and book a
+    // negative expense — only positive numbers are a valid cut.
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('จำนวนที่ตัดออกต้องเป็นตัวเลขมากกว่า 0');
+      return;
+    }
     await runDbAction(async () => {
       // 1. Update stock quantity
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockToAdjust.id), {
@@ -303,7 +309,7 @@ export default function StockView() {
               </div>
               <Button
                 type="submit"
-                variant={editingStockItem ? 'primary' : 'primary'}
+                variant="primary"
                 size="xl"
                 fullWidth
                 className="!py-6 !rounded-[2rem] !mt-8"
