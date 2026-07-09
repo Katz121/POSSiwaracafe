@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { DollarSign, Calendar, Trash2, BarChart3, RefreshCcw, Zap, X } from 'lucide-react';
-import { collection, doc, addDoc, deleteDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, doc, addDoc, deleteDoc, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate } from '../../utils/calculations';
@@ -106,7 +106,10 @@ export default function ExpensesView() {
           await updateDoc(
             doc(db, 'artifacts', appId, 'public', 'data', 'stock', existingStock.id),
             {
-              quantity: newQuantity,
+              // Atomic add so a concurrent POS stock deduction isn't overwritten.
+              // (unitCost is a weighted average that must be computed from the
+              // read value, so it stays absolute — a rare, low-stakes race.)
+              quantity: increment(Number(expense.quantity)),
               unitCost: newUnitCost,
               unit: String(expense.unit || existingStock.unit)
             }

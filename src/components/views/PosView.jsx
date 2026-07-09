@@ -5,7 +5,7 @@ import {
   ShoppingBag, CheckCircle, RefreshCcw, ArrowRight,
   Trash2, Sparkles, Phone, User, Flame
 } from 'lucide-react';
-import { collection, doc, addDoc, setDoc, updateDoc, increment, arrayUnion, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, writeBatch, increment, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getNameKey } from '../../utils/calculations';
@@ -425,8 +425,16 @@ export default function PosView() {
         if (phoneValid) memberId = memberPhone;
         else if (nameValid) memberId = `name:${nameKey}`;
       }
+      // Collect every member-doc write keyed by id so the batch never writes
+      // the same document twice (e.g. a member who both earns pending points
+      // and redeems on the same bill is merged into one payload).
+      const memberWrites = {};
+      const addMemberWrite = (id, fields) => {
+        if (!id) return;
+        memberWrites[id] = { ...(memberWrites[id] || {}), ...fields };
+      };
+
       if (memberId) {
-        const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
         const memberData = { lastOrderAt: serverTimestamp() };
         if (!editingOrderId) {
           // Earned points go to pendingPoints and require the owner's approval
@@ -445,26 +453,15 @@ export default function PosView() {
           if (!memberData.phone && phoneValid) memberData.phone = memberPhone;
           memberData.createdAt = serverTimestamp();
         }
-        await setDoc(memRef, memberData, { merge: true });
+        addMemberWrite(memberId, memberData);
       }
-      // Loyalty redemption: deduct/refund points atomically with saving the order,
-      // and stamp the order with what it redeemed so re-edits stay idempotent.
+
+      // Loyalty redemption: deduct/refund points atomically with saving the
+      // order (single writeBatch), and stamp the order with what it redeemed so
+      // re-edits stay idempotent. If the order write fails, no points move.
       const redeemAmount = REDEEM_POINTS_THRESHOLD;
-      const applyRedeem = async (memberId) => {
-        const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
-        await updateDoc(memRef, {
-          points: increment(-redeemAmount),
-          pointsHistory: arrayUnion({ delta: -redeemAmount, reason: 'redeem', at: new Date().toISOString() }),
-        });
-      };
-      const refundRedeem = async (memberId, amount) => {
-        if (!memberId || !amount) return;
-        const memRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
-        await updateDoc(memRef, {
-          points: increment(amount),
-          pointsHistory: arrayUnion({ delta: amount, reason: 'redeem-refund', at: new Date().toISOString() }),
-        });
-      };
+      const membersPath = ['artifacts', appId, 'public', 'data', 'members'];
+      const batch = writeBatch(db);
 
       if (editingOrderId) {
         const originalOrder = orders.find(o => o.id === editingOrderId);
@@ -476,30 +473,53 @@ export default function PosView() {
         if (originalOrder?.date) editData.date = originalOrder.date;
         // Reconcile the redemption against what this bill already redeemed:
         if (pointsRedeemActive && !wasRedeemed && redeemMemberId) {
-          await applyRedeem(redeemMemberId);
+          addMemberWrite(redeemMemberId, {
+            points: increment(-redeemAmount),
+            pointsHistory: arrayUnion({ delta: -redeemAmount, reason: 'redeem', at: new Date().toISOString() }),
+          });
           editData.pointsRedeemed = true;
           editData.pointsRedeemId = redeemMemberId;
           editData.pointsRedeemAmount = redeemAmount;
         } else if (!pointsRedeemActive && wasRedeemed) {
-          await refundRedeem(originalOrder?.pointsRedeemId, Number(originalOrder?.pointsRedeemAmount) || redeemAmount);
+          const refundId = originalOrder?.pointsRedeemId;
+          const refundAmt = Number(originalOrder?.pointsRedeemAmount) || redeemAmount;
+          if (refundId) {
+            addMemberWrite(refundId, {
+              points: increment(refundAmt),
+              pointsHistory: arrayUnion({ delta: refundAmt, reason: 'redeem-refund', at: new Date().toISOString() }),
+            });
+          }
           editData.pointsRedeemed = false;
           editData.pointsRedeemId = '';
           editData.pointsRedeemAmount = 0;
         }
         // (both redeemed, or neither → leave the existing flags untouched)
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', editingOrderId), editData);
+        Object.entries(memberWrites).forEach(([id, data]) => {
+          batch.set(doc(db, ...membersPath, id), data, { merge: true });
+        });
+        batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'orders', editingOrderId), editData);
+        await batch.commit();
         setEditingOrderId(null);
       } else {
         if (pointsRedeemActive && redeemMemberId) {
-          await applyRedeem(redeemMemberId);
+          addMemberWrite(redeemMemberId, {
+            points: increment(-redeemAmount),
+            pointsHistory: arrayUnion({ delta: -redeemAmount, reason: 'redeem', at: new Date().toISOString() }),
+          });
           orderData.pointsRedeemed = true;
           orderData.pointsRedeemId = redeemMemberId;
           orderData.pointsRedeemAmount = redeemAmount;
         }
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), orderData);
-        // Atomic increment — prevents duplicate queue numbers when POS and QR checkout race.
+        // New order doc + member writes + queue increment, all-or-nothing.
+        const orderRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'));
         const queueRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue');
-        await updateDoc(queueRef, { current: increment(1) });
+        Object.entries(memberWrites).forEach(([id, data]) => {
+          batch.set(doc(db, ...membersPath, id), data, { merge: true });
+        });
+        batch.set(orderRef, orderData);
+        // Atomic increment — prevents duplicate queue numbers when POS and QR checkout race.
+        batch.update(queueRef, { current: increment(1) });
+        await batch.commit();
         // Best-selling counter (best-effort; never blocks the sale)
         bumpMenuSoldCount(cart);
       }

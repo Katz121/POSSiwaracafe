@@ -10,7 +10,7 @@ import { Modal, Button, Spinner, IconButton, Input, ErrorBoundary } from './comp
 
 // Firebase Imports
 import {
-  doc, updateDoc, deleteDoc, writeBatch
+  doc, updateDoc, deleteDoc, writeBatch, increment
 } from 'firebase/firestore';
 import { db, appId } from './services/firebase';
 import useAuth from './hooks/useAuth';
@@ -195,8 +195,9 @@ export default function App() {
           if (used <= 0) return;
           const stockItem = stock.find(s => s.id === stockId);
           if (!stockItem) return; // linked stock was deleted — skip silently
-          const newQty = Math.max(0, (Number(stockItem.quantity) || 0) - used);
-          batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), { quantity: newQty });
+          // Atomic decrement so concurrent completions on two devices don't lose
+          // each other's deduction (symmetric with the restore path on delete).
+          batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), { quantity: increment(-used) });
         });
         batch.update(orderRef, { status: newStatus, stockDeducted: true });
         await batch.commit();
@@ -225,7 +226,7 @@ export default function App() {
           const stockItem = stock.find(s => s.id === stockId);
           if (!stockItem) return; // linked stock was deleted — nothing to restore
           batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), {
-            quantity: (Number(stockItem.quantity) || 0) + used
+            quantity: increment(used)
           });
         });
         batch.delete(orderRef);
