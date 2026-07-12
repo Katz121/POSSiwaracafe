@@ -1474,9 +1474,16 @@ function CustomerOrderApp() {
     : `${happyHourLeft} ${t('minutesShort')}`;
 
   // ---------------------------------------------------------------------------
-  // Category list: "ทั้งหมด" + each category that has at least one available item
+  // Category list: "ทั้งหมด" + each category, ordered by the `order` field so the
+  // shop controls the tab sequence (e.g. มัทฉะ pinned to the front). We sort here
+  // rather than trusting the bundle's array order — the published order can be
+  // clobbered by an older POS tab republishing, so the tab bar owns its own sort.
+  // Categories without `order` fall to the end, keeping their relative order.
   // ---------------------------------------------------------------------------
-  const categoryNames = ['ทั้งหมด', ...new Set(categories.map((c) => c.name).filter(Boolean))];
+  const orderedCategories = [...categories].sort(
+    (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+  );
+  const categoryNames = ['ทั้งหมด', ...new Set(orderedCategories.map((c) => c.name).filter(Boolean))];
   // Thai category name → English (only where the owner filled `nameEn`), used to
   // localise the category tabs in EN mode. The tab VALUE stays the Thai name so
   // it still matches `item.category`; only the label is swapped.

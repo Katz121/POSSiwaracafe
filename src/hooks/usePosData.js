@@ -65,7 +65,15 @@ export default function usePosData(user, appId) {
     };
 
     const unsubCats = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'categories'), (s) => {
-      setDynamicCategories(s.docs.map(d => ({ id: d.id, ...d.data() })));
+      // Sort by the `order` field so the category sequence (POS dropdowns + the
+      // customer QR tab bar, which both consume this order) is controllable.
+      // Categories without an `order` fall to the end, keeping insertion order
+      // among themselves (Array.prototype.sort is stable).
+      setDynamicCategories(
+        s.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
+      );
       // Unblock the full-screen loader as soon as the first (tiny) collection
       // arrives. Don't wait for the 887-doc orders + multi-MB base64 menu — each
       // view shows its own skeleton while its data streams in behind the shell.
