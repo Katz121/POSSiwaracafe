@@ -33,7 +33,8 @@ const firebaseConfig = {
 // Category display order + bilingual headings. Unknown categories are appended.
 const CATS = [
   ['Coffee', 'กาแฟ', 'Coffee'],
-  ['Tea & Cocoa', 'ชา · มัทฉะ · โกโก้', 'Tea, Matcha & Cocoa'],
+  ['มัทฉะ', 'มัทฉะ · โฮจิฉะ', 'Matcha & Hojicha'],
+  ['Tea & Cocoa', 'ชา · โกโก้', 'Tea & Cocoa'],
   ['Italian Soda', 'อิตาเลียนโซดา', 'Italian Soda'],
   ['Milk & Sweet', 'นมสด · เครื่องดื่มหวาน', 'Milk & Sweet'],
   ['Cake', 'เค้ก · ของหวาน', 'Cake & Dessert'],

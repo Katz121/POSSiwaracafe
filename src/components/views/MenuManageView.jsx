@@ -338,14 +338,40 @@ export default function MenuManageView() {
     }
 
     await runDbAction(async () => {
+      // New categories go to the end of the tab order.
+      const nextOrder = dynamicCategories.length
+        ? Math.max(...dynamicCategories.map(c => c.order ?? 0)) + 1
+        : 0;
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'categories'), {
         name: newCategory.name.trim(),
         nameEn: newCategory.nameEn?.trim() || '',
         icon: newCategory.icon,
-        color: newCategory.color
+        color: newCategory.color,
+        order: nextOrder
       });
       setNewCategory({ name: '', nameEn: '', icon: '📁', color: 'gray' });
     }, 'เพิ่มหมวดหมู่ไม่สำเร็จ');
+  };
+
+  // Reorder a category up (dir=-1) or down (dir=+1) in the tab sequence.
+  // `dynamicCategories` is already sorted by `order`, so we swap two neighbours
+  // then re-index the whole list to a clean 0..n sequence (few docs, cheap) —
+  // this also heals any missing/duplicate `order` values along the way. The tab
+  // order drives both the POS view and the customer QR page.
+  const moveCategory = async (index, dir) => {
+    const target = index + dir;
+    if (target < 0 || target >= dynamicCategories.length) return;
+    const list = [...dynamicCategories];
+    [list[index], list[target]] = [list[target], list[index]];
+    await runDbAction(async () => {
+      await Promise.all(
+        list
+          .map((c, i) => (c.order === i
+            ? null
+            : updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categories', c.id), { order: i })))
+          .filter(Boolean)
+      );
+    }, 'จัดลำดับหมวดหมู่ไม่สำเร็จ');
   };
 
   const handleDeleteCategory = async (category) => {
@@ -738,7 +764,7 @@ ${withDescription
                   ยังไม่มีหมวดหมู่
                 </div>
               ) : (
-                dynamicCategories.map(cat => {
+                dynamicCategories.map((cat, index) => {
                   const itemCount = menu.filter(m => m.category === cat.name).length;
                   const isDeleting = categoryToDelete?.id === cat.id;
 
@@ -747,6 +773,25 @@ ${withDescription
                       key={cat.id}
                       className={`flex items-center gap-4 p-5 rounded-2xl border transition-all ${isDeleting ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100 hover:border-amber-200'}`}
                     >
+                      {/* Reorder controls — moves this category earlier/later in the tab bar */}
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => moveCategory(index, -1)}
+                          disabled={index === 0}
+                          className="p-1.5 rounded-lg text-gray-400 hover:bg-amber-50 hover:text-amber-600 transition-all active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          title="เลื่อนขึ้น (แสดงก่อน)"
+                        >
+                          <ChevronUp size={18} />
+                        </button>
+                        <button
+                          onClick={() => moveCategory(index, 1)}
+                          disabled={index === dynamicCategories.length - 1}
+                          className="p-1.5 rounded-lg text-gray-400 hover:bg-amber-50 hover:text-amber-600 transition-all active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          title="เลื่อนลง (แสดงทีหลัง)"
+                        >
+                          <ChevronDown size={18} />
+                        </button>
+                      </div>
                       <span className="text-3xl">{cat.icon || '📁'}</span>
                       <div className="flex-1">
                         <p className="font-black text-gray-800 text-lg">{cat.name}</p>
@@ -791,7 +836,7 @@ ${withDescription
         <div className="mt-8 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
           <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5" />
           <p className="text-xs font-bold text-amber-700">
-            หมายเหตุ: ไม่สามารถลบหมวดหมู่ที่มีเมนูใช้อยู่ได้ กรุณาย้ายหรือลบเมนูในหมวดหมู่นั้นก่อน
+            หมายเหตุ: ใช้ปุ่ม ▲▼ เพื่อจัดลำดับแถบหมวดหมู่ (มีผลทั้งหน้าขายและหน้า QR ลูกค้า) · ไม่สามารถลบหมวดหมู่ที่มีเมนูใช้อยู่ได้ กรุณาย้ายหรือลบเมนูในหมวดหมู่นั้นก่อน
           </p>
         </div>
       </Modal>
