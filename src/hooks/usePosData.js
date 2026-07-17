@@ -81,9 +81,27 @@ export default function usePosData(user, appId) {
     }, handleSnapshotError);
     const unsubMenu = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'menu'), (s) => setMenu(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
     const unsubStock = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'stock'), (s) => setStock(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
-    const unsubOrders = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), (s) => {
-      setOrders(s.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, handleSnapshotError);
+    // includeMetadataChanges: needed so `hasPendingWrites` is accurate. Firestore
+    // applies a write to the local cache immediately (latency compensation), so the
+    // UI moves before the server has acked — and without this flag no snapshot fires
+    // when the ack finally arrives, because the document data itself didn't change.
+    // The kitchen view surfaces this per order, turning a write that silently never
+    // lands into something staff can actually see. These callbacks are local-only:
+    // they cost no extra Firestore reads.
+    const unsubOrders = onSnapshot(
+      collection(db, 'artifacts', appId, 'public', 'data', 'orders'),
+      { includeMetadataChanges: true },
+      (s) => {
+        setOrders(s.docs.map(d => ({
+          id: d.id,
+          ...d.data(),
+          // Not a stored field — derived per snapshot. Nothing writes an order doc
+          // back by spreading it, so this can't leak into Firestore.
+          hasPendingWrites: d.metadata.hasPendingWrites,
+        })));
+      },
+      handleSnapshotError
+    );
     const unsubExp = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'), (s) => setExpenses(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
     const unsubMem = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'members'), (s) => setMembers(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
     const unsubBeans = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'beanModifiers'), (s) => setBeanModifiers(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);

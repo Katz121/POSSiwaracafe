@@ -61,6 +61,11 @@ const DEVICE_TOKEN_KEY = 'pos_device_token';
 const DEVICE_SALT_KEY = 'pos_device_salt';
 const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
 
+// How long a Firestore write may go unacknowledged by the server before we tell
+// staff the screen can't be trusted yet. Well above normal round-trip latency so
+// a slow-but-healthy network never cries wolf.
+const DB_WRITE_SLOW_MS = 10000;
+
 const pinDeviceToken = async (pin) => {
   const enc = new TextEncoder();
   let salt = localStorage.getItem(DEVICE_SALT_KEY);
@@ -164,7 +169,18 @@ export default function App() {
   }), [orders, expenses, stock, members, today, currentMonth]);
 
   // Database action wrapper (memoized to prevent context changes every render)
+  //
+  // With the persistent offline cache, a Firestore write promise resolves only once
+  // the SERVER acks it. When the device can't reach the server the promise neither
+  // resolves nor rejects — it hangs indefinitely. This wrapper only reported errors
+  // on `throw`, so a write that never landed produced no feedback whatsoever while
+  // the UI had already moved on (latency compensation). Warn instead of failing
+  // silently: the write stays queued and still lands on reconnect, so this must NOT
+  // cancel anything — it only tells staff not to trust the screen yet.
   const runDbAction = useCallback(async (action, errorMsg = 'เกิดข้อผิดพลาด') => {
+    const slowWarning = setTimeout(() => {
+      setErrorMessage('ยังบันทึกไม่สำเร็จ กำลังลองใหม่ — อย่าเพิ่งปิดหน้านี้');
+    }, DB_WRITE_SLOW_MS);
     try {
       await action();
       setErrorMessage('');
@@ -173,6 +189,8 @@ export default function App() {
       console.error(err);
       setErrorMessage(errorMsg);
       return false;
+    } finally {
+      clearTimeout(slowWarning);
     }
   }, []);
 

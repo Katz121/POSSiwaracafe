@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Edit3, Utensils } from 'lucide-react';
+import { Clock, Edit3, Utensils, CloudOff } from 'lucide-react';
 
 export default function MerchantColumn({ title, color, status, orders, onUpdate, onCancel, onEdit }) {
   const filtered = (orders || [])
@@ -54,6 +54,14 @@ export default function MerchantColumn({ title, color, status, orders, onUpdate,
               ))}
             </div>
             <div className="p-5 bg-gray-900/50 flex flex-col gap-4">
+              {/* A write that reached the local cache but not the server yet. If this
+                  sticks around, the change is NOT saved and can still be rolled back. */}
+              {order.hasPendingWrites && (
+                <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-2xl px-4 py-2.5 text-xs font-black uppercase tracking-wider">
+                  <CloudOff size={14} className="shrink-0 animate-pulse" />
+                  ยังบันทึกไม่สำเร็จ
+                </div>
+              )}
               <div className="flex justify-between text-xs border-t border-gray-700 pt-4 font-bold">
                 <span className="uppercase text-gray-500"><Clock size={12} className="inline mr-1" /> {String(order.time)}</span>
                 <div className="text-right text-gray-200 font-black text-lg">฿{Number(order.total || 0).toLocaleString()}</div>
