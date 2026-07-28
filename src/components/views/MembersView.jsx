@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Users, Search, User, UserMinus, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X, Calculator, GitMerge, AlertTriangle, ChevronDown } from 'lucide-react';
+import { Users, Search, User, UserMinus, UserX, Phone, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X, Calculator, GitMerge, AlertTriangle, ChevronDown } from 'lucide-react';
 import { doc, setDoc, deleteDoc, updateDoc, writeBatch, serverTimestamp, increment, arrayUnion } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
@@ -44,6 +44,29 @@ export default function MembersView() {
   const [editingMember, setEditingMember] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingMember, setDeletingMember] = useState(null);
+
+  // Name groups the owner has confirmed are DIFFERENT people (same nickname,
+  // different customers) — kept out of the duplicate list for good.
+  const IGNORED_DUP_STORAGE_KEY = 'pos.ignoredDuplicateNameKeys';
+  const [ignoredDupKeys, setIgnoredDupKeys] = useState(() => {
+    try {
+      const raw = localStorage.getItem(IGNORED_DUP_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  });
+  const ignoreDupGroup = (key) => {
+    setIgnoredDupKeys(prev => {
+      const next = prev.includes(key) ? prev : [...prev, key];
+      try { localStorage.setItem(IGNORED_DUP_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+    toast.info(`ซ่อน "${key}" ออกจากรายการซ้ำแล้ว (คนละคนกัน)`);
+  };
+  const resetIgnoredDupKeys = () => {
+    setIgnoredDupKeys([]);
+    try { localStorage.removeItem(IGNORED_DUP_STORAGE_KEY); } catch { /* ignore */ }
+  };
 
   // Reconciliation + merge tools
   const [showReconcile, setShowReconcile] = useState(false);
@@ -158,20 +181,35 @@ export default function MembersView() {
     return [...memberStats, ...nameOnlyMap.values()].sort((a, b) => b.totalPurchases - a.totalPurchases);
   }, [members, orders, reconcileDays]);
 
+  // A member IS a phone number. Everything else — a legacy `name:xxx` doc, a
+  // bill that only carries a nickname — is a guest: real revenue, real name on
+  // the bill, but not an identity we can trust (nicknames collide constantly).
+  // Guests are kept out of the member list, the stats and the points machinery,
+  // and are surfaced in their own cleanup panel instead.
+  const memberRows = useMemo(() => processedMembers.filter(m => String(m.phone || '').trim()), [processedMembers]);
+  const guestRows = useMemo(() => processedMembers.filter(m => !String(m.phone || '').trim()), [processedMembers]);
+  const guestPoints = useMemo(
+    () => guestRows.reduce((s, m) => s + Number(m.points || 0) + Number(m.pendingPoints || 0), 0),
+    [guestRows]
+  );
+
   // Members whose purchases earned fewer points than they should have — the
   // "bought but points didn't show" cases. Sorted biggest-gap first. The owner
   // reviews and confirms each credit (points go to pendingPoints for the normal
-  // approval flow, never straight into the balance).
+  // approval flow, never straight into the balance). Guests can't earn, so they
+  // are never offered a credit.
   const reconcileList = useMemo(
-    () => processedMembers
+    () => memberRows
       .filter(m => Number(m.earnGap || 0) >= 1)
       .sort((a, b) => Number(b.earnGap) - Number(a.earnGap)),
-    [processedMembers]
+    [memberRows]
   );
 
   // Duplicate identities: the same person split across a phone doc and a
   // name doc (or several name variants). Grouped by normalised name; only
-  // groups with more than one distinct identity are surfaced for merging.
+  // groups with more than one distinct identity are surfaced. Groups the owner
+  // marked "ไม่ใช่คนเดียวกัน" (e.g. three different customers all nicknamed
+  // "แพรว") stay hidden — that choice lives in localStorage, per device.
   const duplicateGroups = useMemo(() => {
     const byName = new Map();
     processedMembers.forEach(m => {
@@ -182,19 +220,19 @@ export default function MembersView() {
       byName.set(key, arr);
     });
     return [...byName.entries()]
-      .filter(([, arr]) => arr.length > 1)
+      .filter(([key, arr]) => arr.length > 1 && !ignoredDupKeys.includes(key))
       .map(([key, arr]) => ({ key, members: arr }));
-  }, [processedMembers]);
+  }, [processedMembers, ignoredDupKeys]);
 
   const filteredMembers = useMemo(() => {
     const term = String(debouncedMemberSearchTerm || '').trim();
-    return processedMembers.filter((m) => {
+    return memberRows.filter((m) => {
       const phone = String(m.phone || '');
       const name = String(m.name || '');
       if (!term) return phone !== '' || name !== '';
       return phone.includes(term) || name.includes(term);
     });
-  }, [processedMembers, debouncedMemberSearchTerm]);
+  }, [memberRows, debouncedMemberSearchTerm]);
 
   // Calculate member's favorite items
   const getMemberFavorites = useMemo(() => {
@@ -429,10 +467,24 @@ export default function MembersView() {
     setOrderToCancel(order.id);
   };
 
+  // Used from the member list, the duplicate panel and the guest panel — every
+  // row type is deletable, so a wrong/duplicate entry never has to be merged
+  // just to make it disappear.
   const deleteMember = (member) => {
     if (!member?.id) return;
     setDeletingMember(member);
     setShowDeleteConfirm(true);
+  };
+
+  const deleteConfirmMessage = (m) => {
+    if (!m) return '';
+    const pts = Number(m.points || 0) + Number(m.pendingPoints || 0);
+    const who = `${m.name || 'ไม่ระบุชื่อ'}${m.phone ? ` (${m.phone})` : ' (ไม่มีเบอร์)'}`;
+    const lines = [`ลบ "${who}" ออกจากระบบสมาชิก?`];
+    if (pts > 0) lines.push(`· แต้ม ${pts} แต้มจะหายไปด้วย`);
+    if (!String(m.phone || '').trim()) lines.push('· ชื่อนี้จะถูกถอดออกจากบิลที่ผูกไว้ (ยอดขาย/บิลไม่หาย)');
+    else lines.push('· บิลเก่ายังอยู่ครบ แค่ไม่ผูกกับสมาชิกคนนี้อีก');
+    return lines.join('\n');
   };
 
   // Delete handles every row type:
@@ -553,10 +605,10 @@ export default function MembersView() {
 
   // Stats calculation
   const { totalPoints, totalSpentAll, redeemableMembers } = useMemo(() => ({
-    totalPoints: processedMembers.reduce((sum, m) => sum + Number(m.points || 0), 0),
-    totalSpentAll: processedMembers.reduce((sum, m) => sum + Number(m.totalSpent || 0), 0),
-    redeemableMembers: processedMembers.filter(m => Number(m.points || 0) >= REDEEM_POINTS_THRESHOLD).length,
-  }), [processedMembers, REDEEM_POINTS_THRESHOLD]);
+    totalPoints: memberRows.reduce((sum, m) => sum + Number(m.points || 0), 0),
+    totalSpentAll: memberRows.reduce((sum, m) => sum + Number(m.totalSpent || 0), 0),
+    redeemableMembers: memberRows.filter(m => Number(m.points || 0) >= REDEEM_POINTS_THRESHOLD).length,
+  }), [memberRows, REDEEM_POINTS_THRESHOLD]);
 
   return (
     <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-gray-800">
@@ -615,8 +667,10 @@ export default function MembersView() {
             <span className="text-xs md:text-xs font-black uppercase tracking-wider opacity-80">สมาชิกทั้งหมด</span>
             <Users size={16} className="md:w-5 md:h-5 opacity-60" />
           </div>
-          <p className="text-2xl md:text-4xl font-black">{processedMembers.length}</p>
-          <p className="text-xs md:text-xs opacity-70 mt-0.5">คน</p>
+          <p className="text-2xl md:text-4xl font-black">{memberRows.length}</p>
+          <p className="text-xs md:text-xs opacity-70 mt-0.5">
+            คน{guestRows.length > 0 ? ` · ไม่มีเบอร์อีก ${guestRows.length}` : ''}
+          </p>
         </div>
 
         {/* Filtered Results */}
@@ -702,15 +756,30 @@ export default function MembersView() {
           </div>
 
           {/* Duplicate identities to merge */}
-          {duplicateGroups.length > 0 && (
+          {(duplicateGroups.length > 0 || ignoredDupKeys.length > 0) && (
             <div className="bg-white border border-violet-200 rounded-2xl p-3 md:p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-1 text-violet-700 font-black text-sm md:text-base uppercase tracking-wider">
-                <GitMerge size={18} />
-                <span>สมาชิกซ้ำ (ชื่อเดียวกัน)</span>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-2 text-violet-700 font-black text-sm md:text-base uppercase tracking-wider">
+                  <GitMerge size={18} />
+                  <span>สมาชิกซ้ำ (ชื่อเดียวกัน)</span>
+                </div>
+                {ignoredDupKeys.length > 0 && (
+                  <button
+                    onClick={resetIgnoredDupKeys}
+                    className="text-xs font-bold text-gray-400 hover:text-violet-600 underline underline-offset-2 shrink-0"
+                  >
+                    เอากลุ่มที่ซ่อนไว้ ({ignoredDupKeys.length}) กลับมา
+                  </button>
+                )}
               </div>
               <p className="text-xs text-gray-400 font-bold mb-3">
-                คนเดียวกันแต่แยกเป็นหลายรายการ (เบอร์/ชื่อ) — เลือกตัวหลักแล้วกดรวม แต้มและประวัติจะยุบรวมกัน
+                ชื่อซ้ำกันไม่ได้แปลว่าเป็นคนเดียวกันเสมอ — ถ้าคนเดียวกันให้ "รวม" (แต้ม+ประวัติยุบเข้าตัวหลัก) · ถ้าเป็นรายการขยะให้ "ลบ" ทีละอัน · ถ้าคนละคนกดซ่อนกลุ่มไว้ได้
               </p>
+              {duplicateGroups.length === 0 && (
+                <div className="text-center py-6 text-gray-400 font-bold text-sm flex items-center justify-center gap-2">
+                  <Check size={16} className="text-emerald-500" /> ไม่มีชื่อซ้ำที่ต้องจัดการ
+                </div>
+              )}
               <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-hide">
                 {duplicateGroups.map(group => (
                   <div key={`dup-${group.key}`} className="bg-violet-50/60 rounded-2xl border border-violet-100 p-3">
@@ -732,13 +801,84 @@ export default function MembersView() {
                         รวม
                       </Button>
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
+                    {/* Every identity in the group is deletable on its own —
+                        merging is not the only way out (three different people
+                        can share one nickname). */}
+                    <div className="space-y-1.5">
                       {group.members.map(m => (
-                        <span key={`dupm-${m.id || m.phone}`} className="text-xs bg-white px-2 py-1 rounded-lg border border-violet-100 font-bold text-gray-600">
-                          {m.phone ? String(m.phone) : 'ไม่มีเบอร์'} · {Number(m.points || 0)}
-                          {Number(m.pendingPoints || 0) > 0 ? `(+${Number(m.pendingPoints)})` : ''} แต้ม
-                        </span>
+                        <div key={`dupm-${m.id || m.phone}`} className="flex items-center justify-between gap-2 text-xs bg-white px-2.5 py-2 rounded-xl border border-violet-100 font-bold text-gray-600">
+                          <span className="truncate">
+                            {m.phone ? String(m.phone) : 'ไม่มีเบอร์'} · {Number(m.points || 0)}
+                            {Number(m.pendingPoints || 0) > 0 ? `(+${Number(m.pendingPoints)})` : ''} แต้ม
+                            {' · '}{Number(m.totalPurchases || 0)} ชิ้น · ฿{Number(m.totalSpent || 0).toLocaleString()}
+                            {String(m.id || '').startsWith('name-only:') ? ' · ยังไม่มีบัญชี' : ''}
+                          </span>
+                          <button
+                            onClick={() => deleteMember(m)}
+                            title="ลบรายการนี้ทิ้ง (ไม่ต้องรวม)"
+                            className="shrink-0 p-1.5 bg-red-50 text-red-500 rounded-lg border border-red-100 hover:bg-red-100 transition-all active:scale-90"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       ))}
+                    </div>
+                    <button
+                      onClick={() => ignoreDupGroup(group.key)}
+                      className="mt-2 text-xs font-bold text-gray-400 hover:text-violet-600 underline underline-offset-2 transition-colors"
+                    >
+                      ไม่ใช่คนเดียวกัน · ซ่อนกลุ่มนี้
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Guests: no phone → not members. Old `name:xxx` docs live here too,
+              waiting to be given a phone (promoted) or deleted. */}
+          {guestRows.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-2xl p-3 md:p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-2 text-gray-600 font-black text-sm md:text-base uppercase tracking-wider">
+                  <UserX size={18} />
+                  <span>ลูกค้าไม่มีเบอร์ (ไม่ใช่สมาชิก)</span>
+                </div>
+                <span className="text-xs font-black text-gray-400 shrink-0">
+                  {guestRows.length} คน{guestPoints > 0 ? ` · ค้างแต้ม ${guestPoints}` : ''}
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 font-bold mb-3">
+                รายการเก่าที่เคยบันทึกจากชื่อเล่นล้วน — ตอนนี้ไม่นับเป็นสมาชิกแล้ว (บิลใหม่ที่ไม่มีเบอร์จะไม่ถูกบันทึกอีก) · ใส่เบอร์ให้ = เลื่อนเป็นสมาชิกจริงพร้อมแต้มเดิม · ลบ = เอาออกทั้งชื่อบนบิล
+              </p>
+              <div className="space-y-1.5 max-h-64 overflow-y-auto scrollbar-hide">
+                {guestRows.map(m => (
+                  <div key={`guest-${m.id}`} className="flex items-center justify-between gap-2 bg-gray-50 rounded-xl border border-gray-100 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="font-black text-gray-800 text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
+                      <p className="text-xs font-bold text-gray-400 truncate">
+                        {Number(m.totalPurchases || 0)} ชิ้น · ฿{Number(m.totalSpent || 0).toLocaleString()}
+                        {Number(m.points || 0) + Number(m.pendingPoints || 0) > 0
+                          ? ` · ค้าง ${Number(m.points || 0) + Number(m.pendingPoints || 0)} แต้ม`
+                          : ''}
+                        {String(m.id || '').startsWith('name-only:') ? ' · ยังไม่มีบัญชี' : ''}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => editMember(m)}
+                        title="ใส่เบอร์ให้ → เลื่อนเป็นสมาชิกจริง (แต้มเดิมตามไปด้วย)"
+                        className="p-2 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100 hover:bg-emerald-100 transition-all active:scale-90"
+                      >
+                        <Phone size={14} />
+                      </button>
+                      <button
+                        onClick={() => deleteMember(m)}
+                        title="ลบออกจากระบบสมาชิก"
+                        className="p-2 bg-red-50 text-red-500 rounded-lg border border-red-100 hover:bg-red-100 transition-all active:scale-90"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -749,7 +889,7 @@ export default function MembersView() {
       )}
 
       {/* Pending Approval Section */}
-      {processedMembers.some(m => Number(m.pendingPoints) > 0) && (
+      {memberRows.some(m => Number(m.pendingPoints) > 0) && (
         <div className="px-3 md:px-6 lg:px-8 pt-3 md:pt-4 shrink-0">
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 md:p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-3 text-amber-700 font-black text-sm md:text-base uppercase tracking-wider">
@@ -757,7 +897,7 @@ export default function MembersView() {
               <span>รออนุมัติแต้ม</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
-              {processedMembers.filter(m => Number(m.pendingPoints) > 0).map(m => (
+              {memberRows.filter(m => Number(m.pendingPoints) > 0).map(m => (
                 <div key={`pending-${m.phone || m.id}`} className="bg-white rounded-2xl border border-amber-100 p-3 flex items-center justify-between gap-3 shadow-sm">
                   <div className="min-w-0">
                     <p className="font-black text-gray-800 text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
@@ -1139,7 +1279,7 @@ export default function MembersView() {
         onClose={() => { setShowDeleteConfirm(false); setDeletingMember(null); }}
         onConfirm={confirmDeleteMember}
         title="ลบสมาชิก"
-        message={`ต้องการลบ "${deletingMember?.name || 'สมาชิก'}" ออกจากระบบใช่หรือไม่?`}
+        message={<span className="whitespace-pre-line">{deleteConfirmMessage(deletingMember)}</span>}
         confirmText="ลบ"
         cancelText="ยกเลิก"
         variant="danger"

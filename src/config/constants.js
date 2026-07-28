@@ -12,6 +12,17 @@ export const DEFAULT_REDEEM_DISCOUNT_VALUE = 50;     // มูลค่าส่
 export const DEFAULT_OWN_GLASS_DISCOUNT = 5;         // ส่วนลดนำแก้วมาเอง (บาท)
 export const POINTS_PER_BAHT = 10;                   // ทุก X บาท ได้ 1 แต้ม
 
+// ==================== MEMBER IDENTITY ====================
+// เบอร์โทรคือ "ตัวตน" เดียวของสมาชิก — ชื่อเล่นซ้ำกันได้ (ข้อมูลจริงมี "แพรว" 3 คน
+// คนละเบอร์) เบอร์ไม่ซ้ำ ดังนั้น:
+//   MEMBER_MIN_PHONE_LENGTH  = ความยาวเบอร์ที่ถือว่า "มีเบอร์จริง"
+//   ALLOW_NAME_ONLY_MEMBERS  = false → ลูกค้าที่ไม่มีเบอร์ "ไม่ถูกบันทึกเป็นสมาชิก"
+//                              ชื่อเล่นยังติดอยู่บนบิลเหมือนเดิม (ไว้เรียกคิว/ดูยอด)
+//                              แต่ไม่สร้าง doc `name:xxx` และไม่สะสมแต้ม
+// เปลี่ยนเป็น true = กลับไปพฤติกรรมเดิม (ชื่อเล่นอย่างเดียวก็เป็นสมาชิกได้)
+export const MEMBER_MIN_PHONE_LENGTH = 9;
+export const ALLOW_NAME_ONLY_MEMBERS = false;
+
 // ==================== TAX ====================
 export const VAT_RATE = 0.07;                        // อัตรา VAT 7%
 export const VAT_PERCENTAGE = 7;                     // สำหรับแสดงผล

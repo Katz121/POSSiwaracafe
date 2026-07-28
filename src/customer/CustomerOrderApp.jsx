@@ -42,7 +42,7 @@ import {
 import { auth, db, appId } from '../services/firebase';
 import { fetchPublicMenu, readCachedPublicMenu, writeCachedPublicMenu, SENSITIVE_SETTINGS_KEYS } from '../utils/publicMenu';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
-import { formatCurrency, VAT_RATE, roundUpTo5, getModifierGroups, isBaseModifier, computeModifierPrice } from '../config/constants';
+import { formatCurrency, VAT_RATE, roundUpTo5, getModifierGroups, isBaseModifier, computeModifierPrice, MEMBER_MIN_PHONE_LENGTH, ALLOW_NAME_ONLY_MEMBERS } from '../config/constants';
 import { getISODate } from '../utils/calculations';
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
@@ -122,6 +122,7 @@ const TX = {
     pointsReady: (val) => `🎉 ครบแล้ว! แลกส่วนลด ฿${val} ได้เลย`,
     pointsRemaining: (rem, val) => `อีก ${rem} แต้ม แลกส่วนลด ฿${val}`,
     newPhoneHint: 'เบอร์ใหม่ — ระบบจะสมัครสมาชิกให้อัตโนมัติ และเริ่มสะสมแต้ม',
+    noPhoneHint: 'ไม่ใส่เบอร์ก็สั่งได้ แต่บิลนี้จะไม่สะสมแต้ม',
     usePointsToggle: (threshold, val) => `ใช้ ${threshold} แต้ม แลกส่วนลด ฿${val}`,
     submitting: 'กำลังส่งออเดอร์...',
     submitOrder: 'ส่งออเดอร์',
@@ -204,6 +205,7 @@ const TX = {
     pointsReady: (val) => `🎉 Ready! Redeem for ฿${val} off`,
     pointsRemaining: (rem, val) => `${rem} points left to redeem ฿${val} off`,
     newPhoneHint: "New number — you'll be signed up automatically and start earning points",
+    noPhoneHint: 'You can order without a phone, but this bill earns no points',
     usePointsToggle: (threshold, val) => `Use ${threshold} points for ฿${val} off`,
     submitting: 'Placing order...',
     submitOrder: 'Place order',
@@ -983,11 +985,15 @@ function CheckoutStep({
                     : t('pointsRemaining', redeemPointsThreshold - memberPoints, redeemDiscountValue)}
                 </p>
               </div>
-            ) : customerPhone.length >= 9 ? (
+            ) : customerPhone.length >= MEMBER_MIN_PHONE_LENGTH ? (
               <p className="text-xs text-gray-500 mt-1.5">
                 {t('newPhoneHint')}
               </p>
-            ) : null}
+            ) : (
+              <p className="text-xs text-gray-400 mt-1.5">
+                {t('noPhoneHint')}
+              </p>
+            )}
           </div>
 
           {/* Points redemption toggle */}
@@ -1764,14 +1770,17 @@ function CustomerOrderApp() {
       });
 
       // --- Member side-effect (non-blocking) ---
-      // Identity mirrors PosView: phone when valid, otherwise a name-based id
-      // (`name:${nameKey}`) so customers who skip the phone field still earn
-      // points under a stable identity. Redemption stays phone-only below
-      // because `member`/`pointsEligible` are only ever loaded by phone.
-      const phoneValid = phone.length >= 9;
+      // Identity mirrors PosView: the PHONE is the member id, full stop.
+      // A customer who skips the phone field is a guest — their name still rides
+      // on the bill (queue call + sales history) but no member doc is created and
+      // no points accrue. Name-based ids (`name:${nameKey}`) merged different
+      // people who happened to share a nickname, so they are off by default.
+      const phoneValid = phone.length >= MEMBER_MIN_PHONE_LENGTH;
       const nameKey = getNameKey(customerName);
       const nameValid = nameKey.length > 0;
-      const memberId = phoneValid ? phone : (nameValid ? `name:${nameKey}` : null);
+      const memberId = phoneValid
+        ? phone
+        : (nameValid && ALLOW_NAME_ONLY_MEMBERS ? `name:${nameKey}` : null);
 
       if (memberId) {
         try {

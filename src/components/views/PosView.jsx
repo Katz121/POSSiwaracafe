@@ -3,7 +3,7 @@ import {
   Search, Star, Receipt, Minus, Plus, Tag, Zap, X, PlusCircle,
   Coffee, Gift, Wallet, CreditCard, ChevronLeft, ChevronRight,
   ShoppingBag, CheckCircle, RefreshCcw, ArrowRight,
-  Trash2, Sparkles, Phone, User, Flame
+  Trash2, Sparkles, Phone, User, UserX, Flame
 } from 'lucide-react';
 import { collection, doc, writeBatch, increment, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
@@ -24,7 +24,9 @@ import {
   roundUpTo5,
   getModifierGroups,
   isBaseModifier,
-  computeModifierPrice
+  computeModifierPrice,
+  MEMBER_MIN_PHONE_LENGTH,
+  ALLOW_NAME_ONLY_MEMBERS
 } from '../../config/constants';
 
 export default function PosView() {
@@ -199,7 +201,7 @@ export default function PosView() {
   useEffect(() => { setMenuPage(1); }, [activeCategory, debouncedSearchTerm, itemsPerPage]);
 
   useEffect(() => {
-    if (memberPhone.length >= 9) {
+    if (memberPhone.length >= MEMBER_MIN_PHONE_LENGTH) {
       const found = members.find(m => m.phone === memberPhone);
       if (found) {
         setCurrentMember(found);
@@ -207,7 +209,7 @@ export default function PosView() {
       } else {
         setCurrentMember({ phone: memberPhone, points: 0, name: memberNickname || 'ลูกค้าใหม่', isNew: true });
       }
-    } else if (memberPhone.length > 0 && memberPhone.length < 9) {
+    } else if (memberPhone.length > 0 && memberPhone.length < MEMBER_MIN_PHONE_LENGTH) {
       setCurrentMember(null);
       setUsePoints(false);
     } else if (!memberPhone && !memberNickname) {
@@ -217,7 +219,7 @@ export default function PosView() {
   }, [memberPhone, members, memberNickname]);
 
   useEffect(() => {
-    if (memberPhone && memberPhone.length >= 9) return;
+    if (memberPhone && memberPhone.length >= MEMBER_MIN_PHONE_LENGTH) return;
     const nameKey = getNameKey(memberNickname);
     if (!nameKey) {
       if (!memberPhone) { setCurrentMember(null); setUsePoints(false); }
@@ -228,7 +230,10 @@ export default function PosView() {
       setCurrentMember(found);
       if (found.phone) setMemberPhone(found.phone);
     } else {
-      setCurrentMember({ phone: '', points: 0, name: memberNickname, isNew: true });
+      // ชื่อเล่นล้วน ไม่มีเบอร์ → เป็น "ลูกค้าทั่วไป" ไม่ใช่สมาชิกใหม่
+      // (isGuest ทำให้การ์ดแต้มบอกตรงๆ ว่าบิลนี้ไม่สะสมแต้ม)
+      setCurrentMember({ phone: '', points: 0, name: memberNickname, isNew: true, isGuest: !ALLOW_NAME_ONLY_MEMBERS });
+      setUsePoints(false);
     }
   }, [memberNickname, memberPhone, members]);
 
@@ -415,7 +420,7 @@ export default function PosView() {
         table: 'Walk-in'
       };
       const nameKey = getNameKey(memberNickname);
-      const phoneValid = memberPhone && memberPhone.length >= 9;
+      const phoneValid = memberPhone && memberPhone.length >= MEMBER_MIN_PHONE_LENGTH;
       const nameValid = nameKey && nameKey.length > 0;
       const existingByPhone = phoneValid ? members.find(m => m.phone === memberPhone) : null;
       const existingByName = !existingByPhone && nameValid ? members.find(m => getNameKey(m.name) === nameKey) : null;
@@ -423,7 +428,9 @@ export default function PosView() {
       let memberId = existingMember ? (existingMember.id || existingMember.phone) : null;
       if (!memberId) {
         if (phoneValid) memberId = memberPhone;
-        else if (nameValid) memberId = `name:${nameKey}`;
+        // ไม่มีเบอร์ = ไม่สร้างสมาชิกใหม่ (ชื่อเล่นยังอยู่บนบิล แต่ไม่เข้าระบบสมาชิก)
+        // ชื่อเล่นซ้ำกันได้ง่ายมาก การสร้าง doc `name:xxx` ทำให้คนละคนถูกยำรวมกัน
+        else if (nameValid && ALLOW_NAME_ONLY_MEMBERS) memberId = `name:${nameKey}`;
       }
       // Collect every member-doc write keyed by id so the batch never writes
       // the same document twice (e.g. a member who both earns pending points
@@ -727,7 +734,13 @@ export default function PosView() {
               className="bg-transparent outline-none text-xs flex-1 min-w-0 w-full font-medium text-[var(--text-primary)]" />
           </div>
         </div>
-        {currentMember && (
+        {currentMember?.isGuest && (
+          <div className="flex items-start gap-1.5 pt-1 text-[10px] font-bold text-[var(--text-muted)] leading-snug">
+            <UserX size={12} className="shrink-0 mt-0.5" />
+            <span>ไม่มีเบอร์ = ไม่บันทึกเป็นสมาชิก · ใส่เบอร์เพื่อสะสมแต้ม</span>
+          </div>
+        )}
+        {currentMember && !currentMember.isGuest && (
           <div className="flex items-center justify-between pt-1">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-[11px] font-black text-[var(--text-primary)] truncate">
