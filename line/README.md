@@ -44,6 +44,25 @@ python line/richmenu/deploy.py line/richmenu/a-wood.png
 
 หลังตั้งแล้ว `/notify` จะเปลี่ยนเป็น push หา target เดียว ไม่ยุ่งกับลูกค้า
 
+## รายชื่อคนที่แอด OA
+
+LINE ปิด `GET /v2/bot/followers/ids` สำหรับบัญชีที่ยังไม่ verified (ตอบ
+`Access to this API is not available for your account`) ดึงรายชื่อย้อนหลังไม่ได้เลย
+worker เลยเก็บเองตอน webhook แจ้ง event: `follow` = คนแอดใหม่ · ข้อความทั่วไป = เก็บคนที่แอด
+ไว้ก่อนหน้าแล้วเพิ่งทักมา · `unfollow` = คงประวัติไว้แล้วประทับเวลาว่าบล็อกเมื่อไหร่
+
+```
+set NOTIFY_SHARED_SECRET=...
+python line/followers.py
+```
+
+เก็บใน KV `FOLLOWERS` (id `50d240ee...`) · อ่านผ่าน `POST /followers` ต้องแนบ
+`Authorization: Bearer <NOTIFY_SHARED_SECRET>` เพราะเป็นชื่อลูกค้า ไม่ใช่ข้อมูลเปิด
+
+**ข้อจำกัดที่แก้ด้วยโค้ดไม่ได้:** คนที่แอดไว้ก่อนวันที่ 2026-08-07 และไม่เคยทักอะไรมาเลย
+จะไม่มีทางรู้ชื่อ · ถ้าอยากได้ครบจริงต้องสมัคร verified account (ฟรี ทำใน OA Manager)
+แล้วค่อยเรียก `followers/ids` ทีเดียว
+
 ## Webhook
 
 `https://pos-gemini-proxy.siwatid-99.workers.dev/webhook` · ตรวจลายเซ็น HMAC-SHA256 ด้วย

@@ -4,3 +4,9 @@ compatibility_date = "2024-12-01"
 
 # After deploy, add secret:
 # wrangler secret put GEMINI_API_KEY
+
+# รายชื่อคนที่แอด LINE OA · LINE ไม่ให้ดึงรายชื่อผู้ติดตามย้อนหลังสำหรับบัญชีที่ยังไม่ verified
+# เลยต้องเก็บเองตอน webhook แจ้ง event follow เข้ามา (ดู handleWebhook ใน worker.js)
+[[kv_namespaces]]
+binding = "FOLLOWERS"
+id = "50d240ee281745b5b9825dc248632645"
