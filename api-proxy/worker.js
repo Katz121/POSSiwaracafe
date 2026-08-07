@@ -173,6 +173,20 @@ async function handleNotify(request, env, headers) {
   // Message is composed server-side from validated fields — never relayed raw.
   const text = buildOrderMessage(body).slice(0, 5000);
 
+  // No target => the only thing left is broadcast, which sends the shop's order
+  // alert to EVERY follower of the OA — customers included. Refuse instead, and
+  // make broadcasting something you have to ask for on purpose.
+  if (!to && env.LINE_ALLOW_BROADCAST !== 'true') {
+    return Response.json(
+      {
+        error: 'LINE_TARGET_ID not set',
+        detail: 'ตั้ง LINE_TARGET_ID ก่อน (พิมพ์ myid ในแชท/กลุ่มเพื่อเอา id) '
+          + 'หรือถ้าตั้งใจจะ broadcast หาผู้ติดตามทุกคนจริงๆ ให้ set LINE_ALLOW_BROADCAST=true',
+      },
+      { status: 503, headers }
+    );
+  }
+
   try {
     const token = await getLineAccessToken(env);
     // With LINE_TARGET_ID -> push to that user/group; without -> broadcast to all OA friends.
