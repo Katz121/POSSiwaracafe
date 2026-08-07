@@ -488,7 +488,181 @@ async function handleWebhook(request, env) {
   return new Response('OK', { status: 200 });
 }
 
+// ---------------------------------------------------------------------------
+// สรุปยอดขายประจำวัน · ยิงเองตาม cron ใน wrangler.toml (ไม่ต้องเปิดคอมทิ้งไว้)
+//
+// อ่าน Firestore ผ่าน REST ด้วย Anonymous Auth ตัวเดียวกับที่แอปใช้ — กติกาใน
+// firestore.rules ต้องการแค่ `request.auth != null` เท่านั้น เลยไม่ต้องมี service account
+//
+// refresh token เก็บใน KV แล้วใช้ซ้ำ · ถ้า signUp ใหม่ทุกวันจะได้ผู้ใช้นิรนามงอกวันละคน
+// รกหน้า Firebase Auth เปล่าๆ
+// ---------------------------------------------------------------------------
+const FB_TOKEN_KEY = '__firebase_refresh_token';
+
+async function getFirebaseIdToken(env) {
+  const key = env.FIREBASE_API_KEY;
+  if (!key) throw new Error('FIREBASE_API_KEY not set');
+
+  const saved = env.FOLLOWERS ? await env.FOLLOWERS.get(FB_TOKEN_KEY) : null;
+  if (saved) {
+    const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: saved }),
+    });
+    if (res.ok) return (await res.json()).id_token;
+    // token ใช้ไม่ได้แล้ว (ผู้ใช้ถูกลบ / เพิกถอน) → ตกไปสมัครใหม่ข้างล่าง
+  }
+
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${key}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ returnSecureToken: true }),
+  });
+  if (!res.ok) throw new Error(`Firebase anon sign-in failed (${res.status})`);
+  const data = await res.json();
+  if (env.FOLLOWERS && data.refreshToken) await env.FOLLOWERS.put(FB_TOKEN_KEY, data.refreshToken);
+  return data.idToken;
+}
+
+// แปลงค่าหนึ่งช่องของ Firestore REST (มันห่อ type ไว้ทุกค่า) ให้เป็นค่า JS ปกติ
+function fsValue(v) {
+  if (!v || typeof v !== 'object') return v;
+  if ('stringValue' in v) return v.stringValue;
+  if ('integerValue' in v) return Number(v.integerValue);
+  if ('doubleValue' in v) return Number(v.doubleValue);
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('timestampValue' in v) return v.timestampValue;
+  if ('nullValue' in v) return null;
+  if ('arrayValue' in v) return (v.arrayValue.values || []).map(fsValue);
+  if ('mapValue' in v) return fsDoc(v.mapValue);
+  return null;
+}
+
+function fsDoc(doc) {
+  const out = {};
+  for (const [k, v] of Object.entries(doc?.fields || {})) out[k] = fsValue(v);
+  return out;
+}
+
+function fsBase(env) {
+  const project = env.FIREBASE_PROJECT_ID || 'siwarapos';
+  const appId = env.POS_APP_ID || 'siwara-pos-v1';
+  return `https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents`
+    + `/artifacts/${appId}/public/data`;
+}
+
+/** วันที่แบบ YYYY-MM-DD ตามเวลาไทย — ต้องตรงกับที่ getISODate() ฝั่งแอปเขียนลงฟิลด์ `date` */
+function bangkokISODate(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now);
+}
+
+function thaiDateLabel(now = new Date()) {
+  return new Intl.DateTimeFormat('th-TH', {
+    timeZone: 'Asia/Bangkok', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+  }).format(now);
+}
+
+async function buildDailyReport(env) {
+  const token = await getFirebaseIdToken(env);
+  const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const today = bangkokISODate();
+
+  const qRes = await fetch(`${fsBase(env)}:runQuery`, {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: 'orders' }],
+        where: {
+          fieldFilter: { field: { fieldPath: 'date' }, op: 'EQUAL', value: { stringValue: today } },
+        },
+        limit: 500,
+      },
+    }),
+  });
+  if (!qRes.ok) throw new Error(`Firestore query failed (${qRes.status})`);
+  const orders = (await qRes.json()).filter((r) => r.document).map((r) => fsDoc(r.document));
+
+  // นับเฉพาะบิลที่ปิดแล้ว · บิลที่ยกเลิกหรือค้างอยู่ไม่ใช่ยอดขาย
+  const done = orders.filter((o) => o.status === 'completed');
+  const revenue = done.reduce((s, o) => s + (Number(o.total) || 0), 0);
+  const qrCount = done.filter((o) => o.source === 'qr').length;
+
+  const tally = new Map();
+  for (const o of done) {
+    for (const it of o.items || []) {
+      const name = it?.name;
+      if (!name) continue;
+      tally.set(name, (tally.get(name) || 0) + (Number(it.quantity) || 0));
+    }
+  }
+  const top = [...tally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+  const sRes = await fetch(`${fsBase(env)}/stock?pageSize=300`, { headers: auth });
+  const stock = sRes.ok ? (((await sRes.json()).documents) || []).map(fsDoc) : [];
+  // ขาดหนักสุดขึ้นก่อน · ของที่ติดลบคือถูกตัดออกมากกว่าที่เคยรับเข้า ต้องเห็นเป็นอันดับแรก
+  const lowAll = stock
+    .filter((s) => Number(s.quantity) <= Number(s.minQuantity))
+    .sort((a, b) => (Number(a.quantity) - Number(a.minQuantity)) - (Number(b.quantity) - Number(b.minQuantity)));
+  const low = lowAll.slice(0, 6);
+
+  const lines = [
+    `สรุปวันนี้ · ${thaiDateLabel()}`,
+    '',
+    `ยอดขาย ฿${Math.round(revenue).toLocaleString('en-US')} · ${done.length} บิล`,
+  ];
+  if (done.length) lines.push(`สั่งผ่าน QR ${qrCount} บิล · หน้าร้าน ${done.length - qrCount} บิล`);
+  if (orders.length > done.length) lines.push(`(ยังไม่ปิดบิล ${orders.length - done.length} รายการ)`);
+
+  if (top.length) {
+    lines.push('', 'ขายดีวันนี้');
+    top.forEach(([name, qty], i) => lines.push(`${i + 1}. ${name} x${qty}`));
+  }
+
+  if (low.length) {
+    lines.push('', 'ของใกล้หมด');
+    for (const s of low) {
+      const qty = Number(s.quantity) || 0;
+      const unit = s.unit || '';
+      // ติดลบ = ตัดสต๊อกออกมากกว่าที่รับเข้า แปลว่ายอดในระบบไม่ตรงของจริง ไม่ใช่แค่ของใกล้หมด
+      const amount = qty < 0 ? `ติดลบ ${Math.abs(qty)} ${unit}` : `เหลือ ${qty} ${unit}`;
+      lines.push(`· ${s.name} ${amount}`.replace(/\s+/g, ' ').trim());
+    }
+    if (lowAll.length > low.length) lines.push(`· และอีก ${lowAll.length - low.length} รายการ`);
+  }
+
+  return { text: lines.join('\n').slice(0, 5000), orderCount: orders.length, lowCount: lowAll.length };
+}
+
+async function sendDailyReport(env) {
+  const report = await buildDailyReport(env);
+
+  // ไม่มีออเดอร์และไม่มีของใกล้หมด = วันปิดร้าน ไม่ต้องเปลืองโควตาส่งข้อความเปล่า
+  if (report.orderCount === 0 && report.lowCount === 0) return { skipped: true };
+
+  // ส่งรายงานไปที่เดียวได้ (เจ้าของร้าน) เพื่อประหยัดโควตา — โควตา LINE นับรายหัว
+  // ในกลุ่ม เลยตั้ง LINE_REPORT_TARGET_ID แยกจากกลุ่มแจ้งเตือนออเดอร์ได้
+  const to = (env.LINE_REPORT_TARGET_ID || env.LINE_TARGET_ID || '').split(',')[0].trim();
+  if (!to) return { skipped: true, reason: 'no target' };
+
+  const token = await getLineAccessToken(env);
+  const res = await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ to, messages: [{ type: 'text', text: report.text }] }),
+  });
+  return { sent: res.ok, status: res.status, text: report.text };
+}
+
 export default {
+  // Cron ตาม [triggers] ใน wrangler.toml
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(sendDailyReport(env).catch((e) => console.error('daily report failed:', e.message)));
+  },
+
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
     const headers = corsHeaders(origin);
@@ -513,6 +687,24 @@ export default {
     }
     if (pathname.endsWith('/followers')) {
       return handleFollowers(request, env, headers);
+    }
+    // ยิงรายงานเองได้ทันทีโดยไม่ต้องรอ cron · `{"dryRun":true}` = ดูข้อความเฉยๆ ไม่ส่งจริง
+    if (pathname.endsWith('/report')) {
+      const expected = env.NOTIFY_SHARED_SECRET;
+      const provided = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+      if (!expected || provided !== expected) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401, headers });
+      }
+      const body = await request.json().catch(() => ({}));
+      try {
+        if (body.dryRun) {
+          const r = await buildDailyReport(env);
+          return Response.json({ dryRun: true, ...r }, { status: 200, headers });
+        }
+        return Response.json(await sendDailyReport(env), { status: 200, headers });
+      } catch (e) {
+        return Response.json({ error: e.message }, { status: 502, headers });
+      }
     }
     if (pathname.endsWith('/notify')) {
       return handleNotify(request, env, headers);

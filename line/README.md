@@ -82,6 +82,34 @@ python line/followers.py
 จะไม่มีทางรู้ชื่อ · ถ้าอยากได้ครบจริงต้องสมัคร verified account (ฟรี ทำใน OA Manager)
 แล้วค่อยเรียก `followers/ids` ทีเดียว
 
+## สรุปยอดขายเข้าไลน์ทุกเย็น
+
+Cron ใน `api-proxy/wrangler.toml` (`30 10 * * *` = **17:30 น. ไทย** · Cloudflare ใช้ UTC เสมอ
+ไม่มีให้ตั้ง timezone) → worker อ่าน Firestore แล้ว push สรุปเข้าไลน์เอง ไม่ต้องเปิดคอมทิ้งไว้
+
+ในรายงานมี: ยอดขาย + จำนวนบิลที่ปิดแล้ว · แยก QR กับหน้าร้าน · บิลที่ยังไม่ปิด ·
+เมนูขายดี 3 อันดับ · ของที่ `quantity <= minQuantity`
+
+**วันที่ไม่มีออเดอร์และไม่มีของใกล้หมดจะไม่ส่ง** (วันจันทร์ร้านปิด) ไม่เปลืองโควตา
+
+ยิงเองได้ทุกเมื่อ · `dryRun` = เห็นข้อความโดยไม่ส่งจริง:
+
+```
+curl -X POST https://pos-gemini-proxy.siwatid-99.workers.dev/report \
+  -H "Authorization: Bearer <NOTIFY_SHARED_SECRET>" \
+  -H "Content-Type: application/json" -d '{"dryRun":true}'
+```
+
+**ปลายทาง:** `LINE_REPORT_TARGET_ID` ถ้าตั้งไว้ ไม่งั้นใช้ตัวแรกของ `LINE_TARGET_ID` ·
+แยกกันได้เพราะโควตานับรายหัว ส่งเข้ากลุ่ม 3 คน = 3 ครั้ง/วัน = 90 ครั้ง/เดือน
+แต่ส่งหาเจ้าของคนเดียว = 30 ครั้ง/เดือน เหลือโควตาให้แจ้งเตือนออเดอร์เยอะกว่า
+
+**การอ่าน Firestore:** ใช้ Anonymous Auth ตัวเดียวกับที่แอปใช้ (กติกาใน `firestore.rules`
+ต้องการแค่ `request.auth != null`) ไม่ต้องมี service account · refresh token เก็บใน KV
+คีย์ `__firebase_refresh_token` แล้วใช้ซ้ำ ไม่งั้นจะมีผู้ใช้นิรนามงอกวันละคนใน Firebase Auth
+
+secrets ที่ต้องมี: `FIREBASE_API_KEY` · `FIREBASE_PROJECT_ID` · `POS_APP_ID`
+
 ## Webhook
 
 `https://pos-gemini-proxy.siwatid-99.workers.dev/webhook` · ตรวจลายเซ็น HMAC-SHA256 ด้วย

@@ -10,3 +10,8 @@ compatibility_date = "2024-12-01"
 [[kv_namespaces]]
 binding = "FOLLOWERS"
 id = "50d240ee281745b5b9825dc248632645"
+
+# สรุปยอดขายเข้าไลน์ · 10:30 UTC = 17:30 น. ไทย (ร้านปิด 17:00)
+# cron ของ Cloudflare เป็น UTC เสมอ ไม่มีให้ตั้ง timezone
+[triggers]
+crons = ["30 10 * * *"]
