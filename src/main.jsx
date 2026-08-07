@@ -7,11 +7,14 @@ import './index.css'
 // in the full admin/POS bundle (and vice versa).
 const App = lazy(() => import('./App.jsx'))
 const CustomerOrderApp = lazy(() => import('./customer/CustomerOrderApp.jsx'))
+const MemberCardApp = lazy(() => import('./customer/MemberCardApp.jsx'))
 
 // Simple path-based routing without a router library (project convention: no router).
 // The shop-wide QR code points to "/order" → render the customer self-ordering page.
+// The LINE rich menu's "สะสมแต้ม" button points to "/member" → member points card.
 const pathname = window.location.pathname.replace(/\/+$/, '') || '/'
 const isCustomerOrder = pathname === '/order'
+const isMemberCard = pathname === '/member'
 
 // Register Service Worker for PWA
 if ('serviceWorker' in navigator) {
@@ -47,7 +50,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ToastProvider>
       <Suspense fallback={Fallback}>
-        {isCustomerOrder ? <CustomerOrderApp /> : <App />}
+        {isMemberCard ? <MemberCardApp /> : isCustomerOrder ? <CustomerOrderApp /> : <App />}
       </Suspense>
     </ToastProvider>
   </React.StrictMode>,
