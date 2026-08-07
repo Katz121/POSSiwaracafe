@@ -49,7 +49,9 @@ SITE = "https://www.siwara.cafe"
 MENU = f"{SITE}/#menu"
 STORY = f"{SITE}/#cafe"
 CAKE = f"{SITE}/cake"
-MAPS = "https://www.google.com/maps?cid=7760266159917202208"
+# ใช้พิกัดตรงๆ แทน cid · cid ที่เคยใช้ชี้ผิดจุด ส่วนพิกัดนี้เอามาจากแผนที่ฝังในเว็บร้านเอง
+# (maps.google.com/maps?q=8.8332284,98.3626267 ใน index.html ของ siwara.cafe)
+MAPS = "https://www.google.com/maps/search/?api=1&query=8.8332284,98.3626267"
 
 W, H = 2500, 1686
 CW, CH = 833, 843  # ช่องละ 1/3 กว้าง · ครึ่งสูง (ช่องขวาสุดกว้าง 834 ให้เต็มพอดี)

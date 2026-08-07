@@ -33,6 +33,7 @@ import { AppProvider } from './context/AppContext';
 
 // Hooks & Services
 import useKeyboardShortcuts, { KeyboardShortcutsHelp } from './hooks/useKeyboardShortcuts.jsx';
+import NewOrderAlert from './components/NewOrderAlert';
 import useDarkMode from './hooks/useDarkMode';
 import { getISODate } from './utils/calculations';
 
@@ -584,6 +585,9 @@ export default function App() {
             <button onClick={() => setErrorMessage('')} aria-label="ปิดข้อความ" className="ml-4 opacity-70 hover:opacity-100">✕</button>
           </div>
         )}
+
+        {/* แจ้งเตือนออเดอร์ QR ในเครื่อง · ไม่กินโควตาข้อความของ LINE (ดู line/README.md) */}
+        <NewOrderAlert orders={orders} />
 
         {/* View Router - Lazy Loaded with Suspense + Error Boundary */}
         <ErrorBoundary>

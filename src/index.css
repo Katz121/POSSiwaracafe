@@ -271,6 +271,20 @@ html.dark {
   .animate-marquee { animation: none; }
 }
 
+/* ป้ายเตือนออเดอร์ QR เข้าใหม่ · เด้งสั้นๆ ครั้งเดียวให้สะดุดตา แล้วอยู่นิ่ง
+   ไม่กระพริบค้าง เพราะป้ายค้างอยู่จนกว่าจะกดปิด */
+@keyframes drop-in {
+  0%   { transform: translateY(-120%) scale(.96); opacity: 0; }
+  60%  { transform: translateY(6%) scale(1.02); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.animate-bounce-once {
+  animation: drop-in .42s cubic-bezier(.22,1.2,.36,1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-bounce-once { animation: none; }
+}
+
 /* ============================================================
    RESPONSIVE FONT SCALING
    ============================================================ */
