@@ -141,7 +141,13 @@ async function getLineAccessToken(env) {
  * Cloud Function) and/or add Cloudflare Rate Limiting on this route.
  */
 async function handleNotify(request, env, headers) {
-  const to = env.LINE_TARGET_ID; // optional: set => push to one userId/groupId; unset => broadcast
+  // LINE_TARGET_ID รับได้ทั้ง id เดียวและหลาย id คั่นด้วยจุลภาค
+  // (เช่น เจ้าของร้าน + คนหน้าบาร์) · หลายคน => multicast
+  const targets = (env.LINE_TARGET_ID || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const to = targets[0];
   const hasAuth = env.LINE_CHANNEL_TOKEN || (env.LINE_CHANNEL_ID && env.LINE_CHANNEL_SECRET);
   if (!hasAuth) {
     return Response.json(
@@ -189,18 +195,25 @@ async function handleNotify(request, env, headers) {
 
   try {
     const token = await getLineAccessToken(env);
-    // With LINE_TARGET_ID -> push to that user/group; without -> broadcast to all OA friends.
-    const endpoint = to
-      ? 'https://api.line.me/v2/bot/message/push'
-      : 'https://api.line.me/v2/bot/message/broadcast';
     const messages = [{ type: 'text', text }];
+    // หลายปลายทาง -> multicast · ปลายทางเดียว (userId หรือ groupId) -> push
+    // · ไม่มีเลย -> broadcast (ต้องเปิด LINE_ALLOW_BROADCAST เองเท่านั้น ดูด้านบน)
+    let endpoint = 'https://api.line.me/v2/bot/message/broadcast';
+    let payload = { messages };
+    if (targets.length > 1) {
+      endpoint = 'https://api.line.me/v2/bot/message/multicast';
+      payload = { to: targets, messages };
+    } else if (to) {
+      endpoint = 'https://api.line.me/v2/bot/message/push';
+      payload = { to, messages };
+    }
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(to ? { to, messages } : { messages }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
