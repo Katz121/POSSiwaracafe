@@ -202,6 +202,79 @@ async function handleNotify(request, env, headers) {
   }
 }
 
+/**
+ * LINE webhook. Exists for ONE job: let the shop read the LINE id it should be
+ * notified at (see LINE_TARGET_ID). Without it, /notify falls back to
+ * `broadcast`, which fans every new-order alert out to EVERY follower of the
+ * OA — fine while the only followers are staff, wrong the moment a customer
+ * adds the account.
+ *
+ * How to use: from the LINE chat (or a group the OA is in) send the word
+ * `myid`. The bot replies with the userId / groupId to put in LINE_TARGET_ID:
+ *   wrangler secret put LINE_TARGET_ID
+ * Any other message is ignored (200 OK) so the OA keeps behaving like a normal
+ * manual-reply account.
+ *
+ * Every webhook call is signature-verified with the channel secret — LINE signs
+ * the raw body with HMAC-SHA256, so a forged call can't make the bot speak.
+ */
+async function verifyLineSignature(secret, rawBody, signature) {
+  if (!signature) return false;
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody));
+  const expected = btoa(String.fromCharCode(...new Uint8Array(mac)));
+  // Constant-time-ish compare: same length + XOR accumulate, no early return.
+  if (expected.length !== signature.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+  return diff === 0;
+}
+
+async function handleWebhook(request, env) {
+  const secret = env.LINE_CHANNEL_SECRET;
+  if (!secret) return new Response('OK', { status: 200 });
+
+  const raw = await request.text();
+  const ok = await verifyLineSignature(secret, raw, request.headers.get('x-line-signature'));
+  // Bad signature => not from LINE. Say nothing about why.
+  if (!ok) return new Response('Forbidden', { status: 403 });
+
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return new Response('OK', { status: 200 });
+  }
+
+  for (const ev of payload.events || []) {
+    const text = ev?.message?.text?.trim().toLowerCase();
+    if (ev.type !== 'message' || text !== 'myid') continue;
+
+    const src = ev.source || {};
+    const id = src.groupId || src.roomId || src.userId || '(ไม่พบ id)';
+    const kind = src.groupId ? 'groupId' : src.roomId ? 'roomId' : 'userId';
+    try {
+      const token = await getLineAccessToken(env);
+      await fetch('https://api.line.me/v2/bot/message/reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          replyToken: ev.replyToken,
+          messages: [{ type: 'text', text: `${kind}\n${id}\n\nเอาไปตั้งเป็น LINE_TARGET_ID บน Worker` }],
+        }),
+      });
+    } catch {
+      // Best effort — never fail the webhook, LINE retries and disables noisy endpoints.
+    }
+  }
+
+  // LINE requires a fast 200 no matter what happened above.
+  return new Response('OK', { status: 200 });
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -222,6 +295,9 @@ export default {
 
     // Route: LINE notification
     const pathname = new URL(request.url).pathname.replace(/\/+$/, '');
+    if (pathname.endsWith('/webhook')) {
+      return handleWebhook(request, env);
+    }
     if (pathname.endsWith('/notify')) {
       return handleNotify(request, env, headers);
     }
