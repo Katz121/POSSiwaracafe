@@ -345,6 +345,96 @@ async function handleFollowers(request, env, headers) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// ทักทาย + ตอบกลับอัตโนมัติ
+//
+// LINE ไม่เปิด API ให้ตั้ง greeting/auto-reply ของ OA Manager เลยทำเองตรงนี้แทน
+// **ข้อความแบบ reply ไม่นับโควตา 300 ข้อความ/เดือน** (LINE นับเฉพาะ push/multicast/
+// broadcast) ตอบเท่าไหร่ก็ได้ ไม่กระทบแจ้งเตือนออเดอร์
+//
+// ข้อมูลร้านทุกบรรทัดตรงกับ JSON-LD + FAQ ในเว็บ siwara.cafe · แก้ที่ไหนต้องแก้ให้ครบทั้งคู่
+// ⚠️ ถ้าไปตั้ง auto-reply ใน OA Manager ด้วย ลูกค้าจะโดนตอบซ้ำสองครั้ง เลือกทางเดียว
+// ---------------------------------------------------------------------------
+const HOURS = 'เปิดอังคาร - อาทิตย์ 10:00 - 17:00 น. (ปิดวันจันทร์)';
+
+const GREETING = `สวัสดีค่ะ ยินดีต้อนรับสู่ Siwara Cafe
+คาเฟ่ในบ้านไม้สักเก่าเกือบร้อยปี ย่านเมืองเก่าตะกั่วป่า
+
+${HOURS}
+
+กดเมนูด้านล่างได้เลยค่ะ
+· สั่งล่วงหน้า แล้วแวะมารับ ไม่ต้องยืนรอ
+· เช็คแต้มสะสมของตัวเอง แค่กรอกเบอร์
+· ดูเมนู ราคา และเค้กสั่งทำ
+· แผนที่ร้าน กดแล้วนำทางได้ทันที
+
+อยากถามอะไรพิมพ์ทิ้งไว้ได้เลยค่ะ เดี๋ยวเราตอบให้`;
+
+// เรียงจากเฉพาะเจาะจงไปกว้าง · ตัวแรกที่ตรงคือตัวที่ตอบ
+const AUTO_REPLIES = [
+  {
+    keys: ['กี่โมง', 'เปิดกี่', 'ปิดกี่', 'เวลาเปิด', 'เวลาปิด', 'วันไหน', 'เปิดวัน', 'ปิดวัน', 'เปิดมั้ย', 'เปิดไหม'],
+    text: `ร้าน${HOURS} ค่ะ\n\nกดเมนู "แผนที่ร้าน" ด้านล่างแล้วนำทางมาได้เลยค่ะ`,
+  },
+  {
+    keys: ['แต้ม', 'สะสม', 'สมาชิก', 'ส่วนลด'],
+    text: 'กดเมนู "สะสมแต้ม" ด้านล่าง แล้วกรอกเบอร์โทร\n'
+      + 'จะเห็นแต้มของตัวเองทันทีค่ะ ไม่ต้องรอเราตอบ\n\n'
+      + 'แต้มผูกกับเบอร์โทร สั่งครั้งไหนใส่เบอร์เดิม แต้มเก็บต่อให้เอง\n'
+      + 'พอครบตามเกณฑ์ก็แลกเป็นส่วนลดได้เลยค่ะ',
+  },
+  {
+    keys: ['เค้ก', 'วันเกิด', 'เบรค', 'เบรก', 'สแน็ค', 'snack'],
+    text: 'เค้กมีทั้งแบบพร้อมรับหน้าร้านและแบบสั่งทำค่ะ\n'
+      + 'รับจัดเบรค สแน็คบ็อกซ์ และเค้กวันเกิดด้วย\n\n'
+      + 'ดูแบบทั้งหมดที่เมนู "เค้กสั่งทำ" ด้านล่าง\n'
+      + 'ถูกใจแบบไหน ส่งรูปมาในแชทนี้พร้อมวันที่อยากได้ เดี๋ยวเราเช็คคิวให้ค่ะ',
+  },
+  {
+    keys: ['จอดรถ', 'ที่จอด'],
+    text: 'มีลานจอดรถหน้าร้านค่ะ\nถ้าเต็มจอดริมถนนย่านเมืองเก่าได้เหมือนกัน',
+  },
+  {
+    keys: ['สั่ง', 'พรีออเดอร์', 'จอง', 'order'],
+    text: 'สั่งล่วงหน้าได้ที่เมนู "สั่งล่วงหน้า" ด้านล่างเลยค่ะ\n'
+      + 'เลือกเมนู ใส่เบอร์โทร แล้วกดสั่ง ทางร้านได้รับออเดอร์ทันที\n'
+      + 'พอถึงร้านแจ้งชื่อหรือเบอร์ที่สั่งไว้ได้เลย\n\n'
+      + 'ใส่เบอร์โทรทุกครั้งนะคะ ระบบจะสะสมแต้มให้อัตโนมัติ',
+  },
+  {
+    keys: ['ที่ไหน', 'แผนที่', 'ไปยังไง', 'พิกัด', 'ที่อยู่', 'เบอร์โทร', 'โทร'],
+    text: '53 ถนนราษฎร์บำรุง ตะกั่วป่า พังงา 82110 ค่ะ\n'
+      + 'กดเมนู "แผนที่ร้าน" ด้านล่างแล้วนำทางได้ทันที\n\n'
+      + 'โทรสอบถามได้ที่ 097-350-1514',
+  },
+  {
+    keys: ['wifi', 'ไวไฟ', 'นั่งทำงาน', 'ปลั๊ก', 'บอร์ดเกม'],
+    text: 'นั่งทำงานได้สบายค่ะ ร้านเงียบ มีมุมนั่งหลายแบบ\n'
+      + 'มีบอร์ดเกมให้เล่นด้วยถ้ามากันหลายคน',
+  },
+];
+
+function matchAutoReply(text) {
+  const t = (text || '').toLowerCase();
+  for (const rule of AUTO_REPLIES) {
+    if (rule.keys.some((k) => t.includes(k))) return rule.text;
+  }
+  return null;
+}
+
+async function replyToLine(env, replyToken, text) {
+  try {
+    const token = await getLineAccessToken(env);
+    await fetch('https://api.line.me/v2/bot/message/reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ replyToken, messages: [{ type: 'text', text }] }),
+    });
+  } catch {
+    // Best effort — never fail the webhook, LINE retries and disables noisy endpoints.
+  }
+}
+
 async function handleWebhook(request, env) {
   const secret = env.LINE_CHANNEL_SECRET;
   if (!secret) return new Response('OK', { status: 200 });
@@ -364,25 +454,30 @@ async function handleWebhook(request, env) {
   for (const ev of payload.events || []) {
     await recordFollower(ev, env);
 
-    const text = ev?.message?.text?.trim().toLowerCase();
-    if (ev.type !== 'message' || text !== 'myid') continue;
-
-    const src = ev.source || {};
-    const id = src.groupId || src.roomId || src.userId || '(ไม่พบ id)';
-    const kind = src.groupId ? 'groupId' : src.roomId ? 'roomId' : 'userId';
-    try {
-      const token = await getLineAccessToken(env);
-      await fetch('https://api.line.me/v2/bot/message/reply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          replyToken: ev.replyToken,
-          messages: [{ type: 'text', text: `${kind}\n${id}\n\nเอาไปตั้งเป็น LINE_TARGET_ID บน Worker` }],
-        }),
-      });
-    } catch {
-      // Best effort — never fail the webhook, LINE retries and disables noisy endpoints.
+    // คนเพิ่งกดเพิ่มเพื่อน → ทักทาย + ชี้ทางว่ากดอะไรได้บ้าง
+    if (ev.type === 'follow' && ev.replyToken) {
+      await replyToLine(env, ev.replyToken, GREETING);
+      continue;
     }
+
+    if (ev.type !== 'message' || ev.message?.type !== 'text' || !ev.replyToken) continue;
+    const raw = ev.message.text.trim();
+
+    // `myid` = เครื่องมือของร้าน ไม่ใช่ข้อความลูกค้า เลยเช็คก่อนกฎอื่น
+    if (raw.toLowerCase() === 'myid') {
+      const src = ev.source || {};
+      const id = src.groupId || src.roomId || src.userId || '(ไม่พบ id)';
+      const kind = src.groupId ? 'groupId' : src.roomId ? 'roomId' : 'userId';
+      await replyToLine(env, ev.replyToken, `${kind}\n${id}\n\nเอาไปตั้งเป็น LINE_TARGET_ID บน Worker`);
+      continue;
+    }
+
+    // ตอบอัตโนมัติเฉพาะแชทเดี่ยว · ในกลุ่มแจ้งเตือนออเดอร์ของร้าน บอทต้องเงียบ
+    // ไม่งั้นพนักงานคุยกันแล้วบอทเด้งขึ้นมาแทรกทุกครั้งที่มีคำว่า "สั่ง"
+    if (ev.source?.type !== 'user') continue;
+
+    const answer = matchAutoReply(raw);
+    if (answer) await replyToLine(env, ev.replyToken, answer);
   }
 
   // LINE requires a fast 200 no matter what happened above.
