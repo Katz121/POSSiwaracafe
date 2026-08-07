@@ -45,6 +45,7 @@ TOKEN = issue_token()
 
 # ปลายทางจริงทั้งหมด (เช็คแล้วว่าเปิดได้ 2026-08-07)
 ORDER = "https://possiwaracafe.pages.dev/order"          # หน้าสั่งเองของลูกค้า (เดียวกับที่ QR ในร้านชี้ไป)
+MEMBER = "https://possiwaracafe.pages.dev/member"        # บัตรสมาชิก ลูกค้ากรอกเบอร์เช็คแต้มเอง
 SITE = "https://www.siwara.cafe"
 MENU = f"{SITE}/#menu"
 STORY = f"{SITE}/#cafe"
@@ -63,8 +64,7 @@ CW, CH = 833, 843  # ช่องละ 1/3 กว้าง · ครึ่ง�
 ACTIONS = [
     ("สั่งล่วงหน้า", {"type": "uri", "uri": ORDER}),
     ("เมนู & ราคา", {"type": "uri", "uri": MENU}),
-    # ยังไม่มีหน้าเช็คแต้มของลูกค้า (แต้มผูกกับเบอร์ในระบบหลังร้าน) · ให้ส่งข้อความเข้าแชทไปก่อน
-    ("สะสมแต้ม", {"type": "message", "text": "ขอเช็คแต้มสะสมหน่อยค่ะ/ครับ"}),
+    ("สะสมแต้ม", {"type": "uri", "uri": MEMBER}),
     ("เค้กสั่งทำ", {"type": "uri", "uri": CAKE}),
     ("แผนที่ร้าน", {"type": "uri", "uri": MAPS}),
     ("เรื่องเล่าบ้านไม้", {"type": "uri", "uri": STORY}),

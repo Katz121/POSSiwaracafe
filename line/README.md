@@ -1,6 +1,10 @@
-# LINE OA ของร้าน · Siwara Cafe (@639gyrjn)
+# LINE OA ของร้าน · Siwara Cafe (@siwara)
 
-สถานะ ณ 2026-08-07 · channel id `2007854865` · แพ็กฟรี (ส่งข้อความได้ 300 ครั้ง/เดือน)
+สถานะ ณ 2026-08-07 · channel id `2007854865` · basic id `@639gyrjn` · premium id `@siwara`
+· แพ็กฟรี (ส่งข้อความได้ 300 ครั้ง/เดือน)
+
+**@siwara คือ premium id (ไอดีที่ซื้อมา) ไม่ใช่การยืนยันบัญชี** — ยังเรียก
+`followers/ids` ไม่ได้ ยังต้องสมัคร verified account แยกถ้าอยากได้รายชื่อผู้ติดตามครบ
 
 ## ตอนนี้มีอะไรทำงานอยู่บ้าง
 
@@ -96,10 +100,18 @@ curl -X PUT https://api.line.me/v2/bot/channel/webhook/endpoint \
 LINE ให้ตั้ง webhook ได้ URL เดียวต่อ channel · ถ้าอยากใช้ทั้ง n8n และ worker ต้องให้ตัวหนึ่ง
 forward ต่อให้อีกตัว
 
+## บัตรสมาชิก
+
+ช่อง "สะสมแต้ม" เปิด `https://possiwaracafe.pages.dev/member` · ลูกค้ากรอกเบอร์แล้วเห็นแต้ม
+ตัวเองทันที (โค้ดที่ `src/customer/MemberCardApp.jsx` · route ใน `src/main.jsx`)
+
+ยังไม่ใช้ LIFF เพราะ LIFF ต้องผูกกับ **LINE Login channel** ซึ่งร้านยังไม่มี (ตอนนี้มีแต่
+Messaging API channel) · ถ้าจะทำต้องสร้าง channel ใหม่ใน LINE Developers console ก่อน
+
 ## ที่ยังไม่ได้ทำ (เรียงตามผลที่ได้)
 
-1. **LIFF บัตรสมาชิก** · ลูกค้ากดช่อง "สะสมแต้ม" แล้วเห็นแต้มตัวเองเลย แทนที่จะพิมพ์ถามแล้วรอตอบ
-   (แต้มผูกกับเบอร์ตามกติกาใน `src/config/constants.js` · เบอร์ = ตัวตนสมาชิก)
-2. **แจ้งลูกค้าเมื่อเครื่องดื่มเสร็จ** · ต้องรู้ LINE userId ของคนสั่ง แปลว่าหน้า `/order` ต้องเปิด
-   ผ่าน LIFF ไม่ใช่เว็บเปล่า แล้ว push ตอนกดเสร็จในหน้าบาริสต้า
-3. **Greeting + auto-reply** · ทำใน OA Manager (ไม่มี API) · auto-reply ไม่กินโควตาส่งข้อความ
+1. **Greeting + auto-reply** · ข้อความพร้อมแล้วใน `oa-manager-texts.md`
+   ต้องก๊อปวางใน OA Manager เอง (ไม่มี API) · ไม่กินโควตาส่งข้อความ
+2. **สมัคร verified account** · ฟรี · ได้รายชื่อผู้ติดตามครบ + ค้นหาเจอในไลน์
+3. **แจ้งลูกค้าเมื่อเครื่องดื่มเสร็จ** · ต้องรู้ LINE userId ของคนสั่ง แปลว่าหน้า `/order` ต้องเปิด
+   ผ่าน LIFF (ข้อ 0: ต้องมี LINE Login channel ก่อน) แล้ว push ตอนกดเสร็จในหน้าบาริสต้า
