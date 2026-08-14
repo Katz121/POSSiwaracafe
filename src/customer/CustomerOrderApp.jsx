@@ -42,7 +42,7 @@ import {
 import { auth, db, appId } from '../services/firebase';
 import { fetchPublicMenu, readCachedPublicMenu, writeCachedPublicMenu, SENSITIVE_SETTINGS_KEYS } from '../utils/publicMenu';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
-import { formatCurrency, VAT_RATE, roundUpTo5, getModifierGroups, isBaseModifier, computeModifierPrice, MEMBER_MIN_PHONE_LENGTH, ALLOW_NAME_ONLY_MEMBERS } from '../config/constants';
+import { formatCurrency, VAT_RATE, roundUpTo5, getModifierGroups, isBaseModifier, computeModifierPrice, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH, ALLOW_NAME_ONLY_MEMBERS } from '../config/constants';
 import { getISODate } from '../utils/calculations';
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
@@ -103,6 +103,7 @@ const TX = {
     addToCart: 'เพิ่มลงตะกร้า',
     chooseAllGroups: 'เลือกให้ครบทุกกลุ่ม',
     sweetness: 'ระดับความหวาน',
+    milkType: 'ชนิดนม',
     cancel: 'ยกเลิก',
     chooseOptionFor: 'เลือกตัวเลือกสำหรับ',
     confirmOrder: 'ยืนยันออเดอร์',
@@ -187,6 +188,7 @@ const TX = {
     addToCart: 'Add to cart',
     chooseAllGroups: 'Select all groups',
     sweetness: 'Sweetness level',
+    milkType: 'Milk',
     cancel: 'Cancel',
     chooseOptionFor: 'Choose options for',
     confirmOrder: 'Confirm order',
@@ -546,6 +548,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
   // เลือกตัวเลือกต่อกลุ่ม (เช่น { 'ส้ม': mod, 'เมล็ดกาแฟ': mod })
   const [selections, setSelections] = useState({});
   const [sweetness, setSweetness] = useState(100);
+  const [milkType, setMilkType] = useState('cow');
   // เคลียร์ตัวเลือกทุกครั้งที่เปิดเมนูใหม่ หรือเปิด modal ขึ้นมาใหม่ (แม้เป็นเมนูเดิม)
   // (ปรับ state ตอน render ตามแนวทาง React)
   const [lastItemId, setLastItemId] = useState(item?.id);
@@ -558,6 +561,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
     if (itemChanged || justOpened) {
       setSelections({});
       setSweetness(100);
+      setMilkType('cow');
     }
   }
 
@@ -584,6 +588,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
   const chosenMods = groups.map((g) => selections[g.name]).filter(Boolean);
   const previewPrice = item ? computeModifierPrice(item, chosenMods) : 0;
   const showSweetness = item && !isCakeCategory(item.category);
+  const showMilkChoice = supportsMilkChoice(item);
   const needsConfirmButton = showSweetness || multi;
 
   return (
@@ -600,7 +605,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
               <span className="font-bold text-lg text-emerald-600">{formatCurrency(previewPrice)}</span>
             </div>
             <Button variant="primary" size="lg" fullWidth disabled={!allChosen} noUppercase
-              onClick={() => onSelect(item, chosenMods, sweetness)}>
+              onClick={() => onSelect(item, chosenMods, sweetness, showMilkChoice ? milkType : null)}>
               {allChosen ? t('addToCart') : t('chooseAllGroups')}
             </Button>
             <Button variant="ghost" fullWidth onClick={onClose} className="text-gray-400">{t('cancel')}</Button>
@@ -648,6 +653,19 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
                   <button key={level} type="button" onClick={() => setSweetness(level)}
                     className={`min-h-[44px] rounded-xl border-2 text-xs font-bold transition-all ${sweetness === level ? 'border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-200' : 'border-gray-100 text-gray-600 hover:border-emerald-300'}`}>
                     {level}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {showMilkChoice && (
+            <div className="space-y-2">
+              <p className="text-xs font-black uppercase tracking-widest text-gray-400 ml-1">{t('milkType')}</p>
+              <div className="grid grid-cols-2 gap-2">
+                {MILK_OPTIONS.map((option) => (
+                  <button key={option.value} type="button" onClick={() => setMilkType(option.value)}
+                    className={`min-h-[48px] rounded-xl border-2 text-sm font-bold transition-all ${milkType === option.value ? 'border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-200' : 'border-gray-100 text-gray-600 hover:border-emerald-300'}`}>
+                    {option.label}
                   </button>
                 ))}
               </div>
@@ -726,7 +744,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                 cart.map((cartItem) => {
                   const id = cartItem.cartId || cartItem.id;
                   const sweetnessNote = cartItem.sweetness == null ? '' : `หวาน ${cartItem.sweetness}%`;
-                  const defaultOptionNote = [cartItem.beanModifier, sweetnessNote].filter(Boolean).join(' ');
+                  const defaultOptionNote = [cartItem.beanModifier, cartItem.milkLabel, sweetnessNote].filter(Boolean).join(' ');
                   return (
                     <div key={id} className="bg-gray-50 rounded-2xl p-3 space-y-2">
                       <div className="flex items-start gap-3">
@@ -738,6 +756,9 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                           )}
                           {cartItem.sweetness != null && (
                             <p className="text-xs text-orange-500 font-medium">{t('sweetness')}: {cartItem.sweetness}%</p>
+                          )}
+                          {cartItem.milkLabel && (
+                            <p className="text-xs text-sky-600 font-medium">{t('milkType')}: {cartItem.milkLabel}</p>
                           )}
                           <p className="text-emerald-600 font-bold text-sm mt-0.5">
                             {formatCurrency(Number(cartItem.price) * Number(cartItem.quantity))}
@@ -921,7 +942,7 @@ function CheckoutStep({
             {cart.map((cartItem) => {
               const id = cartItem.cartId || cartItem.id;
               const sweetnessNote = cartItem.sweetness == null ? '' : `หวาน ${cartItem.sweetness}%`;
-              const defaultOptionNote = [cartItem.beanModifier, sweetnessNote].filter(Boolean).join(' ');
+              const defaultOptionNote = [cartItem.beanModifier, cartItem.milkLabel, sweetnessNote].filter(Boolean).join(' ');
               return (
                 <div key={id} className="px-4 py-3 flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -931,6 +952,9 @@ function CheckoutStep({
                     )}
                     {cartItem.sweetness != null && (
                       <p className="text-xs text-orange-500">{t('sweetness')}: {cartItem.sweetness}%</p>
+                    )}
+                    {cartItem.milkLabel && (
+                      <p className="text-xs text-sky-600">{t('milkType')}: {cartItem.milkLabel}</p>
                     )}
                     {cartItem.note && cartItem.note !== defaultOptionNote && (
                       <p className="text-xs text-gray-400">{cartItem.note}</p>
@@ -1604,13 +1628,14 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   // Cart operations
   // ---------------------------------------------------------------------------
-  const addToCart = useCallback((item, modifier = null, sweetness = null) => {
+  const addToCart = useCallback((item, modifier = null, sweetness = null, milkType = null) => {
     // modifier อาจเป็นตัวเดียวหรือเป็นลิสต์ (หนึ่งตัวต่อกลุ่ม เช่น ส้ม + เมล็ดกาแฟ)
     const mods = (Array.isArray(modifier) ? modifier : [modifier]).filter(Boolean);
     const modifierName = mods.map(m => `#${m.name}`).join(' ');
     const sweetnessKey = sweetness == null ? '' : `-sweet-${sweetness}`;
+    const milkKey = milkType ? `-milk-${milkType}` : '';
     const modifierKey = mods.length ? `-${mods.map(m => m.id).join('-')}` : '';
-    const cartId = `${item.id}${modifierKey}${sweetnessKey}`;
+    const cartId = `${item.id}${modifierKey}${sweetnessKey}${milkKey}`;
     const stockLinks = mods.reduce((acc, m) => mergeStockLinks(acc, m.stockLinks || []), item.stockLinks || []);
 
     // For modifier path keep original pricing; for plain items apply sale if active
@@ -1644,7 +1669,8 @@ function CustomerOrderApp() {
 
       // Build note: for sale items append the sale tag
       const sweetnessNote = sweetness == null ? '' : `หวาน ${sweetness}%`;
-      let note = [modifierName, sweetnessNote].filter(Boolean).join(' ');
+      const milkLabel = MILK_OPTIONS.find(option => option.value === milkType)?.label || '';
+      let note = [modifierName, milkLabel, sweetnessNote].filter(Boolean).join(' ');
       if (!mods.length && saleFields.originalPrice !== undefined) {
         const sale = getItemSalePrice(item, settingsData);
         const tag = cakeSaleNoteTag(sale.percent);
@@ -1660,6 +1686,8 @@ function CustomerOrderApp() {
           ...saleFields,
           beanModifier: modifierName,
           sweetness,
+          milkType,
+          milkLabel,
           stockLinks,
           quantity: 1,
           note,
@@ -1680,8 +1708,8 @@ function CustomerOrderApp() {
     }
   }, [addToCart, beanModifiers]);
 
-  const handleBeanSelect = useCallback((item, modifiers, sweetness) => {
-    addToCart(item, modifiers, sweetness);
+  const handleBeanSelect = useCallback((item, modifiers, sweetness, milkType) => {
+    addToCart(item, modifiers, sweetness, milkType);
     setBeanModalOpen(false);
     setPendingItem(null);
   }, [addToCart]);

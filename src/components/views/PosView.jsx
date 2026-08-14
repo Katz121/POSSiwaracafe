@@ -25,6 +25,8 @@ import {
   getModifierGroups,
   isBaseModifier,
   computeModifierPrice,
+  supportsMilkChoice,
+  MILK_OPTIONS,
   MEMBER_MIN_PHONE_LENGTH,
   ALLOW_NAME_ONLY_MEMBERS
 } from '../../config/constants';
@@ -87,6 +89,7 @@ export default function PosView() {
   // ตัวเลือกที่เลือกไว้ต่อกลุ่มในป๊อปอัป (เช่น { 'ส้ม': mod, 'เมล็ดกาแฟ': mod })
   const [pendingBeanSelections, setPendingBeanSelections] = useState({});
   const [pendingSweetness, setPendingSweetness] = useState(100);
+  const [pendingMilkType, setPendingMilkType] = useState('cow');
   const [recommendations, setRecommendations] = useState([]);
   const [isRecommending, setIsRecommending] = useState(false);
   const [menuPage, setMenuPage] = useState(1);
@@ -310,6 +313,7 @@ export default function PosView() {
     if (!isCakeCategory(p.category, saleSettings) || (p.allowBeanModifier && hasOptions)) {
       setPendingBeanSelections({});
       setPendingSweetness(100);
+      setPendingMilkType('cow');
       setPendingBeanItem(p);
       return;
     }
@@ -330,7 +334,7 @@ export default function PosView() {
     });
   };
 
-  const addToCartWithBean = (item, modifiers, sweetness = null) => {
+  const addToCartWithBean = (item, modifiers, sweetness = null, milkType = null) => {
     // Accepts one modifier or a list (one per group, e.g. ส้ม + เมล็ดกาแฟ).
     // Price is additive: base = menu price, each non-base option adds its own
     // surcharge — ส้มสด 80 (ฐาน 60 → +20) บวกเมล็ดพรีเมียมต่างหาก. กลุ่มเดียว
@@ -340,7 +344,9 @@ export default function PosView() {
     const modifierName = mods.map(m => `#${m.name}`).join(' ');
     const modifierKey = mods.length ? `-${mods.map(m => m.id).join('-')}` : '';
     const sweetnessKey = sweetness == null ? '' : `-sweet-${sweetness}`;
-    const cartItemId = `${item.id}${modifierKey}${sweetnessKey}`;
+    const milkKey = milkType ? `-milk-${milkType}` : '';
+    const cartItemId = `${item.id}${modifierKey}${sweetnessKey}${milkKey}`;
+    const milkLabel = MILK_OPTIONS.find(option => option.value === milkType)?.label || '';
     const mergedStockLinks = [...(item.stockLinks || [])];
     mods.forEach(mod => (mod.stockLinks || []).forEach(link => {
       const existing = mergedStockLinks.find(l => l.stockId === link.stockId);
@@ -352,13 +358,14 @@ export default function PosView() {
       if (existing) return prev.map(c => c.cartId === cartItemId ? { ...c, quantity: c.quantity + 1 } : c);
       return [...prev, {
         ...item, cartId: cartItemId, price: finalPrice,
-        beanModifier: modifierName, sweetness, stockLinks: mergedStockLinks,
-        quantity: 1, note: [modifierName, sweetness == null ? '' : `หวาน ${sweetness}%`].filter(Boolean).join(' ')
+        beanModifier: modifierName, sweetness, milkType, milkLabel, stockLinks: mergedStockLinks,
+        quantity: 1, note: [modifierName, milkLabel, sweetness == null ? '' : `หวาน ${sweetness}%`].filter(Boolean).join(' ')
       }];
     });
     setPendingBeanItem(null);
     setPendingBeanSelections({});
     setPendingSweetness(100);
+    setPendingMilkType('cow');
   };
 
   const updateCartItemNote = (cartItemId, note) => setCart(prev => prev.map(item => (item.cartId || item.id) === cartItemId ? { ...item, note } : item));
@@ -625,6 +632,9 @@ export default function PosView() {
               )}
               {item.sweetness != null && (
                 <span className="inline-block ml-1 text-[10px] font-black text-orange-700 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/30 px-1.5 py-0.5 rounded mt-0.5">หวาน {item.sweetness}%</span>
+              )}
+              {item.milkLabel && (
+                <span className="inline-block ml-1 text-[10px] font-black text-sky-700 dark:text-sky-400 bg-sky-100 dark:bg-sky-900/30 px-1.5 py-0.5 rounded mt-0.5">{item.milkLabel}</span>
               )}
               <div className="text-xs mt-0.5 text-[var(--text-muted)] font-medium">฿{Number(item.price).toLocaleString()} / แก้ว</div>
               <div className="flex items-center gap-2 mt-2">
@@ -1217,7 +1227,7 @@ export default function PosView() {
       )}
 
       {/* Bean Modifier Selection Modal — รองรับหลายกลุ่ม (เช่น ส้ม + เมล็ดกาแฟ) */}
-      <Modal isOpen={!!pendingBeanItem} onClose={() => { setPendingBeanItem(null); setPendingBeanSelections({}); setPendingSweetness(100); }} title="เลือกตัวเลือก" size="sm">
+      <Modal isOpen={!!pendingBeanItem} onClose={() => { setPendingBeanItem(null); setPendingBeanSelections({}); setPendingSweetness(100); setPendingMilkType('cow'); }} title="เลือกตัวเลือก" size="sm">
         {pendingBeanItem && (() => {
           const itemBase = Number(pendingBeanItem.price) || 0;
           const extra = Number(pendingBeanItem.beanExtra) || 0;
@@ -1239,6 +1249,7 @@ export default function PosView() {
           const chosenMods = groups.map(g => pendingBeanSelections[g.name]).filter(Boolean);
           const previewPrice = computeModifierPrice(pendingBeanItem, chosenMods);
           const showSweetness = !isCakeCategory(pendingBeanItem.category, saleSettings);
+          const showMilkChoice = supportsMilkChoice(pendingBeanItem);
           const needsConfirmButton = showSweetness || multi;
 
           return (
@@ -1281,6 +1292,19 @@ export default function PosView() {
                   </div>
                 </div>
               )}
+              {showMilkChoice && (
+                <div className="space-y-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-[var(--text-muted)] ml-1">ชนิดนม</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {MILK_OPTIONS.map(option => (
+                      <button key={option.value} type="button" onClick={() => setPendingMilkType(option.value)}
+                        className={`min-h-[48px] rounded-xl border-2 text-sm font-black transition-all ${pendingMilkType === option.value ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] ring-2 ring-emerald-200' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-emerald-300'}`}>
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {needsConfirmButton && (
                 <>
                   <div className="flex items-center justify-between px-1 pt-1 text-[var(--text-primary)]">
@@ -1288,12 +1312,12 @@ export default function PosView() {
                     <span className="font-black text-lg text-[var(--accent-emerald)]">฿{previewPrice.toLocaleString()}</span>
                   </div>
                   <Button variant="primary" fullWidth disabled={!allChosen}
-                    onClick={() => addToCartWithBean(pendingBeanItem, chosenMods, showSweetness ? pendingSweetness : null)}>
+                    onClick={() => addToCartWithBean(pendingBeanItem, chosenMods, showSweetness ? pendingSweetness : null, showMilkChoice ? pendingMilkType : null)}>
                     {allChosen ? 'เพิ่มลงตะกร้า' : 'เลือกให้ครบทุกกลุ่ม'}
                   </Button>
                 </>
               )}
-              <Button variant="secondary" fullWidth onClick={() => { setPendingBeanItem(null); setPendingBeanSelections({}); setPendingSweetness(100); }}>ยกเลิก</Button>
+              <Button variant="secondary" fullWidth onClick={() => { setPendingBeanItem(null); setPendingBeanSelections({}); setPendingSweetness(100); setPendingMilkType('cow'); }}>ยกเลิก</Button>
             </div>
           );
         })()}

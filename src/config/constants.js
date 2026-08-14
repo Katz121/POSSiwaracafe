@@ -57,6 +57,16 @@ export const computeModifierPrice = (item, mods) => {
   return roundUpTo5(total);
 };
 
+export const supportsMilkChoice = (item) => {
+  const name = String(item?.name || '').trim().toLowerCase();
+  return name.includes('ลาเต้') || name.includes('latte');
+};
+
+export const MILK_OPTIONS = [
+  { value: 'cow', label: 'นมวัว' },
+  { value: 'oat', label: 'นมโอ๊ต' },
+];
+
 // ==================== CAKE CLEARANCE (HAPPY HOUR) ====================
 export const DEFAULT_CAKE_SALE_PERCENT = 20;         // ส่วนลด % ช่วงล้างสต๊อกเค้ก
 export const DEFAULT_CAKE_SALE_START = '17:00';      // เริ่มช่วงลดราคา
