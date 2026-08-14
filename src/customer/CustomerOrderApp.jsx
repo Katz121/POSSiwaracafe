@@ -102,6 +102,7 @@ const TX = {
     total: 'รวม',
     addToCart: 'เพิ่มลงตะกร้า',
     chooseAllGroups: 'เลือกให้ครบทุกกลุ่ม',
+    sweetness: 'ระดับความหวาน',
     cancel: 'ยกเลิก',
     chooseOptionFor: 'เลือกตัวเลือกสำหรับ',
     confirmOrder: 'ยืนยันออเดอร์',
@@ -185,6 +186,7 @@ const TX = {
     total: 'Total',
     addToCart: 'Add to cart',
     chooseAllGroups: 'Select all groups',
+    sweetness: 'Sweetness level',
     cancel: 'Cancel',
     chooseOptionFor: 'Choose options for',
     confirmOrder: 'Confirm order',
@@ -543,6 +545,7 @@ function WelcomePopup({ isOpen, items, settingsData, onClose, t, lang = 'th' }) 
 function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang = 'th' }) {
   // เลือกตัวเลือกต่อกลุ่ม (เช่น { 'ส้ม': mod, 'เมล็ดกาแฟ': mod })
   const [selections, setSelections] = useState({});
+  const [sweetness, setSweetness] = useState(100);
   // เคลียร์ตัวเลือกทุกครั้งที่เปิดเมนูใหม่ หรือเปิด modal ขึ้นมาใหม่ (แม้เป็นเมนูเดิม)
   // (ปรับ state ตอน render ตามแนวทาง React)
   const [lastItemId, setLastItemId] = useState(item?.id);
@@ -552,7 +555,10 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
   if (itemChanged || isOpen !== wasOpen) {
     if (itemChanged) setLastItemId(item?.id);
     if (isOpen !== wasOpen) setWasOpen(isOpen);
-    if (itemChanged || justOpened) setSelections({});
+    if (itemChanged || justOpened) {
+      setSelections({});
+      setSweetness(100);
+    }
   }
 
   const itemBase = Number(item?.price) || 0;
@@ -577,6 +583,8 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
   const allChosen = groups.every((g) => selections[g.name]);
   const chosenMods = groups.map((g) => selections[g.name]).filter(Boolean);
   const previewPrice = item ? computeModifierPrice(item, chosenMods) : 0;
+  const showSweetness = item && !isCakeCategory(item.category);
+  const needsConfirmButton = showSweetness || multi;
 
   return (
     <Modal
@@ -585,14 +593,14 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
       title={t('chooseOption')}
       size="sm"
       footer={
-        multi ? (
+        needsConfirmButton ? (
           <div className="w-full space-y-2">
             <div className="flex items-center justify-between px-1">
               <span className="font-semibold text-gray-700">{t('total')}</span>
               <span className="font-bold text-lg text-emerald-600">{formatCurrency(previewPrice)}</span>
             </div>
             <Button variant="primary" size="lg" fullWidth disabled={!allChosen} noUppercase
-              onClick={() => onSelect(item, chosenMods)}>
+              onClick={() => onSelect(item, chosenMods, sweetness)}>
               {allChosen ? t('addToCart') : t('chooseAllGroups')}
             </Button>
             <Button variant="ghost" fullWidth onClick={onClose} className="text-gray-400">{t('cancel')}</Button>
@@ -613,7 +621,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
               {group.mods.map(({ mod, surcharge }) => {
                 const selected = selections[group.name]?.id === mod.id;
                 // กลุ่มเดียว = แตะแล้วเพิ่มทันที (UX เดิม); หลายกลุ่ม = แตะเพื่อเลือกในกลุ่ม
-                const onClick = multi
+                const onClick = needsConfirmButton
                   ? () => setSelections((prev) => ({ ...prev, [group.name]: mod }))
                   : () => onSelect(item, mod);
                 return (
@@ -632,6 +640,19 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
               })}
             </div>
           ))}
+          {showSweetness && (
+            <div className="space-y-2">
+              <p className="text-xs font-black uppercase tracking-widest text-gray-400 ml-1">{t('sweetness')}</p>
+              <div className="grid grid-cols-5 gap-2">
+                {[0, 25, 50, 75, 100].map((level) => (
+                  <button key={level} type="button" onClick={() => setSweetness(level)}
+                    className={`min-h-[44px] rounded-xl border-2 text-xs font-bold transition-all ${sweetness === level ? 'border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-200' : 'border-gray-100 text-gray-600 hover:border-emerald-300'}`}>
+                    {level}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </Modal>
@@ -704,6 +725,8 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
               ) : (
                 cart.map((cartItem) => {
                   const id = cartItem.cartId || cartItem.id;
+                  const sweetnessNote = cartItem.sweetness == null ? '' : `หวาน ${cartItem.sweetness}%`;
+                  const defaultOptionNote = [cartItem.beanModifier, sweetnessNote].filter(Boolean).join(' ');
                   return (
                     <div key={id} className="bg-gray-50 rounded-2xl p-3 space-y-2">
                       <div className="flex items-start gap-3">
@@ -712,6 +735,9 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                           <p className="font-semibold text-sm text-gray-900 leading-tight">{dispField(cartItem, lang)}</p>
                           {cartItem.beanModifier && cartItem.beanModifier !== '' && (
                             <p className="text-xs text-emerald-600 font-medium">{cartItem.beanModifier}</p>
+                          )}
+                          {cartItem.sweetness != null && (
+                            <p className="text-xs text-orange-500 font-medium">{t('sweetness')}: {cartItem.sweetness}%</p>
                           )}
                           <p className="text-emerald-600 font-bold text-sm mt-0.5">
                             {formatCurrency(Number(cartItem.price) * Number(cartItem.quantity))}
@@ -770,7 +796,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                           className="flex items-center gap-1 text-xs text-gray-400 hover:text-emerald-600 transition-colors"
                         >
                           <FileText size={12} />
-                          <span>{cartItem.note && cartItem.note !== cartItem.beanModifier ? cartItem.note : t('addNote')}</span>
+                          <span>{cartItem.note && cartItem.note !== defaultOptionNote ? cartItem.note : t('addNote')}</span>
                         </button>
                       )}
                     </div>
@@ -894,6 +920,8 @@ function CheckoutStep({
           <div className="divide-y divide-gray-50">
             {cart.map((cartItem) => {
               const id = cartItem.cartId || cartItem.id;
+              const sweetnessNote = cartItem.sweetness == null ? '' : `หวาน ${cartItem.sweetness}%`;
+              const defaultOptionNote = [cartItem.beanModifier, sweetnessNote].filter(Boolean).join(' ');
               return (
                 <div key={id} className="px-4 py-3 flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -901,7 +929,10 @@ function CheckoutStep({
                     {cartItem.beanModifier && cartItem.beanModifier !== '' && (
                       <p className="text-xs text-emerald-600">{cartItem.beanModifier}</p>
                     )}
-                    {cartItem.note && cartItem.note !== cartItem.beanModifier && (
+                    {cartItem.sweetness != null && (
+                      <p className="text-xs text-orange-500">{t('sweetness')}: {cartItem.sweetness}%</p>
+                    )}
+                    {cartItem.note && cartItem.note !== defaultOptionNote && (
                       <p className="text-xs text-gray-400">{cartItem.note}</p>
                     )}
                   </div>
@@ -1573,11 +1604,13 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   // Cart operations
   // ---------------------------------------------------------------------------
-  const addToCart = useCallback((item, modifier = null) => {
+  const addToCart = useCallback((item, modifier = null, sweetness = null) => {
     // modifier อาจเป็นตัวเดียวหรือเป็นลิสต์ (หนึ่งตัวต่อกลุ่ม เช่น ส้ม + เมล็ดกาแฟ)
     const mods = (Array.isArray(modifier) ? modifier : [modifier]).filter(Boolean);
     const modifierName = mods.map(m => `#${m.name}`).join(' ');
-    const cartId = mods.length ? `${item.id}-${mods.map(m => m.id).join('-')}` : item.id;
+    const sweetnessKey = sweetness == null ? '' : `-sweet-${sweetness}`;
+    const modifierKey = mods.length ? `-${mods.map(m => m.id).join('-')}` : '';
+    const cartId = `${item.id}${modifierKey}${sweetnessKey}`;
     const stockLinks = mods.reduce((acc, m) => mergeStockLinks(acc, m.stockLinks || []), item.stockLinks || []);
 
     // For modifier path keep original pricing; for plain items apply sale if active
@@ -1610,7 +1643,8 @@ function CustomerOrderApp() {
       }
 
       // Build note: for sale items append the sale tag
-      let note = modifierName;
+      const sweetnessNote = sweetness == null ? '' : `หวาน ${sweetness}%`;
+      let note = [modifierName, sweetnessNote].filter(Boolean).join(' ');
       if (!mods.length && saleFields.originalPrice !== undefined) {
         const sale = getItemSalePrice(item, settingsData);
         const tag = cakeSaleNoteTag(sale.percent);
@@ -1625,6 +1659,7 @@ function CustomerOrderApp() {
           price: finalPrice,
           ...saleFields,
           beanModifier: modifierName,
+          sweetness,
           stockLinks,
           quantity: 1,
           note,
@@ -1637,7 +1672,7 @@ function CustomerOrderApp() {
     // Only offer options from this menu's group(s) that are in stock (not hidden)
     const groups = getModifierGroups(item);
     const availableBeans = beanModifiers.filter((b) => b.available !== false && groups.includes(b.group || 'เมล็ดกาแฟ'));
-    if (item.allowBeanModifier && availableBeans.length > 0) {
+    if (!isCakeCategory(item.category) || (item.allowBeanModifier && availableBeans.length > 0)) {
       setPendingItem(item);
       setBeanModalOpen(true);
     } else {
@@ -1645,8 +1680,8 @@ function CustomerOrderApp() {
     }
   }, [addToCart, beanModifiers]);
 
-  const handleBeanSelect = useCallback((item, modifiers) => {
-    addToCart(item, modifiers);
+  const handleBeanSelect = useCallback((item, modifiers, sweetness) => {
+    addToCart(item, modifiers, sweetness);
     setBeanModalOpen(false);
     setPendingItem(null);
   }, [addToCart]);
