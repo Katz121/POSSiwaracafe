@@ -56,6 +56,11 @@ import { getNameKey } from '../utils/calculations';
 // ---------------------------------------------------------------------------
 const QR_LANG_STORAGE_KEY = 'qr_lang';
 
+const milkLabelForLanguage = (milkType, lang) => {
+  const option = MILK_OPTIONS.find((candidate) => candidate.value === milkType);
+  return lang === 'en' ? option?.labelEn : option?.label;
+};
+
 // Feature flag — set to true to bring back the auto-running welcome popup.
 // Disabled for now per request; all popup code stays intact but costs nothing
 // while the flag is off (JSX and welcomeItems computation are both gated).
@@ -665,7 +670,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
                 {MILK_OPTIONS.map((option) => (
                   <button key={option.value} type="button" onClick={() => setMilkType(option.value)}
                     className={`min-h-[48px] rounded-xl border-2 text-sm font-bold transition-all ${milkType === option.value ? 'border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-200' : 'border-gray-100 text-gray-600 hover:border-emerald-300'}`}>
-                    {option.label}
+                    {lang === 'en' ? option.labelEn : option.label}
                   </button>
                 ))}
               </div>
@@ -758,7 +763,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                             <p className="text-xs text-orange-500 font-medium">{t('sweetness')}: {cartItem.sweetness}%</p>
                           )}
                           {cartItem.milkLabel && (
-                            <p className="text-xs text-sky-600 font-medium">{t('milkType')}: {cartItem.milkLabel}</p>
+                            <p className="text-xs text-sky-600 font-medium">{t('milkType')}: {milkLabelForLanguage(cartItem.milkType, lang) || cartItem.milkLabel}</p>
                           )}
                           <p className="text-emerald-600 font-bold text-sm mt-0.5">
                             {formatCurrency(Number(cartItem.price) * Number(cartItem.quantity))}
@@ -954,7 +959,7 @@ function CheckoutStep({
                       <p className="text-xs text-orange-500">{t('sweetness')}: {cartItem.sweetness}%</p>
                     )}
                     {cartItem.milkLabel && (
-                      <p className="text-xs text-sky-600">{t('milkType')}: {cartItem.milkLabel}</p>
+                      <p className="text-xs text-sky-600">{t('milkType')}: {milkLabelForLanguage(cartItem.milkType, lang) || cartItem.milkLabel}</p>
                     )}
                     {cartItem.note && cartItem.note !== defaultOptionNote && (
                       <p className="text-xs text-gray-400">{cartItem.note}</p>

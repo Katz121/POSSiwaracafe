@@ -63,8 +63,8 @@ export const supportsMilkChoice = (item) => {
 };
 
 export const MILK_OPTIONS = [
-  { value: 'cow', label: 'นมวัว' },
-  { value: 'oat', label: 'นมโอ๊ต' },
+  { value: 'cow', label: 'นมวัว', labelEn: "Cow's milk" },
+  { value: 'oat', label: 'นมโอ๊ต', labelEn: 'Oat milk' },
 ];
 
 // ==================== CAKE CLEARANCE (HAPPY HOUR) ====================
