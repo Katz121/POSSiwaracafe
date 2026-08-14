@@ -225,17 +225,13 @@ export default function PosView() {
       if (!memberPhone) { setCurrentMember(null); setUsePoints(false); }
       return;
     }
-    const found = members.find(m => getNameKey(m.name) === nameKey);
-    if (found) {
-      setCurrentMember(found);
-      if (found.phone) setMemberPhone(found.phone);
-    } else {
-      // ชื่อเล่นล้วน ไม่มีเบอร์ → เป็น "ลูกค้าทั่วไป" ไม่ใช่สมาชิกใหม่
-      // (isGuest ทำให้การ์ดแต้มบอกตรงๆ ว่าบิลนี้ไม่สะสมแต้ม)
-      setCurrentMember({ phone: '', points: 0, name: memberNickname, isNew: true, isGuest: !ALLOW_NAME_ONLY_MEMBERS });
-      setUsePoints(false);
-    }
-  }, [memberNickname, memberPhone, members]);
+    // Do not resolve members while the nickname is still being typed. A partial
+    // name such as "โอ" may itself be a member and used to hijack "โอ๊ต" by
+    // auto-filling that member's phone. Phone is the canonical member identity;
+    // a name without a phone remains freely editable guest text on this bill.
+    setCurrentMember({ phone: '', points: 0, name: memberNickname, isNew: true, isGuest: !ALLOW_NAME_ONLY_MEMBERS });
+    setUsePoints(false);
+  }, [memberNickname, memberPhone]);
 
   const ordersRef = useRef(orders);
   ordersRef.current = orders;
@@ -380,6 +376,13 @@ export default function PosView() {
   const handleRefreshMembers = () => {
     setIsRefreshingMembers(true);
     setTimeout(() => setIsRefreshingMembers(false), 1000);
+  };
+
+  const handleClearMember = () => {
+    setMemberPhone('');
+    setMemberNickname('');
+    setCurrentMember(null);
+    setUsePoints(false);
   };
 
   // Clear the whole in-progress sale — including edit mode. Leaving editingOrderId
@@ -717,10 +720,18 @@ export default function PosView() {
             <Sparkles size={14} className="text-[var(--accent-emerald)]" />
             <span className="text-[11px] font-black uppercase tracking-wider text-[var(--text-secondary)]">สะสมแต้ม</span>
           </div>
-          <button onClick={handleRefreshMembers} aria-label="รีเฟรชสมาชิก"
-            className={`p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-emerald)] transition-colors ${isRefreshingMembers ? 'animate-spin' : ''}`}>
-            <RefreshCcw size={12} />
-          </button>
+          <div className="flex items-center gap-1">
+            {(memberPhone || memberNickname || currentMember) && (
+              <button onClick={handleClearMember} aria-label="ล้างสมาชิก" title="ล้างสมาชิกแล้วกรอกใหม่"
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-red-500 transition-colors">
+                <X size={13} />
+              </button>
+            )}
+            <button onClick={handleRefreshMembers} aria-label="รีเฟรชสมาชิก"
+              className={`p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-emerald)] transition-colors ${isRefreshingMembers ? 'animate-spin' : ''}`}>
+              <RefreshCcw size={12} />
+            </button>
+          </div>
         </div>
         <div className="flex gap-2">
           <div className="flex-1 min-w-0 flex items-center gap-1.5 px-3 h-9 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
