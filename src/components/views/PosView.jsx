@@ -93,6 +93,7 @@ export default function PosView() {
   const [memberPhone, setMemberPhone] = useState('');
   const [memberNickname, setMemberNickname] = useState('');
   const [currentMember, setCurrentMember] = useState(null);
+  const [isMemberNameFocused, setIsMemberNameFocused] = useState(false);
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [isRefreshingMembers, setIsRefreshingMembers] = useState(false);
 
@@ -196,6 +197,13 @@ export default function PosView() {
   }, [filteredMenu, menuPage, itemsPerPage]);
 
   const cartCount = useMemo(() => cart.reduce((s, i) => s + Number(i.quantity || 0), 0), [cart]);
+  const memberNameSuggestions = useMemo(() => {
+    const query = getNameKey(memberNickname);
+    if (!query || memberPhone) return [];
+    return members
+      .filter(member => member.phone && getNameKey(member.name).includes(query))
+      .slice(0, 6);
+  }, [memberNickname, memberPhone, members]);
   const currentQueue = editingOrderId ? (orders.find(o => o.id === editingOrderId)?.queueNumber || queueCounter) : queueCounter;
 
   useEffect(() => { setMenuPage(1); }, [activeCategory, debouncedSearchTerm, itemsPerPage]);
@@ -383,6 +391,14 @@ export default function PosView() {
     setMemberNickname('');
     setCurrentMember(null);
     setUsePoints(false);
+  };
+
+  const handleSelectMember = (member) => {
+    setMemberPhone(String(member.phone || ''));
+    setMemberNickname(String(member.name || ''));
+    setCurrentMember(member);
+    setUsePoints(false);
+    setIsMemberNameFocused(false);
   };
 
   // Clear the whole in-progress sale — including edit mode. Leaving editingOrderId
@@ -739,10 +755,36 @@ export default function PosView() {
             <input type="tel" maxLength={10} placeholder="เบอร์โทร" value={memberPhone} onChange={(e) => setMemberPhone(e.target.value)}
               className="bg-transparent outline-none text-xs flex-1 min-w-0 w-full font-medium text-[var(--text-primary)]" />
           </div>
-          <div className="flex-1 min-w-0 flex items-center gap-1.5 px-3 h-9 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
-            <User size={12} className="text-[var(--text-muted)] shrink-0" />
-            <input type="text" placeholder="ชื่อเล่น" value={memberNickname} onChange={(e) => setMemberNickname(e.target.value)}
-              className="bg-transparent outline-none text-xs flex-1 min-w-0 w-full font-medium text-[var(--text-primary)]" />
+          <div className="relative flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 px-3 h-9 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
+              <User size={12} className="text-[var(--text-muted)] shrink-0" />
+              <input type="text" placeholder="ชื่อเล่น" value={memberNickname}
+                onFocus={() => setIsMemberNameFocused(true)}
+                onBlur={() => setIsMemberNameFocused(false)}
+                onChange={(e) => {
+                  setMemberNickname(e.target.value);
+                  if (memberPhone) {
+                    setMemberPhone('');
+                    setCurrentMember(null);
+                    setUsePoints(false);
+                  }
+                }}
+                autoComplete="off"
+                className="bg-transparent outline-none text-xs flex-1 min-w-0 w-full font-medium text-[var(--text-primary)]" />
+            </div>
+            {isMemberNameFocused && memberNameSuggestions.length > 0 && (
+              <div className="absolute z-30 top-full left-0 right-0 mt-1 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] shadow-xl">
+                {memberNameSuggestions.map(member => (
+                  <button key={member.id || member.phone} type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => handleSelectMember(member)}
+                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-secondary)] transition-colors border-b last:border-b-0 border-[var(--border-light)]">
+                    <span className="block text-xs font-bold text-[var(--text-primary)] truncate">{member.name || 'ลูกค้า'}</span>
+                    <span className="block text-[10px] text-[var(--text-muted)] truncate">{member.phone}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         {currentMember?.isGuest && (
