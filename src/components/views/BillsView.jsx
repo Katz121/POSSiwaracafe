@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, Calendar, Search, Clock, Receipt, Wallet, CreditCard, Coffee, UserCheck, X, ChevronRight, QrCode } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { ChevronLeft, Calendar, Search, Clock, Receipt, Wallet, CreditCard, Coffee, UserCheck, X, ChevronRight, QrCode, CheckSquare, Square, Users } from 'lucide-react';
+import { doc, updateDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate, groupItemsByCategory } from '../../utils/calculations';
 import useDebounce from '../../hooks/useDebounce';
-import { Button, Badge, EmptyState, Spinner, Skeleton } from '../ui';
+import { Button, Badge, EmptyState, Spinner, Skeleton, ConfirmModal } from '../ui';
 import { DEFAULT_OWN_GLASS_DISCOUNT, VAT_PERCENTAGE } from '../../config/constants';
+import { summarizeMergedBills, validateMergedBills } from '../../utils/billMerge';
 
 export default function BillsView() {
   const {
@@ -28,6 +29,10 @@ export default function BillsView() {
   const [billSearchTerm, setBillSearchTerm] = useState('');
   const [selectedBill, setSelectedBill] = useState(null);
   const [showMobileBillDetail, setShowMobileBillDetail] = useState(false);
+  const [mergeMode, setMergeMode] = useState(false);
+  const [selectedBillIds, setSelectedBillIds] = useState(() => new Set());
+  const [showMergeConfirm, setShowMergeConfirm] = useState(false);
+  const [isMergingBills, setIsMergingBills] = useState(false);
 
   const debouncedBillSearchTerm = useDebounce(billSearchTerm, 200);
 
@@ -39,8 +44,62 @@ export default function BillsView() {
       .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
   }, [orders, selectedHistoryDate, debouncedBillSearchTerm]);
 
+  const mergedSummary = useMemo(
+    () => summarizeMergedBills(billsForSelectedDate, selectedBillIds),
+    [billsForSelectedDate, selectedBillIds],
+  );
+
+  const stopMergeMode = () => {
+    setMergeMode(false);
+    setSelectedBillIds(new Set());
+    setShowMergeConfirm(false);
+  };
+
+  const toggleBillForMerge = (bill) => {
+    if (bill.isPaid) return;
+    setSelectedBillIds((current) => {
+      const next = new Set(current);
+      if (next.has(bill.id)) next.delete(bill.id);
+      else next.add(bill.id);
+      return next;
+    });
+  };
+
+  const confirmMergedPayment = async () => {
+    try {
+      validateMergedBills(mergedSummary.bills);
+    } catch {
+      setShowMergeConfirm(false);
+      return;
+    }
+
+    setIsMergingBills(true);
+    const completed = await runDbAction(async () => {
+      const batch = writeBatch(db);
+      const paymentGroupId = crypto.randomUUID();
+      const paidAt = serverTimestamp();
+      mergedSummary.bills.forEach((bill) => {
+        batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'orders', bill.id), {
+          isPaid: true,
+          paymentGroupId,
+          paymentGroupSize: mergedSummary.count,
+          paymentGroupTotal: mergedSummary.total,
+          paidAt,
+        });
+      });
+      await batch.commit();
+      return true;
+    }, 'รวมบิลและบันทึกการชำระเงินไม่สำเร็จ');
+    setIsMergingBills(false);
+    if (completed !== false) stopMergeMode();
+  };
+
   // Mobile bill selection handler
   const handleBillSelect = (bill) => {
+    if (mergeMode) {
+      toggleBillForMerge(bill);
+      return;
+    }
     setSelectedBill(bill);
     setShowMobileBillDetail(true);
   };
@@ -79,7 +138,16 @@ export default function BillsView() {
               <Search className="absolute left-4 md:left-6 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5 md:w-[22px] md:h-[22px]" />
               <input type="text" placeholder="ค้นหาเลขคิว..." value={billSearchTerm} onChange={(e) => setBillSearchTerm(e.target.value)} className="w-full bg-gray-50 border-none rounded-xl md:rounded-2xl py-3 md:py-4 pl-12 md:pl-16 pr-4 md:pr-6 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500/10 text-gray-800" />
             </div>
-            <span className="text-xs md:text-xs font-black text-gray-400 uppercase tracking-wider md:tracking-widest px-2">บิลในระบบ ({billsForSelectedDate.length})</span>
+            <div className="flex items-center justify-between gap-3 px-2">
+              <span className="text-xs md:text-xs font-black text-gray-400 uppercase tracking-wider md:tracking-widest">บิลในระบบ ({billsForSelectedDate.length})</span>
+              <button
+                type="button"
+                onClick={() => (mergeMode ? stopMergeMode() : setMergeMode(true))}
+                className={`px-3 py-2 rounded-xl text-xs font-black transition-colors ${mergeMode ? 'bg-gray-100 text-gray-500' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}
+              >
+                {mergeMode ? 'ยกเลิก' : 'รวมบิล'}
+              </button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-gray-50 scrollbar-hide text-gray-800 px-1 md:px-2">
             {isSyncing && (
@@ -91,8 +159,13 @@ export default function BillsView() {
               <EmptyState icon="receipt" title="ไม่มีบิลในช่วงวันที่นี้" description="ลองเลือกวันที่อื่นหรือสร้างออเดอร์ใหม่" size="sm" />
             )}
             {billsForSelectedDate.map(bill => (
-              <button key={bill.id} onClick={() => handleBillSelect(bill)} className={`w-full p-4 md:p-6 lg:p-8 text-left transition-all flex items-center justify-between rounded-xl md:rounded-2xl lg:rounded-[2rem] my-0.5 md:my-1 ${selectedBill?.id === bill.id ? 'bg-emerald-50 shadow-inner' : 'hover:bg-gray-50 active:bg-gray-100'}`}>
+              <button key={bill.id} onClick={() => handleBillSelect(bill)} disabled={mergeMode && bill.isPaid} className={`w-full p-4 md:p-6 lg:p-8 text-left transition-all flex items-center justify-between rounded-xl md:rounded-2xl lg:rounded-[2rem] my-0.5 md:my-1 ${selectedBillIds.has(bill.id) ? 'bg-emerald-100 ring-2 ring-emerald-400' : selectedBill?.id === bill.id && !mergeMode ? 'bg-emerald-50 shadow-inner' : 'hover:bg-gray-50 active:bg-gray-100'} ${mergeMode && bill.isPaid ? 'opacity-40 cursor-not-allowed' : ''}`}>
                 <div className="flex items-center gap-3 md:gap-5 min-w-0">
+                  {mergeMode && (
+                    <span className="text-emerald-600 shrink-0">
+                      {selectedBillIds.has(bill.id) ? <CheckSquare size={22} /> : <Square size={22} />}
+                    </span>
+                  )}
                   <div className={`w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-base md:text-lg lg:text-xl shrink-0 ${selectedBill?.id === bill.id ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-gray-100 text-gray-500 shadow-sm'}`}>{Number(bill.queueNumber)}</div>
                   <div className="min-w-0">
                     <p className="font-black text-gray-800 text-sm md:text-base mb-1 md:mb-2 uppercase tracking-tighter truncate">#{String(bill.id).slice(-6).toUpperCase()}</p>
@@ -114,6 +187,20 @@ export default function BillsView() {
               </button>
             ))}
           </div>
+          {mergeMode && (
+            <div className="p-4 md:p-5 border-t border-emerald-100 bg-emerald-50 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black text-emerald-700 flex items-center gap-2"><Users size={16} /> เลือกแล้ว {mergedSummary.count} บิล</p>
+                  <p className="text-xs text-emerald-600 mt-1">เลือกอย่างน้อย 2 บิลที่ยังไม่ชำระ</p>
+                </div>
+                <p className="text-2xl font-black text-emerald-700">฿{mergedSummary.total.toLocaleString()}</p>
+              </div>
+              <Button className="w-full" disabled={mergedSummary.count < 2} onClick={() => setShowMergeConfirm(true)}>
+                รวมยอดและชำระพร้อมกัน
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Bill Detail - Desktop */}
@@ -381,6 +468,17 @@ export default function BillsView() {
           </div>
         )}
       </div>
+      <ConfirmModal
+        isOpen={showMergeConfirm}
+        onClose={() => !isMergingBills && setShowMergeConfirm(false)}
+        onConfirm={confirmMergedPayment}
+        title="ยืนยันรวมบิล"
+        message={`ชำระ ${mergedSummary.count} บิลพร้อมกัน ยอดรวม ฿${mergedSummary.total.toLocaleString()} · ออเดอร์เดิมยังแยกอยู่สำหรับตรวจสอบย้อนหลัง`}
+        confirmText="ยืนยันชำระ"
+        cancelText="กลับไปเลือก"
+        variant="primary"
+        loading={isMergingBills}
+      />
     </div>
   );
 }
