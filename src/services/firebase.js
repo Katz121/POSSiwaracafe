@@ -1,5 +1,6 @@
 ﻿import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
+import { getFunctions } from 'firebase/functions';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -26,6 +27,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
+export const functions = getFunctions(app, 'asia-southeast1');
 
 // Firestore with an IndexedDB-backed offline cache. WHY: every `onSnapshot`
 // listener in usePosData loads its whole collection (orders ~1k + expenses ~0.5k

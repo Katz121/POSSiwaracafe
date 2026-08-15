@@ -27,28 +27,18 @@ import {
 import {
   collection,
   doc,
-  addDoc,
-  runTransaction,
-  serverTimestamp,
-  increment,
-  arrayUnion,
-  setDoc,
   getDoc,
   getDocs,
-  getCountFromServer,
-  query,
-  where,
 } from 'firebase/firestore';
-import { auth, db, appId } from '../services/firebase';
+import { auth, db, functions, appId } from '../services/firebase';
+import { buildCheckoutItems, shouldKeepRequestId, submitTrustedCheckout } from '../services/checkoutService';
 import { fetchPublicMenu, readCachedPublicMenu, writeCachedPublicMenu, SENSITIVE_SETTINGS_KEYS } from '../utils/publicMenu';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
-import { formatCurrency, VAT_RATE, roundUpTo5, getModifierGroups, isBaseModifier, computeModifierPrice, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH, ALLOW_NAME_ONLY_MEMBERS } from '../config/constants';
-import { getISODate } from '../utils/calculations';
-import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory } from '../utils/promotions';
+import { formatCurrency, VAT_RATE, roundUpTo5, getModifierGroups, isBaseModifier, computeModifierPrice, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH } from '../config/constants';
+import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory, supportsSweetnessChoice } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
 import { notifyNewOrderToLine } from '../services/lineNotify';
 import { applyCustomerSEO } from '../utils/seo';
-import { getNameKey } from '../utils/calculations';
 
 // ---------------------------------------------------------------------------
 // i18n: Thai/English UI chrome for the customer-facing QR ordering page.
@@ -549,7 +539,7 @@ function WelcomePopup({ isOpen, items, settingsData, onClose, t, lang = 'th' }) 
 // ---------------------------------------------------------------------------
 // Sub-component: BeanModifierModal — picker for bean/blend selection
 // ---------------------------------------------------------------------------
-function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang = 'th' }) {
+function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, onClose, t, lang = 'th' }) {
   // เลือกตัวเลือกต่อกลุ่ม (เช่น { 'ส้ม': mod, 'เมล็ดกาแฟ': mod })
   const [selections, setSelections] = useState({});
   const [sweetness, setSweetness] = useState(100);
@@ -592,7 +582,7 @@ function BeanModifierModal({ isOpen, item, modifiers, onSelect, onClose, t, lang
   const allChosen = groups.every((g) => selections[g.name]);
   const chosenMods = groups.map((g) => selections[g.name]).filter(Boolean);
   const previewPrice = item ? computeModifierPrice(item, chosenMods) : 0;
-  const showSweetness = item && !isCakeCategory(item.category);
+  const showSweetness = item && supportsSweetnessChoice(item, settingsData);
   const showMilkChoice = supportsMilkChoice(item);
   const needsConfirmButton = showSweetness || multi;
 
@@ -1313,6 +1303,9 @@ function CustomerOrderApp() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [successQueue, setSuccessQueue] = useState(null);
+  // Keep the same key across ambiguous network retries so the backend returns
+  // the original order instead of charging points / incrementing queue twice.
+  const checkoutRequestIdRef = useRef(null);
 
   // ---------------------------------------------------------------------------
   // Anonymous sign-in
@@ -1627,7 +1620,7 @@ function CustomerOrderApp() {
   }, [cart, settingsData, pointsEligible, usePoints, redeemDiscountValue, settings.vatEnabled, nowTick]);
   const {
     subtotal, combo, pointsDiscount, spendThreshold, spendDiscountPercent,
-    spendActive, spendRemaining, comboDiscount, spendDiscount, discount, vat, total,
+    spendActive, spendRemaining, comboDiscount, spendDiscount, vat, total,
   } = totals;
 
   // ---------------------------------------------------------------------------
@@ -1690,6 +1683,7 @@ function CustomerOrderApp() {
           price: finalPrice,
           ...saleFields,
           beanModifier: modifierName,
+          modifierIds: mods.map((modifier) => modifier.id),
           sweetness,
           milkType,
           milkLabel,
@@ -1705,13 +1699,13 @@ function CustomerOrderApp() {
     // Only offer options from this menu's group(s) that are in stock (not hidden)
     const groups = getModifierGroups(item);
     const availableBeans = beanModifiers.filter((b) => b.available !== false && groups.includes(b.group || 'เมล็ดกาแฟ'));
-    if (!isCakeCategory(item.category) || (item.allowBeanModifier && availableBeans.length > 0)) {
+    if (supportsSweetnessChoice(item, settingsData) || (item.allowBeanModifier && availableBeans.length > 0)) {
       setPendingItem(item);
       setBeanModalOpen(true);
     } else {
       addToCart(item);
     }
-  }, [addToCart, beanModifiers]);
+  }, [addToCart, beanModifiers, settingsData]);
 
   const handleBeanSelect = useCallback((item, modifiers, sweetness, milkType) => {
     addToCart(item, modifiers, sweetness, milkType);
@@ -1753,161 +1747,35 @@ function CustomerOrderApp() {
     setSubmitError('');
 
     try {
-      const base = ['artifacts', appId, 'public', 'data'];
-      const queueRef = doc(db, ...base, 'config', 'queue');
       const phone = customerPhone.trim();
-
-      // Re-validate availability against a fresh menu snapshot (1 read) before we
-      // burn a queue number — the customer's menu may be up to the cache TTL stale,
-      // so an item could have been marked sold-out since they added it. Fail-open:
-      // any error here must NOT block a legitimate order.
-      try {
-        const fresh = await fetchPublicMenu(db, appId);
-        if (fresh && Array.isArray(fresh.menu)) {
-          const availableIds = new Set(
-            fresh.menu.filter((m) => m.available !== false).map((m) => m.id),
-          );
-          const soldOut = cart.filter((c) => !availableIds.has(c.id));
-          if (soldOut.length > 0) {
-            const names = [...new Set(soldOut.map((c) => c.name))].join(', ');
-            setSubmitError(t('soldOutError', names));
-            applyBundle(fresh);              // refresh the menu so the UI matches reality
-            writeCachedPublicMenu(appId, fresh);
-            setSubmitting(false);
-            return;
-          }
-          writeCachedPublicMenu(appId, fresh); // menu still valid — keep cache current
-        }
-      } catch {
-        // Fresh read failed (network / rules) — proceed rather than block the order.
-      }
-
-      let assignedQueue;
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(queueRef);
-        const current = snap.exists() ? (snap.data().current || 1) : 1;
-        assignedQueue = current;
-        tx.set(queueRef, { current: current + 1 }, { merge: true });
-      });
-
-      // Strip heavy display-only fields (base64 image, description) so the order
-      // doc stays small — avoids Firestore's 1 MiB limit and speeds up the write.
-      // Views fall back to the menu's own image via the kept item id.
-      const leanItems = cart.map((c) => {
-        const lean = { ...c };
-        delete lean.image;
-        delete lean.description;
-        return lean;
-      });
-
-      const orderData = {
-        queueNumber: assignedQueue,
-        items: leanItems,
-        subtotal: Number(subtotal),
-        discount: Number(discount),
-        vat: Number(vat),
-        total: Number(total),
-        vatIncluded: settings.vatEnabled,
-        isPaid: false,
-        memberPhone: phone,
-        memberNickname: customerName.trim(),
+      const requestId = checkoutRequestIdRef.current || crypto.randomUUID();
+      checkoutRequestIdRef.current = requestId;
+      const result = await submitTrustedCheckout(functions, {
+        requestId,
         customerName: customerName.trim(),
-        status: 'pending',
-        promotionTitle: combo.applies ? COMBO_PROMO_TITLE : '',
-        promotionDiscountPercent: combo.applies ? combo.percent : 0,
-        bringOwnGlass: false,
-        createdAt: serverTimestamp(),
-        date: getISODate(),
-        time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
-        table: 'QR',
-        source: 'qr',
-      };
-
-      await addDoc(collection(db, ...base, 'orders'), orderData);
+        phone,
+        usePoints,
+        items: buildCheckoutItems(cart),
+      });
 
       // --- Best-selling counter (best-effort; never blocks the order) ---
       bumpMenuSoldCount(cart);
 
       // --- LINE notification to the shop (best-effort; never blocks) ---
       notifyNewOrderToLine({
-        queueNumber: assignedQueue,
+        queueNumber: result.queueNumber,
         customerName: customerName.trim(),
-        items: leanItems,
-        total,
-        time: orderData.time,
+        items: cart,
+        total: result.total,
+        time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
       });
-
-      // --- Member side-effect (non-blocking) ---
-      // Identity mirrors PosView: the PHONE is the member id, full stop.
-      // A customer who skips the phone field is a guest — their name still rides
-      // on the bill (queue call + sales history) but no member doc is created and
-      // no points accrue. Name-based ids (`name:${nameKey}`) merged different
-      // people who happened to share a nickname, so they are off by default.
-      const phoneValid = phone.length >= MEMBER_MIN_PHONE_LENGTH;
-      const nameKey = getNameKey(customerName);
-      const nameValid = nameKey.length > 0;
-      const memberId = phoneValid
-        ? phone
-        : (nameValid && ALLOW_NAME_ONLY_MEMBERS ? `name:${nameKey}` : null);
-
-      if (memberId) {
-        try {
-          const memberRef = doc(db, ...base, 'members', memberId);
-          const pointsToAdd = Math.floor(total / 10);
-          const redeemDeduct = (usePoints && pointsEligible) ? redeemPointsThreshold : 0;
-
-          // `member` state is only ever loaded by phone lookup, so a name-based
-          // id never resolves to an existing member here — that's fine, it just
-          // means createdAt gets (re)stamped, matching PosView's !existingMember path.
-          // Compare against the doc id (always the phone it was looked up by), NOT a
-          // stored `phone` field — older member docs whose id IS the phone may lack
-          // that field, and re-stamping createdAt would destroy their join date.
-          const isExisting = !!member && phoneValid && member.id === phone;
-          const memberPayload = {
-            name: customerName.trim(),
-            lastOrderAt: serverTimestamp(),
-          };
-          if (phoneValid) memberPayload.phone = phone;
-          // Earned points are held in pendingPoints until the owner approves them
-          // on the Members page. Redemption is applied in real time.
-          if (pointsToAdd > 0) {
-            memberPayload.pendingPoints = increment(pointsToAdd);
-            memberPayload.pendingReason = 'order';
-          }
-          if (redeemDeduct > 0) {
-            memberPayload.points = increment(-redeemDeduct);
-          }
-          if (!isExisting) {
-            memberPayload.createdAt = serverTimestamp();
-          }
-          // History records the real-time redemption now; earned points are
-          // logged to history when the owner approves them.
-          const now = new Date().toISOString();
-          const entries = [];
-          if (redeemDeduct > 0) entries.push({ delta: -redeemDeduct, reason: 'redeem', at: now });
-          if (entries.length > 0) memberPayload.pointsHistory = arrayUnion(...entries);
-          await setDoc(memberRef, memberPayload, { merge: true });
-        } catch {
-          // Member write failure is non-critical — order already saved
-        }
-      }
-
-      // Queue shown to the customer = number of orders still pending (real load).
-      // 1 (only this order) → no number, just "preparing". Best-effort; never blocks.
-      try {
-        const snap = await getCountFromServer(
-          query(collection(db, ...base, 'orders'), where('status', '==', 'pending')),
-        );
-        setSuccessQueue(snap.data().count || 0);
-      } catch {
-        setSuccessQueue(0);
-      }
+      setSuccessQueue(result.pendingCount || 0);
+      checkoutRequestIdRef.current = null;
       setView('success');
     } catch (err) {
-      // Surface the real cause: 'permission-denied' (rules), 'invalid-argument'
-      // (bad/oversized doc), 'unavailable' (network/offline), etc.
       console.error('[QR order submit] failed:', err);
       const code = err?.code || err?.message || 'unknown';
+      if (!shouldKeepRequestId(code)) checkoutRequestIdRef.current = null;
       setSubmitError(t('submitFailedError', code));
     } finally {
       setSubmitting(false);
@@ -1924,6 +1792,7 @@ function CustomerOrderApp() {
     setUsePoints(false);
     setSubmitError('');
     setSuccessQueue(null);
+    checkoutRequestIdRef.current = null;
     setView('menu');
   };
 
@@ -2259,6 +2128,7 @@ function CustomerOrderApp() {
         isOpen={beanModalOpen}
         item={pendingItem}
         modifiers={beanModifiers.filter((b) => b.available !== false && getModifierGroups(pendingItem).includes(b.group || 'เมล็ดกาแฟ'))}
+        settingsData={settingsData}
         onSelect={handleBeanSelect}
         onClose={() => {
           setBeanModalOpen(false);

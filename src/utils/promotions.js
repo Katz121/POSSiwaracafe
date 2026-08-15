@@ -50,6 +50,10 @@ export const isCakeCategory = (category, settings) => {
   return cats.map(norm).includes(norm(category));
 };
 
+/** Drinks can choose sweetness; cake-category items cannot. */
+export const supportsSweetnessChoice = (item, settings) =>
+  !isCakeCategory(item?.category, settings);
+
 /**
  * Effective pricing for a menu item given the current sale state.
  * @returns {{ onSale: boolean, percent: number, originalPrice: number, price: number }}
