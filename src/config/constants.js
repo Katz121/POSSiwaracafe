@@ -34,10 +34,12 @@ export const roundUpTo5 = (n) => Math.ceil((Number(n) || 0) / 5) * 5;
 // ==================== MENU MODIFIER GROUPS ====================
 // เมนูหนึ่งเลือกได้หลายกลุ่มตัวเลือก (เช่น "ส้ม" + "เมล็ดกาแฟ") — เก็บใน
 // modifierGroups (array). รองรับเมนูเดิมที่ใช้ modifierGroup (string) ตัวเดียว.
-export const getModifierGroups = (item) =>
-  (Array.isArray(item?.modifierGroups) && item.modifierGroups.length)
+export const getModifierGroups = (item) => {
+  if (!item?.allowBeanModifier) return [];
+  return (Array.isArray(item.modifierGroups) && item.modifierGroups.length)
     ? item.modifierGroups
-    : [item?.modifierGroup || 'เมล็ดกาแฟ'];
+    : [item.modifierGroup || 'เมล็ดกาแฟ'];
+};
 
 // ตัวเลือกที่เป็น "เบส" คงราคาเมนูเดิม (ไม่บวกเพิ่ม)
 export const isBaseModifier = (item, mod) =>
