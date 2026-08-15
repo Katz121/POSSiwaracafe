@@ -37,7 +37,6 @@ import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
 import { formatCurrency, VAT_RATE, roundUpTo5, getModifierGroups, isBaseModifier, computeModifierPrice, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH } from '../config/constants';
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory, supportsSweetnessChoice } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
-import { notifyNewOrderToLine } from '../services/lineNotify';
 import { applyCustomerSEO } from '../utils/seo';
 
 // ---------------------------------------------------------------------------
@@ -1761,14 +1760,6 @@ function CustomerOrderApp() {
       // --- Best-selling counter (best-effort; never blocks the order) ---
       bumpMenuSoldCount(cart);
 
-      // --- LINE notification to the shop (best-effort; never blocks) ---
-      notifyNewOrderToLine({
-        queueNumber: result.queueNumber,
-        customerName: customerName.trim(),
-        items: cart,
-        total: result.total,
-        time: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
-      });
       setSuccessQueue(result.pendingCount || 0);
       checkoutRequestIdRef.current = null;
       setView('success');

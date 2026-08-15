@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const PROJECT_ID = 'siwarapos';
 const BASE_PATH = 'artifacts/siwara-pos-v1/public/data';
@@ -55,13 +55,20 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)('checkout Firestore transa
       },
     };
 
-    const first = await checkoutOrderHandler(request, db);
-    const retry = await checkoutOrderHandler(request, db);
+    const sendNotification = vi.fn().mockResolvedValue({ success: true, channel: 'telegram' });
+    const first = await checkoutOrderHandler(request, db, sendNotification);
+    const retry = await checkoutOrderHandler(request, db, sendNotification);
 
     expect(retry).toEqual(first);
     expect(first.queueNumber).toBe(7);
     expect(first.pendingCount).toBe(1);
     expect(first.total).toBe(10);
+    expect(sendNotification).toHaveBeenCalledOnce();
+    expect(sendNotification.mock.calls[0][0]).toMatchObject({
+      queueNumber: 7,
+      customerName: request.data.customerName,
+      total: 10,
+    });
 
     const [orders, queue, member, requests] = await Promise.all([
       db.collection(`${BASE_PATH}/orders`).get(),

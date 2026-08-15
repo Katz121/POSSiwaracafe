@@ -1,7 +1,9 @@
 import { initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
 import { buildTrustedCheckout } from './checkoutLogic.js';
+import { notifyShopOrder } from './shopNotification.js';
 
 initializeApp();
 
@@ -10,6 +12,7 @@ const APP_ID = 'siwara-pos-v1';
 const REGION = 'asia-southeast1';
 const REQUEST_ID_PATTERN = /^[a-zA-Z0-9_-]{16,80}$/;
 const PHONE_PATTERN = /^\d{9,15}$/;
+const notifySharedSecret = defineSecret('NOTIFY_SHARED_SECRET');
 
 const errorCodeMap = {
   'invalid-items': 'invalid-argument',
@@ -41,7 +44,7 @@ function requestedDocumentIds(items, field) {
   )).filter(Boolean))];
 }
 
-export async function checkoutOrderHandler(request, database = db) {
+export async function checkoutOrderHandler(request, database = db, sendNotification = notifyShopOrder) {
   if (!request.auth) throw new HttpsError('unauthenticated', 'sign-in-required');
 
   const data = request.data || {};
@@ -68,9 +71,9 @@ export async function checkoutOrderHandler(request, database = db) {
   const modifierRefs = modifierIds.map((id) => database.doc(`${basePath}/beanModifiers/${id}`));
 
   try {
-    return await database.runTransaction(async (transaction) => {
+    const transactionResult = await database.runTransaction(async (transaction) => {
       const existing = await transaction.get(requestRef);
-      if (existing.exists) return existing.data().response;
+      if (existing.exists) return { response: existing.data().response, order: null };
 
       const pendingQuery = database.collection(`${basePath}/orders`).where('status', '==', 'pending');
       const pendingSnapshotPromise = transaction.get(pendingQuery);
@@ -167,8 +170,21 @@ export async function checkoutOrderHandler(request, database = db) {
         createdAt,
         response,
       });
-      return response;
+      return { response, order: orderData };
     });
+
+    // Notify only for a newly-created order. An idempotent replay returns the
+    // original response without sending a duplicate shop alert.
+    if (transactionResult.order) {
+      try {
+        await sendNotification(transactionResult.order, { secret: notifySharedSecret.value() });
+      } catch (notificationError) {
+        // The order is already committed. Notification failure must never make
+        // the customer retry checkout and create uncertainty at the counter.
+        console.error('shop notification failed', notificationError);
+      }
+    }
+    return transactionResult.response;
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     const message = error?.message || 'checkout-failed';
@@ -180,6 +196,6 @@ export async function checkoutOrderHandler(request, database = db) {
 }
 
 export const checkoutOrder = onCall(
-  { region: REGION, timeoutSeconds: 30 },
+  { region: REGION, timeoutSeconds: 30, secrets: [notifySharedSecret] },
   (request) => checkoutOrderHandler(request),
 );
