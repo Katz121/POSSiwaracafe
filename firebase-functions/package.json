@@ -1,0 +1,21 @@
+{
+  "name": "siwara-pos-functions",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "lint": "eslint src",
+    "serve": "firebase emulators:start --only functions,firestore"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.6.0",
+    "firebase-functions": "^7.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
+  }
+}
