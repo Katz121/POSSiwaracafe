@@ -2,7 +2,7 @@
 import {
   User, ChefHat, FileText, Package, DollarSign, ClipboardList, Users,
   PieChart, LayoutDashboard, Lock, Trash2, Moon, Sun, MoreHorizontal,
-  Coffee, Sparkles
+  Coffee, Sparkles, LogOut
 } from 'lucide-react';
 
 // UI Components
@@ -12,9 +12,11 @@ import { Modal, Button, Spinner, IconButton, Input, ErrorBoundary } from './comp
 import {
   doc, updateDoc, deleteDoc, writeBatch, increment
 } from 'firebase/firestore';
-import { db, appId } from './services/firebase';
-import useAuth from './hooks/useAuth';
+import { signOut } from 'firebase/auth';
+import { auth, db, appId } from './services/firebase';
+import useStaffAuth from './hooks/useStaffAuth';
 import usePosData from './hooks/usePosData';
+import StaffLogin from './components/StaffLogin';
 
 // AI Service (Rate-Limited, Cached, with History)
 import {
@@ -102,7 +104,7 @@ function computeOrderStockUsage(order) {
 // --- Main App Component ---
 export default function App() {
   // 1. Core States
-  const user = useAuth();
+  const { user, isAuthLoading } = useStaffAuth();
   const [view, setView] = useState('pos');
   const { isDark, toggle: toggleDarkMode } = useDarkMode();
 
@@ -431,8 +433,10 @@ export default function App() {
   return (
     <AppProvider dataValue={dataValue} configValue={configValue} uiValue={uiValue}>
       <div data-app="root" className="h-screen w-screen overflow-hidden pb-16 md:pb-20">
+        {!isAuthLoading && !user && <StaffLogin />}
+
         {/* ── Loading / Auth State ── */}
-        {(!user || isSyncing) && (
+        {(isAuthLoading || (user && isSyncing)) && (
           <div className="fixed inset-0 z-[500] flex items-center justify-center overflow-hidden">
             {/* Gradient backdrop */}
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950" />
@@ -472,7 +476,7 @@ export default function App() {
               <div className="flex flex-col items-center gap-2.5">
                 <Spinner size="md" />
                 <p className="text-xs font-medium text-slate-400 dark:text-slate-500">
-                  {!user ? 'กำลังเข้าสู่ระบบ…' : 'กำลังโหลดข้อมูล…'}
+                  {isAuthLoading ? 'กำลังตรวจสอบสิทธิ์…' : 'กำลังโหลดข้อมูล…'}
                 </p>
               </div>
 
@@ -784,6 +788,15 @@ export default function App() {
                 ? <Sun  size={16} strokeWidth={2} />
                 : <Moon size={16} strokeWidth={1.8} />
               }
+            </button>
+
+            <button
+              onClick={() => signOut(auth)}
+              aria-label="ออกจากระบบ"
+              title="ออกจากระบบ"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-500 transition-all duration-300 hover:bg-red-100 active:scale-90 dark:bg-red-500/10 dark:hover:bg-red-500/20"
+            >
+              <LogOut size={16} strokeWidth={1.8} />
             </button>
           </div>
         </div>
