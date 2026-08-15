@@ -1,10 +1,10 @@
 /**
- * Cloudflare Worker - Gemini API Proxy + LINE notifier
+ * Cloudflare Worker - Gemini API Proxy + shop notifier
  * ซ่อน API key / LINE token ฝั่ง server ไม่เปิดเผยให้ client
  *
  * Routes:
  *   POST /         -> Gemini text generation (body: { prompt, ... })
- *   POST /notify   -> push a LINE message to the shop (body: { message })
+ *   POST /notify   -> push an order alert to Telegram (LINE fallback)
  *
  * Deploy: wrangler deploy
  * Secrets:
@@ -141,21 +141,6 @@ async function getLineAccessToken(env) {
  * Cloud Function) and/or add Cloudflare Rate Limiting on this route.
  */
 async function handleNotify(request, env, headers) {
-  // LINE_TARGET_ID รับได้ทั้ง id เดียวและหลาย id คั่นด้วยจุลภาค
-  // (เช่น เจ้าของร้าน + คนหน้าบาร์) · หลายคน => multicast
-  const targets = (env.LINE_TARGET_ID || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const to = targets[0];
-  const hasAuth = env.LINE_CHANNEL_TOKEN || (env.LINE_CHANNEL_ID && env.LINE_CHANNEL_SECRET);
-  if (!hasAuth) {
-    return Response.json(
-      { error: 'LINE not configured on server (need LINE_CHANNEL_TOKEN, or LINE_CHANNEL_ID + LINE_CHANNEL_SECRET)' },
-      { status: 500, headers }
-    );
-  }
-
   // Require a shared secret so the endpoint isn't an open relay.
   const expected = env.NOTIFY_SHARED_SECRET;
   if (!expected) {
@@ -178,6 +163,43 @@ async function handleNotify(request, env, headers) {
 
   // Message is composed server-side from validated fields — never relayed raw.
   const text = buildOrderMessage(body).slice(0, 5000);
+
+  // Telegram is the primary shop channel. Keeping this server-side means the
+  // bot token and destination chat ID never enter the public browser bundle.
+  if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || !result.ok) {
+        return Response.json(
+          { error: `Telegram send failed (${res.status})`, detail: result.description || 'Unknown Telegram error' },
+          { status: 502, headers }
+        );
+      }
+      return Response.json({ success: true, channel: 'telegram' }, { status: 200, headers });
+    } catch (e) {
+      return Response.json({ error: `Telegram send failed: ${e.message}` }, { status: 502, headers });
+    }
+  }
+
+  // LINE remains as a fallback for environments that have not configured
+  // Telegram yet.
+  const targets = (env.LINE_TARGET_ID || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const to = targets[0];
+  const hasAuth = env.LINE_CHANNEL_TOKEN || (env.LINE_CHANNEL_ID && env.LINE_CHANNEL_SECRET);
+  if (!hasAuth) {
+    return Response.json(
+      { error: 'Shop notification is not configured (need Telegram or LINE credentials)' },
+      { status: 500, headers }
+    );
+  }
 
   // No target => the only thing left is broadcast, which sends the shop's order
   // alert to EVERY follower of the OA — customers included. Refuse instead, and
