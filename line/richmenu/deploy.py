@@ -44,9 +44,9 @@ def issue_token():
 TOKEN = issue_token()
 
 # ปลายทางจริงทั้งหมด (เช็คแล้วว่าเปิดได้ 2026-08-07)
-ORDER = "https://possiwaracafe.pages.dev/order"          # หน้าสั่งเองของลูกค้า (เดียวกับที่ QR ในร้านชี้ไป)
-MEMBER = "https://possiwaracafe.pages.dev/member"        # บัตรสมาชิก ลูกค้ากรอกเบอร์เช็คแต้มเอง
-SITE = "https://www.siwara.cafe"
+ORDER = "https://siwaracafe.com/order"                   # หน้าสั่งเองของลูกค้า (เดียวกับที่ QR ในร้านชี้ไป)
+MEMBER = "https://siwaracafe.com/member"                 # บัตรสมาชิก ลูกค้ากรอกเบอร์เช็คแต้มเอง
+SITE = "https://siwaracafe.com"
 MENU = f"{SITE}/#menu"
 STORY = f"{SITE}/#cafe"
 CAKE = f"{SITE}/cake"

@@ -3,7 +3,7 @@
     python D:/workFull/scripts/render_covers_png.py --width 1250 --height 843 \
         "D:/code pos/my-pos-app/line/richmenu/a-wood.html"
 
-พาเลตกับฟอนต์ล้อเว็บร้านจริง (www.siwara.cafe): ไม้สัก · ครีม · ทอง · Chonburi
+พาเลตกับฟอนต์ล้อเว็บร้านจริง (siwaracafe.com): ไม้สัก · ครีม · ทอง · Chonburi
 """
 from pathlib import Path
 
@@ -37,7 +37,7 @@ ICONS = {
            f'<circle cx="50" cy="41" r="11" {S}/></svg>',
 }
 
-# ภาพถ่ายจริงของร้าน (คัดจากเว็บ siwara.cafe) แทนไอคอนใน 2 ช่อง
+# ภาพถ่ายจริงของร้าน (คัดจากเว็บ siwaracafe.com) แทนไอคอนใน 2 ช่อง
 ART = {
     "__cake__": '<img class="photo round" src="assets/cake.jpg" alt="">',
     "__house__": '<img class="photo house" src="assets/house.jpg" alt="">',

@@ -11,7 +11,7 @@
  */
 
 const JSONLD_ID = 'siwara-jsonld';
-const SITE_URL = 'https://www.siwara.cafe/';
+const SITE_URL = 'https://siwaracafe.com/';
 
 function setMeta(selector, attr, value) {
   const el = document.head.querySelector(selector);

@@ -130,7 +130,7 @@ forward ต่อให้อีกตัว
 
 ## บัตรสมาชิก
 
-ช่อง "สะสมแต้ม" เปิด `https://possiwaracafe.pages.dev/member` · ลูกค้ากรอกเบอร์แล้วเห็นแต้ม
+ช่อง "สะสมแต้ม" เปิด `https://siwaracafe.com/member` · ลูกค้ากรอกเบอร์แล้วเห็นแต้ม
 ตัวเองทันที (โค้ดที่ `src/customer/MemberCardApp.jsx` · route ใน `src/main.jsx`)
 
 ยังไม่ใช้ LIFF เพราะ LIFF ต้องผูกกับ **LINE Login channel** ซึ่งร้านยังไม่มี (ตอนนี้มีแต่

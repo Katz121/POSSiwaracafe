@@ -25,6 +25,8 @@
  */
 
 const ALLOWED_ORIGINS = [
+  'https://siwaracafe.com',
+  'https://www.siwaracafe.com',
   'https://possiwaracafe.pages.dev',
   'http://localhost:5173',
   'http://192.168.1.152:5173'
@@ -374,7 +376,7 @@ async function handleFollowers(request, env, headers) {
 // **ข้อความแบบ reply ไม่นับโควตา 300 ข้อความ/เดือน** (LINE นับเฉพาะ push/multicast/
 // broadcast) ตอบเท่าไหร่ก็ได้ ไม่กระทบแจ้งเตือนออเดอร์
 //
-// ข้อมูลร้านทุกบรรทัดตรงกับ JSON-LD + FAQ ในเว็บ siwara.cafe · แก้ที่ไหนต้องแก้ให้ครบทั้งคู่
+// ข้อมูลร้านทุกบรรทัดตรงกับ JSON-LD + FAQ ในเว็บ siwaracafe.com · แก้ที่ไหนต้องแก้ให้ครบทั้งคู่
 // ⚠️ ถ้าไปตั้ง auto-reply ใน OA Manager ด้วย ลูกค้าจะโดนตอบซ้ำสองครั้ง เลือกทางเดียว
 // ---------------------------------------------------------------------------
 const HOURS = 'เปิดอังคาร - อาทิตย์ 10:00 - 17:00 น. (ปิดวันจันทร์)';
