@@ -33,11 +33,15 @@ const ALLOWED_ORIGINS = [
 ];
 
 const AI_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
   'gemini-2.5-flash-lite',
   'gemini-2.0-flash-lite',
   'gemini-2.0-flash',
   'gemini-1.5-flash'
 ];
+
+const OCR_MODEL = 'gemini-3.5-flash-lite';
 
 function corsHeaders(origin) {
   const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -170,19 +174,17 @@ async function handleNotify(request, env, headers) {
   // bot token and destination chat ID never enter the public browser bundle.
   if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
     try {
-      const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text }),
-      });
-      const result = await res.json().catch(() => ({}));
-      if (!res.ok || !result.ok) {
+      const sent = await sendTelegramShopMessage(env, text);
+      if (!sent.ok) {
         return Response.json(
-          { error: `Telegram send failed (${res.status})`, detail: result.description || 'Unknown Telegram error' },
+          { error: `Telegram send failed (${sent.status})`, detail: sent.detail },
           { status: 502, headers }
         );
       }
-      return Response.json({ success: true, channel: 'telegram' }, { status: 200, headers });
+      return Response.json(
+        { success: true, channel: 'telegram', ...(sent.migratedTo ? { migratedTo: sent.migratedTo } : {}) },
+        { status: 200, headers }
+      );
     } catch (e) {
       return Response.json({ error: `Telegram send failed: ${e.message}` }, { status: 502, headers });
     }
@@ -661,14 +663,69 @@ async function buildDailyReport(env) {
   return { text: lines.join('\n').slice(0, 5000), orderCount: orders.length, lowCount: lowAll.length };
 }
 
+/**
+ * ส่งข้อความเข้าแชทร้านใน Telegram
+ *
+ * เมื่อกลุ่มธรรมดาถูกอัปเกรดเป็น supergroup, Telegram จะเปลี่ยน chat_id ใหม่และ
+ * ตอบ 400 "group chat was upgraded to a supergroup chat" พร้อมส่ง id ใหม่มาใน
+ * parameters.migrate_to_chat_id · เดิม worker ทิ้ง id นั้นทำให้แจ้งเตือนออเดอร์
+ * ตายเงียบจนกว่าจะไปแก้ secret เอง · ที่นี่จึงจำ id ใหม่ลง KV แล้วยิงซ้ำทันที
+ */
+const TG_SHOP_CHAT_KEY = '__telegram_shop_chat';
+
+async function resolveShopChatId(env) {
+  if (env.FOLLOWERS) {
+    const migrated = await env.FOLLOWERS.get(TG_SHOP_CHAT_KEY);
+    if (migrated) return migrated;
+  }
+  return env.TELEGRAM_CHAT_ID;
+}
+
+async function postTelegramMessage(env, chatId, text) {
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  });
+  const result = await res.json().catch(() => ({}));
+  return { res, result };
+}
+
+async function sendTelegramShopMessage(env, text) {
+  const chatId = await resolveShopChatId(env);
+  let { res, result } = await postTelegramMessage(env, chatId, text);
+
+  const migratedTo = result?.parameters?.migrate_to_chat_id;
+  if ((!res.ok || !result.ok) && migratedTo) {
+    const newChatId = String(migratedTo);
+    if (env.FOLLOWERS) await env.FOLLOWERS.put(TG_SHOP_CHAT_KEY, newChatId);
+    ({ res, result } = await postTelegramMessage(env, newChatId, text));
+    if (res.ok && result.ok) return { ok: true, migratedTo: newChatId };
+  }
+
+  if (!res.ok || !result.ok) {
+    return { ok: false, status: res.status, detail: result.description || 'Unknown Telegram error' };
+  }
+  return { ok: true };
+}
+
 async function sendDailyReport(env) {
   const report = await buildDailyReport(env);
 
   // ไม่มีออเดอร์และไม่มีของใกล้หมด = วันปิดร้าน ไม่ต้องเปลืองโควตาส่งข้อความเปล่า
   if (report.orderCount === 0 && report.lowCount === 0) return { skipped: true };
 
-  // ส่งรายงานไปที่เดียวได้ (เจ้าของร้าน) เพื่อประหยัดโควตา — โควตา LINE นับรายหัว
-  // ในกลุ่ม เลยตั้ง LINE_REPORT_TARGET_ID แยกจากกลุ่มแจ้งเตือนออเดอร์ได้
+  // Telegram is already the primary shop channel for order notifications.
+  // Send the daily report there too so all operational summaries stay together.
+  if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+    const sent = await sendTelegramShopMessage(env, report.text);
+    if (!sent.ok) {
+      throw new Error(`Telegram daily report failed (${sent.status}): ${sent.detail}`);
+    }
+    return { sent: true, channel: 'telegram', text: report.text };
+  }
+
+  // Keep LINE as a safe fallback while Telegram credentials are unavailable.
   const to = (env.LINE_REPORT_TARGET_ID || env.LINE_TARGET_ID || '').split(',')[0].trim();
   if (!to) return { skipped: true, reason: 'no target' };
 
@@ -681,13 +738,477 @@ async function sendDailyReport(env) {
   return { sent: res.ok, status: res.status, text: report.text };
 }
 
+// ---------------------------------------------------------------------------
+// Telegram expense capture
+// ---------------------------------------------------------------------------
+const TG_PENDING_KEY = '__expense_pending:';
+const TG_OWNER_CHAT_KEY = '__telegram_owner_chat';
+
+async function telegramApi(env, method, body) {
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    const detail = data.description ? `: ${data.description}` : '';
+    throw new Error(`Telegram ${method} failed (${res.status})${detail}`);
+  }
+  return data.result;
+}
+
+async function replyTelegramExpense(env, chatId, text, keyboard) {
+  return telegramApi(env, 'sendMessage', {
+    chat_id: chatId,
+    text: text.slice(0, 4000),
+    parse_mode: 'HTML',
+    ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
+  });
+}
+
+function inferExpenseCategory(title) {
+  const value = String(title || '').toLocaleLowerCase();
+  const rules = [
+    ['เมล็ดกาแฟ', ['เมล็ดกาแฟ', 'เมล็ดคั่ว', 'coffee bean']],
+    ['ผงชา/มัทฉะ/โกโก้', ['มัทฉะ', 'matcha', 'ชาเขียว', 'ชาไทย', 'โกโก้', 'cocoa', 'อัญชัน', 'ผงชา']],
+    ['นมและผลิตภัณฑ์นม', ['นม', 'milk', 'ครีม', 'cream', 'วิป', 'เนย', 'butter', 'ชีส']],
+    ['ไซรัป/ซอส/ท็อปปิ้ง', ['ไซรัป', 'syrup', 'ซอส', 'sauce', 'ท็อปปิ้ง', 'topping', 'น้ำผึ้ง', 'คาราเมล']],
+    ['ผลไม้และของสด', ['น้ำแข็ง', 'ice', 'ผลไม้', 'ส้ม', 'มะนาว', 'เลมอน', 'มะพร้าว', 'berry']],
+    ['วัตถุดิบเบเกอรี่', ['แป้ง', 'flour', 'น้ำตาล', 'sugar', 'เค้ก', 'cake', 'เจลาติน', 'ฐานรองเค้ก']],
+    ['บรรจุภัณฑ์', ['แก้ว', 'ฝา', 'หลอด', 'ถุง', 'กล่อง', 'กระดาษ', 'ทิชชู่', 'ถ้วย', 'ช้อน']],
+  ];
+  return rules.find(([, keywords]) => keywords.some(keyword => value.includes(keyword)))?.[0] || 'อื่น ๆ';
+}
+
+function parseManualExpense(text) {
+  const match = String(text || '').trim().match(/^(.+?)\s+(\d+(?:\.\d+)?)\s+(\S+)\s+(\d+(?:\.\d+)?)\s*บาท?$/i);
+  if (!match) return null;
+  const title = clean(match[1], 120);
+  const quantity = Number(match[2]);
+  const unit = clean(match[3], 20);
+  const amount = Number(match[4]);
+  if (!title || !unit || quantity <= 0 || amount <= 0) return null;
+  return { title, quantity, unit, pricePerUnit: amount / quantity, amount, category: inferExpenseCategory(title), source: 'manual' };
+}
+
+function parseManualExpenses(text) {
+  const lines = String(text || '').trim().split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  if (!lines.length || !/^รายจ่าย(?:\s|$)/i.test(lines[0])) return null;
+  const itemLines = lines[0].replace(/^รายจ่าย\s*/i, '').trim();
+  if (itemLines) lines[0] = itemLines;
+  else lines.shift();
+  if (!lines.length) return null;
+  const expenses = lines.map(parseManualExpense);
+  return expenses.every(Boolean) ? expenses : null;
+}
+
+function escapeTelegramHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+}
+
+function expensePreview(expense) {
+  const expenses = Array.isArray(expense) ? expense : [expense];
+  const isReceipt = expenses.some(item => item.source === 'receipt');
+  const lines = [isReceipt ? '🧾 <b>ตรวจสอบใบเสร็จก่อนบันทึก</b>' : '📝 <b>ตรวจสอบรายจ่ายก่อนบันทึก</b>', ''];
+  expenses.forEach((item, index) => {
+    lines.push(
+      `<b>${index + 1}. ${escapeTelegramHtml(item.title)}</b>`,
+      item.barcode ? `รหัสสินค้า: ${escapeTelegramHtml(item.barcode)}` : '',
+      `จำนวน ${item.quantity} ${escapeTelegramHtml(item.unit)} · ฿${Number(item.amount).toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+      `ต้นทุน/หน่วย ฿${Number(item.pricePerUnit).toLocaleString('en-US', { maximumFractionDigits: 4 })} · ${escapeTelegramHtml(item.category)}`,
+      ''
+    );
+  });
+  if (expenses.length > 1) {
+    lines.push(`<b>รวมทั้งหมด: ฿${expenses.reduce((sum, item) => sum + Number(item.amount), 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</b>`);
+  }
+  return lines.join('\n');
+}
+
+function compareExpenseSets(before, after) {
+  const differences = [];
+  if (before.length !== after.length) differences.push(`จำนวนรายการ ${before.length} → ${after.length}`);
+  const max = Math.max(before.length, after.length);
+  for (let i = 0; i < max; i += 1) {
+    const a = before[i];
+    const b = after[i];
+    if (!a || !b) continue;
+    if (String(a.barcode || '') !== String(b.barcode || '')) differences.push(`รายการ ${i + 1}: Code เปลี่ยน`);
+    if (String(a.title || '').trim() !== String(b.title || '').trim()) differences.push(`รายการ ${i + 1}: ชื่อเปลี่ยน`);
+    if (Number(a.quantity) !== Number(b.quantity)) differences.push(`รายการ ${i + 1}: จำนวนเปลี่ยน`);
+    if (Number(a.amount) !== Number(b.amount)) differences.push(`รายการ ${i + 1}: ยอดเงินเปลี่ยน`);
+  }
+  return differences;
+}
+
+function expenseReviewKeyboard(canRecheck) {
+  return [
+    ...(canRecheck ? [[{ text: '🔎 รีเชคด้วย AI', callback_data: 'expense_recheck' }]] : []),
+    [{ text: '✏️ แก้ไขข้อความ', callback_data: 'expense_edit' }],
+    [{ text: '✅ ยืนยันบันทึก', callback_data: 'expense_confirm' }, { text: 'ยกเลิก', callback_data: 'expense_cancel' }],
+  ];
+}
+
+function editTelegramExpense(text, currentExpenses) {
+  const match = String(text || '').trim().match(/^แก้ไข\s+(\d+)\s+(.+)$/i);
+  if (!match) return null;
+  const index = Number(match[1]) - 1;
+  if (index < 0 || index >= currentExpenses.length) return null;
+  const edited = parseManualExpense(match[2]);
+  if (!edited) return null;
+  const updated = [...currentExpenses];
+  updated[index] = { ...updated[index], ...edited, source: updated[index].source || 'manual' };
+  return updated;
+}
+
+function telegramHelp() {
+  return [
+    '🤖 <b>คำสั่งผู้ช่วยร้าน</b>',
+    '',
+    '<b>รายจ่าย</b>',
+    'รายจ่าย ชื่อรายการ จำนวนรวม หน่วย ยอดซื้อรวม บาท',
+    'ตัวอย่าง: รายจ่าย นม 2000 กรัม 530 บาท',
+    'หลายรายการ: เปิดหัวด้วย “รายจ่าย” แล้วขึ้นบรรทัดใหม่ทีละรายการ',
+    'ส่งรูปใบเสร็จเพื่อให้ระบบอ่านและรอยืนยันได้',
+    '',
+    '<b>ตรวจสอบข้อมูล</b>',
+    '/ยอดวันนี้ · ดูยอดขายวันนี้',
+    '/เช็คสต็อก · ดูสต็อกใกล้หมด',
+    '/เช็คสต็อก นม · ค้นหาสต็อกตามชื่อ',
+    '/เช็คเมล็ดกาแฟ · ดูรายการเมล็ดกาแฟ',
+    '/ยกเลิก · ยกเลิกรายการที่รอยืนยัน',
+  ].join('\n');
+}
+
+async function listTelegramStock(env, query = '') {
+  const token = await getFirebaseIdToken(env);
+  const res = await fetch(`${fsBase(env)}/stock?pageSize=300`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Stock query failed (${res.status})`);
+  const items = (((await res.json()).documents) || []).map(fsDoc);
+  const normalizedQuery = query.toLocaleLowerCase();
+  const filtered = items.filter((item) => {
+    const name = String(item.name || '').toLocaleLowerCase();
+    const category = String(item.category || '').toLocaleLowerCase();
+    return !normalizedQuery || name.includes(normalizedQuery) || category.includes(normalizedQuery)
+      || (normalizedQuery.includes('เมล็ดกาแฟ') && inferExpenseCategory(item.name) === 'เมล็ดกาแฟ');
+  });
+  const low = !query ? filtered.filter(item => Number(item.quantity) <= Number(item.minQuantity)) : filtered;
+  const shown = (low.length ? low : filtered).slice(0, 30);
+  if (!shown.length) return query ? `ไม่พบสต็อกที่ตรงกับ “${escapeTelegramHtml(query)}”` : 'ไม่มีรายการสต็อก';
+  const heading = query ? `📦 <b>สต็อกที่ค้นหา: ${escapeTelegramHtml(query)}</b>` : '📦 <b>สต็อกใกล้หมด</b>';
+  const lines = shown.map((item) => {
+    const quantity = Number(item.quantity) || 0;
+    const unit = escapeTelegramHtml(item.unit || 'หน่วย');
+    const warning = quantity <= Number(item.minQuantity) ? ' ⚠️' : '';
+    return `· ${escapeTelegramHtml(item.name)} · ${quantity.toLocaleString('en-US')} ${unit}${warning}`;
+  });
+  return `${heading}\n${lines.join('\n')}${(low.length || filtered.length) > shown.length ? `\n· และอีก ${(low.length || filtered.length) - shown.length} รายการ` : ''}`;
+}
+
+async function handleTelegramCommand(env, chatId, text) {
+  const command = String(text || '').trim();
+  if (/^\/(ยกเลิก|cancel)(?:@[\w_]+)?(?:\s|$)/i.test(command)) {
+    if (env.FOLLOWERS) await env.FOLLOWERS.delete(`${TG_PENDING_KEY}${chatId}`);
+    await replyTelegramExpense(env, chatId, 'ยกเลิกรายจ่ายแล้ว');
+    return true;
+  }
+  if (/^\/(help|start)(?:@[\w_]+)?(?:\s|$)/i.test(command)) {
+    await replyTelegramExpense(env, chatId, telegramHelp());
+    return true;
+  }
+  if (/^\/(ยอดวันนี้|เช็คยอด|sales|summary)(?:@[\w_]+)?(?:\s|$)/i.test(command)) {
+    const report = await buildDailyReport(env);
+    await replyTelegramExpense(env, chatId, escapeTelegramHtml(report.text));
+    return true;
+  }
+  const stockMatch = command.match(/^\/(เช็คสต็อก|stock)(?:@[\w_]+)?(?:\s+(.+))?$/i);
+  if (stockMatch) {
+    await replyTelegramExpense(env, chatId, await listTelegramStock(env, stockMatch[2] || ''));
+    return true;
+  }
+  if (/^\/(เช็คเมล็ดกาแฟ|coffee)(?:@[\w_]+)?(?:\s|$)/i.test(command)) {
+    await replyTelegramExpense(env, chatId, await listTelegramStock(env, 'เมล็ดกาแฟ'));
+    return true;
+  }
+  return false;
+}
+
+async function saveTelegramExpense(env, expense) {
+  const token = await getFirebaseIdToken(env);
+  const fields = {
+    title: { stringValue: clean(expense.title, 120) },
+    quantity: { doubleValue: Number(expense.quantity) || 0 },
+    unit: { stringValue: clean(expense.unit, 20) },
+    pricePerUnit: { doubleValue: Number(expense.pricePerUnit) || 0 },
+    amount: { doubleValue: Number(expense.amount) || 0 },
+    category: { stringValue: clean(expense.category, 60) },
+    ...(expense.barcode ? { barcode: { stringValue: clean(expense.barcode, 32) } } : {}),
+    date: { stringValue: bangkokISODate() },
+    createdAt: { timestampValue: new Date().toISOString() },
+  };
+  const res = await fetch(`${fsBase(env)}/expenses`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  });
+  if (!res.ok) throw new Error(`Expense save failed (${res.status})`);
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function parseOcrNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const match = String(value ?? '').replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : 0;
+}
+
+async function extractExpenseFromImage(env, fileId, testImage = null, testMimeType = 'image/jpeg', retry = false) {
+  let mimeType = testMimeType;
+  let image = testImage;
+  if (!image) {
+    const file = await telegramApi(env, 'getFile', { file_id: fileId });
+    const imageRes = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${file.file_path}`);
+    if (!imageRes.ok) throw new Error('Receipt image download failed');
+    const detectedMime = imageRes.headers.get('content-type') || '';
+    const extensionMime = /\.png$/i.test(file.file_path || '') ? 'image/png'
+      : /\.webp$/i.test(file.file_path || '') ? 'image/webp' : 'image/jpeg';
+    mimeType = /^image\/(jpeg|png|webp|gif)$/i.test(detectedMime) ? detectedMime : extensionMime;
+    image = bytesToBase64(new Uint8Array(await imageRes.arrayBuffer()));
+  }
+  const prompt = `อ่านข้อความจากภาพใบเสร็จ แล้วตอบเป็น JSON เท่านั้นตาม schema นี้:
+{"items":[{"title":"ชื่อสินค้า","barcode":"885xxxxxxxxx","quantity":1,"unit":"ชิ้น","pricePerUnit":0,"amount":0}]}
+ต้องแยกรายการสินค้าทุกบรรทัดออกเป็น items ห้ามรวมหลายสินค้าเป็นรายการเดียว
+ให้โฟกัสคอลัมน์ Code/รหัสอ้างอิงของบิลเป็นพิเศษ เช่น เลขขึ้นต้น 885 และอ่านตัวเลขให้ครบ ห้ามเอา Code ไปรวมใน title ถ้าไม่มีให้ใช้ barcode เป็นสตริงว่าง
+amount คือยอดรวมของรายการนั้น และ pricePerUnit คือ amount หาร quantity
+ถ้ามีหลายรายการให้แยกเป็นคนละ item เสมอ และใช้ยอดของแต่ละบรรทัดตามใบเสร็จ
+ห้ามใส่ markdown ห้ามเดาข้อมูลที่ไม่มีในภาพ ตัวเลขต้องเป็น number`;
+  const orientationInstruction = '\n\nภาพอาจเอียงหรือหมุน 90/180 องศา ให้ปรับมุมมองก่อนอ่าน และอ่านข้อความจากบนลงล่างทีละบรรทัด ห้ามตอบ items ว่าง หากชื่อสินค้าไม่ชัดให้ใช้ข้อความที่มองเห็นได้ แต่ต้องเก็บ Code และยอดเงินของแต่ละบรรทัด';
+  const ocrPrompt = retry
+    ? `${prompt}${orientationInstruction}\nตรวจซ้ำอีกครั้งและตอบ JSON เท่านั้น`
+    : `${prompt}${orientationInstruction}`;
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${OCR_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: ocrPrompt }, { inline_data: { mime_type: mimeType, data: image } }] }], generationConfig: { temperature: 0, maxOutputTokens: 1400 } }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(`Gemini OCR API error (${res.status}): ${data?.error?.message || 'ไม่สามารถอ่านผลจาก Gemini ได้'}`);
+  }
+  const text = (data?.candidates?.[0]?.content?.parts || [])
+    .map(part => part?.text || '')
+    .filter(Boolean)
+    .join('\n');
+  const jsonText = text.replace(/```json|```/gi, '').trim();
+  const jsonMatch = jsonText.match(/(?:\{[\s\S]*\}|\[[\s\S]*\])/);
+  if (!jsonMatch) throw new Error('Gemini ไม่ส่งข้อมูลใบเสร็จกลับมา');
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    throw new Error('Gemini ส่งข้อมูลใบเสร็จมาไม่อยู่ในรูปแบบ JSON');
+  }
+  const rawItems = Array.isArray(parsed)
+    ? parsed
+    : (Array.isArray(parsed.items)
+      ? parsed.items
+      : (Array.isArray(parsed.products)
+        ? parsed.products
+        : (Array.isArray(parsed.lines)
+          ? parsed.lines
+          : (Array.isArray(parsed.rows)
+            ? parsed.rows
+            : (Array.isArray(parsed.data)
+              ? parsed.data
+              : (Array.isArray(parsed.results) ? parsed.results : [parsed]))))));
+  const items = rawItems.map((item) => {
+    const itemQuantity = parseOcrNumber(item.quantity ?? item.qty ?? item.count ?? item['จำนวน']) || 1;
+    const lineAmount = parseOcrNumber(item.amount ?? item.total ?? item.lineTotal ?? item.totalAmount ?? item.line_amount ?? item.line_total ?? item['รวม']);
+    const unitAmount = parseOcrNumber(item.pricePerUnit ?? item.unitPrice ?? item.unit_price ?? item.price ?? item.ราคา);
+    const itemAmount = lineAmount || (unitAmount * itemQuantity);
+    const title = clean(item.title || item.name || item.product || item.productName || item.product_name || item.description || item['สินค้า'], 120);
+    const barcode = String(item.barcode || item.code || item.productCode || '').replace(/[^0-9]/g, '').slice(0, 32);
+    return {
+      title,
+      barcode,
+      quantity: itemQuantity,
+      unit: clean(item.unit || 'ชิ้น', 20),
+      pricePerUnit: itemAmount / itemQuantity,
+      amount: itemAmount,
+      category: inferExpenseCategory(title),
+      source: 'receipt',
+    };
+  }).filter(item => item.title && item.amount > 0);
+  if (!items.length && !retry) {
+    return extractExpenseFromImage(env, null, image, mimeType, true);
+  }
+  if (!items.length) throw new Error('ไม่พบรายการสินค้าและยอดเงินในใบเสร็จ');
+  return items;
+}
+
+async function handleTelegramExpense(request, env) {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return new Response('Telegram is not configured', { status: 503 });
+  const update = await request.json().catch(() => null);
+  if (!update) return new Response('Bad request', { status: 400 });
+  const callback = update.callback_query;
+  const message = update.message || callback?.message;
+  const chatId = String(message?.chat?.id || '');
+  const enrolledChatId = env.FOLLOWERS ? await env.FOLLOWERS.get(TG_OWNER_CHAT_KEY) : null;
+  const isAuthorizedChat = chatId && (chatId === String(env.TELEGRAM_CHAT_ID) || chatId === enrolledChatId);
+  console.log('telegram update received', {
+    updateId: update.update_id ?? null,
+    chatId,
+    hasText: Boolean(message?.text),
+    hasPhoto: Boolean(message?.photo?.length),
+    isAuthorizedChat: Boolean(isAuthorizedChat),
+  });
+  // Keep /help discoverable even if the owner is chatting from a new/private
+  // chat. Financial, stock, and write operations remain owner-only below.
+  if (!isAuthorizedChat) {
+    if (message?.text && /^\/(help|start)(?:@[\w_]+)?(?:\s|$)/i.test(message.text.trim())) {
+      try {
+        if (['private', 'group', 'supergroup'].includes(message.chat?.type) && env.FOLLOWERS) {
+          await env.FOLLOWERS.put(TG_OWNER_CHAT_KEY, chatId);
+        }
+        await replyTelegramExpense(env, chatId, telegramHelp());
+        console.log('telegram help reply sent', { chatId });
+      } catch (error) {
+        console.error('telegram help reply failed:', error.message);
+      }
+    } else {
+      console.log('telegram update ignored: unauthorized chat or unsupported public command');
+    }
+    return new Response('OK', { status: 200 });
+  }
+
+  if (callback) {
+    await telegramApi(env, 'answerCallbackQuery', { callback_query_id: callback.id });
+    const pending = env.FOLLOWERS ? await env.FOLLOWERS.get(`${TG_PENDING_KEY}${chatId}`, 'json') : null;
+    const pendingExpenses = Array.isArray(pending) ? pending : (pending?.expenses || []);
+    if (callback.data === 'expense_recheck' && pending?.fileId) {
+      try {
+        const checkedExpenses = await extractExpenseFromImage(env, pending.fileId);
+        const differences = compareExpenseSets(pendingExpenses, checkedExpenses);
+        const updatedPending = { ...pending, expenses: checkedExpenses, rechecked: true };
+        if (env.FOLLOWERS) await env.FOLLOWERS.put(`${TG_PENDING_KEY}${chatId}`, JSON.stringify(updatedPending), { expirationTtl: 900 });
+        const note = differences.length
+          ? `🔎 <b>รีเชคแล้ว พบข้อมูลต่างจากรอบแรก</b>\n${differences.map(escapeTelegramHtml).join('\n')}\n\nตรวจรายการล่าสุดก่อนยืนยันอีกครั้ง`
+          : '🔎 <b>รีเชคแล้ว ข้อมูลตรงกันทั้ง 2 รอบ</b>\nตรวจรายการล่าสุดก่อนยืนยันอีกครั้ง';
+        await replyTelegramExpense(env, chatId, `${note}\n\n${expensePreview(checkedExpenses)}`, expenseReviewKeyboard(true));
+      } catch (error) {
+        await replyTelegramExpense(env, chatId, `รีเชคไม่สำเร็จ: ${escapeTelegramHtml(error.message)}\nข้อมูลเดิมยังไม่ถูกบันทึก`);
+      }
+      return new Response('OK', { status: 200 });
+    }
+    if (callback.data === 'expense_edit' && pendingExpenses.length) {
+      const editPending = Array.isArray(pending) ? { expenses: pending } : { ...pending };
+      editPending.editing = true;
+      if (env.FOLLOWERS) await env.FOLLOWERS.put(`${TG_PENDING_KEY}${chatId}`, JSON.stringify(editPending), { expirationTtl: 900 });
+      await replyTelegramExpense(env, chatId, '✏️ ส่งข้อความแก้ไขได้เลย\nตัวอย่าง: แก้ไข 3 น้ำมันงา 2 ขวด 150 บาท\nระบบจะแก้เฉพาะรายการที่ 3 แล้วให้ตรวจสอบใหม่');
+      return new Response('OK', { status: 200 });
+    }
+    if (callback.data === 'expense_cancel') {
+      if (env.FOLLOWERS) await env.FOLLOWERS.delete(`${TG_PENDING_KEY}${chatId}`);
+      await replyTelegramExpense(env, chatId, 'ยกเลิกรายจ่ายแล้ว');
+    } else if (callback.data === 'expense_confirm' && pending) {
+      for (const expense of pendingExpenses) await saveTelegramExpense(env, expense);
+      if (env.FOLLOWERS) await env.FOLLOWERS.delete(`${TG_PENDING_KEY}${chatId}`);
+      const total = pendingExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+      await replyTelegramExpense(env, chatId, `✅ <b>บันทึกรายจ่ายสำเร็จ</b>\n${pendingExpenses.length} รายการ · ฿${total.toLocaleString('en-US')}`);
+    }
+    return new Response('OK', { status: 200 });
+  }
+
+  const photo = message?.photo?.at(-1);
+  const imageFileId = photo?.file_id
+    || (message?.document?.mime_type?.startsWith('image/') ? message.document.file_id : null);
+  const text = message?.text || '';
+  const storedPending = env.FOLLOWERS ? await env.FOLLOWERS.get(`${TG_PENDING_KEY}${chatId}`, 'json') : null;
+  const storedExpenses = Array.isArray(storedPending) ? storedPending : (storedPending?.expenses || []);
+  if (storedPending?.editing && text && !text.startsWith('/')) {
+    const editedExpenses = editTelegramExpense(text, storedExpenses);
+    if (!editedExpenses) {
+      await replyTelegramExpense(env, chatId, 'รูปแบบแก้ไขไม่ถูกต้อง\nใช้: แก้ไข ลำดับ ชื่อ จำนวน หน่วย ยอดรวม บาท\nตัวอย่าง: แก้ไข 3 น้ำมันงา 2 ขวด 150 บาท');
+    } else {
+      const editedPending = { ...storedPending, expenses: editedExpenses, editing: false };
+      if (env.FOLLOWERS) await env.FOLLOWERS.put(`${TG_PENDING_KEY}${chatId}`, JSON.stringify(editedPending), { expirationTtl: 900 });
+      await replyTelegramExpense(env, chatId, `✅ แก้ไขรายการที่ ${text.trim().match(/^แก้ไข\s+(\d+)/i)?.[1]} แล้ว\n\n${expensePreview(editedExpenses)}`, expenseReviewKeyboard(Boolean(editedPending.fileId)));
+    }
+    return new Response('OK', { status: 200 });
+  }
+  if (text.startsWith('/')) {
+    try {
+      const handled = await handleTelegramCommand(env, chatId, text);
+      if (!handled) await replyTelegramExpense(env, chatId, 'ไม่รู้จักคำสั่งนี้\nพิมพ์ /help เพื่อดูคำสั่งทั้งหมด');
+    } catch (error) {
+      await replyTelegramExpense(env, chatId, `เรียกข้อมูลไม่สำเร็จ: ${escapeTelegramHtml(error.message)}`);
+    }
+    return new Response('OK', { status: 200 });
+  }
+  if (/^\/(ยกเลิก|cancel)/i.test(text)) {
+    if (env.FOLLOWERS) await env.FOLLOWERS.delete(`${TG_PENDING_KEY}${chatId}`);
+    await replyTelegramExpense(env, chatId, 'ยกเลิกรายจ่ายแล้ว');
+    return new Response('OK', { status: 200 });
+  }
+
+  try {
+    const expenses = imageFileId ? await extractExpenseFromImage(env, imageFileId) : parseManualExpenses(text);
+    if (!expenses) {
+      await replyTelegramExpense(env, chatId, 'กรอกตามแบบฟอร์มนี้เท่านั้น:\nรายจ่าย | ชื่อรายการ | จำนวนรวม | หน่วย | ยอดซื้อรวม\nตัวอย่าง: รายจ่าย | นม | 2000 | กรัม | 530\n\nระบบจะคำนวณต้นทุนต่อหน่วยให้เอง\nหรือส่งรูปใบเสร็จมาได้เลย');
+    } else {
+      const pendingPayload = imageFileId ? { expenses, source: 'receipt', fileId: imageFileId, rechecked: false } : expenses;
+      if (env.FOLLOWERS) await env.FOLLOWERS.put(`${TG_PENDING_KEY}${chatId}`, JSON.stringify(pendingPayload), { expirationTtl: 900 });
+      await replyTelegramExpense(env, chatId, expensePreview(expenses), expenseReviewKeyboard(Boolean(imageFileId)));
+    }
+  } catch (error) {
+    await replyTelegramExpense(env, chatId, `อ่านรายจ่ายไม่สำเร็จ: ${error.message}\nลองพิมพ์เองหรือส่งรูปใหม่อีกครั้ง`);
+  }
+  return new Response('OK', { status: 200 });
+}
+
+async function handleTelegramExpenseSetup(request, env, headers) {
+  const expected = env.NOTIFY_SHARED_SECRET;
+  const provided = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!expected || provided !== expected) return Response.json({ error: 'Unauthorized' }, { status: 401, headers });
+  const webhookUrl = 'https://pos-gemini-proxy.siwatid-99.workers.dev/telegram-expense';
+  await telegramApi(env, 'setWebhook', { url: webhookUrl, allowed_updates: ['message', 'callback_query'] });
+  return Response.json({ success: true, webhookUrl }, { status: 200, headers });
+}
+
+async function handleTelegramExpenseStatus(request, env, headers) {
+  const expected = env.NOTIFY_SHARED_SECRET;
+  const provided = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!expected || provided !== expected) return Response.json({ error: 'Unauthorized' }, { status: 401, headers });
+  const info = await telegramApi(env, 'getWebhookInfo', {});
+  const bot = await telegramApi(env, 'getMe', {});
+  return Response.json({
+    ok: true,
+    botUsername: bot.username || null,
+    botId: bot.id || null,
+    url: info.url,
+    pendingUpdateCount: info.pending_update_count,
+    lastErrorDate: info.last_error_date || null,
+    lastErrorMessage: info.last_error_message || null,
+    allowedUpdates: info.allowed_updates || null,
+    enrolledChatId: env.FOLLOWERS ? await env.FOLLOWERS.get(TG_OWNER_CHAT_KEY) : null,
+  }, { status: 200, headers });
+}
+
 export default {
   // Cron ตาม [triggers] ใน wrangler.toml
   async scheduled(event, env, ctx) {
     ctx.waitUntil(sendDailyReport(env).catch((e) => console.error('daily report failed:', e.message)));
   },
 
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin') || '';
     const headers = corsHeaders(origin);
 
@@ -706,6 +1227,32 @@ export default {
 
     // Route: LINE notification
     const pathname = new URL(request.url).pathname.replace(/\/+$/, '');
+    if (pathname.endsWith('/telegram-expense/status')) {
+      return handleTelegramExpenseStatus(request, env, headers);
+    }
+    if (pathname.endsWith('/telegram-expense/setup')) {
+      return handleTelegramExpenseSetup(request, env, headers);
+    }
+    if (pathname.endsWith('/telegram-expense')) {
+      // Telegram expects a quick webhook acknowledgement. Receipt OCR can
+      // take several seconds, so keep the AI work in the Worker background.
+      const update = await request.clone().json().catch(() => null);
+      const hasImage = Boolean(update?.message?.photo?.length)
+        || update?.message?.document?.mime_type?.startsWith('image/');
+      const processUpdate = () => handleTelegramExpense(request.clone(), env).catch((error) => {
+        console.error('telegram expense failed:', error.message);
+      });
+      // Text commands must finish before acknowledging the webhook. This
+      // avoids Telegram/Workers dropping a fast command sent via waitUntil.
+      if (hasImage) {
+        const imageChatId = String(update?.message?.chat?.id || '');
+        if (imageChatId) {
+          await replyTelegramExpense(env, imageChatId, '🧾 รับรูปแล้ว กำลังอ่านใบเสร็จให้ครับ…');
+        }
+        ctx.waitUntil(processUpdate());
+      } else await processUpdate();
+      return new Response('OK', { status: 200 });
+    }
     if (pathname.endsWith('/webhook')) {
       return handleWebhook(request, env);
     }
