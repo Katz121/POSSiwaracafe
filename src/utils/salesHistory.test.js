@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validDate, startOf, shift, buildSalesHistory } from './salesHistory';
+import { validDate, startOf, shift, buildSalesHistory, countUnits, isPieceCategory } from './salesHistory';
 
 const order = (date, total) => ({ status: 'completed', date, total, items: [] });
 const expense = (date, amount, title = 'ค่าไฟรายวัน', category = 'ค่าไฟ') =>
@@ -131,5 +131,53 @@ describe('buildSalesHistory', () => {
 
     expect(data.fixedTitles.map(title => title.name)).toEqual(['ค่าไฟรายวัน']);
     expect(data.fixed).toBe(300);
+  });
+});
+
+describe('countUnits / isPieceCategory', () => {
+  it('แยกแก้ว (เครื่องดื่ม) กับชิ้น (ขนม) ได้', () => {
+    const units = countUnits({
+      items: [
+        { category: 'Coffee', quantity: 2 },
+        { category: 'Tea & Cocoa', quantity: 1 },
+        { category: 'Cake', quantity: 3 },
+      ],
+    });
+
+    expect(units).toEqual({ cups: 3, pieces: 3 });
+  });
+
+  it('หมวดเครื่องดื่มใหม่ที่ยังไม่รู้จัก ถูกนับเป็นแก้ว', () => {
+    expect(countUnits({ items: [{ category: 'Smoothie', quantity: 4 }] }))
+      .toEqual({ cups: 4, pieces: 0 });
+  });
+
+  it('รู้จักหมวดขนมทั้งไทยและอังกฤษ', () => {
+    expect(isPieceCategory('Cake')).toBe(true);
+    expect(isPieceCategory('เค้ก')).toBe(true);
+    expect(isPieceCategory('เบเกอรี่')).toBe(true);
+    expect(isPieceCategory('Coffee')).toBe(false);
+    expect(isPieceCategory(undefined)).toBe(false);
+  });
+
+  it('บิลไม่มีรายการ ต้องได้ศูนย์ ไม่ใช่พัง', () => {
+    expect(countUnits({})).toEqual({ cups: 0, pieces: 0 });
+  });
+});
+
+describe('buildSalesHistory · นับแก้ว', () => {
+  it('สะสมแก้วและชิ้นเข้าเดือน วัน และยอดรวม', () => {
+    const data = buildSalesHistory([
+      { status: 'completed', date: '2026-08-01', total: 100,
+        items: [{ category: 'Coffee', quantity: 2 }, { category: 'Cake', quantity: 1 }] },
+      { status: 'completed', date: '2026-08-01', total: 60,
+        items: [{ category: 'มัทฉะ', quantity: 1 }] },
+    ], [], 'all');
+
+    expect(data.totals.cups).toBe(3);
+    expect(data.totals.pieces).toBe(1);
+    expect(data.ordered[0].cups).toBe(3);
+    expect(data.ordered[0].days.get('2026-08-01').cups).toBe(3);
+    expect(data.ordered[0].days.get('2026-08-01').pieces).toBe(1);
   });
 });

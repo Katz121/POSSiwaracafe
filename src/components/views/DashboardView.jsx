@@ -9,6 +9,7 @@ import { doc, deleteDoc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate } from '../../utils/calculations';
+import { countUnits } from '../../utils/salesHistory';
 import SmartAlerts from '../SmartAlerts';
 import { Button, Modal, Card, Badge, Spinner, Tabs, ConfirmModal, useToast } from '../ui';
 
@@ -64,11 +65,19 @@ const DashboardView = () => {
         const expenseTotal = monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
         const count = monthOrders.length;
 
+        // แก้ว = เครื่องดื่ม · ชิ้น = ขนม · แยกกันเพราะ "ออเดอร์" อ่านแล้วแยกไม่ออกว่าหมายถึงบิลหรือแก้ว
+        const units = monthOrders.reduce((acc, o) => {
+            const { cups, pieces } = countUnits(o);
+            return { cups: acc.cups + cups, pieces: acc.pieces + pieces };
+        }, { cups: 0, pieces: 0 });
+
         return {
             revenue,
             cost: expenseTotal,
             profit: revenue - expenseTotal,
-            count
+            count,
+            cups: units.cups,
+            pieces: units.pieces
         };
     }, [orders, expenses, currentMonth]);
 
@@ -85,12 +94,19 @@ const DashboardView = () => {
         const expenseTotal = monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
         const count = monthOrders.length;
 
+        const units = monthOrders.reduce((acc, o) => {
+            const { cups, pieces } = countUnits(o);
+            return { cups: acc.cups + cups, pieces: acc.pieces + pieces };
+        }, { cups: 0, pieces: 0 });
+
         return {
             month: lastMonth,
             revenue,
             cost: expenseTotal,
             profit: revenue - expenseTotal,
-            count
+            count,
+            cups: units.cups,
+            pieces: units.pieces
         };
     }, [orders, expenses, currentMonth]);
 
@@ -355,7 +371,7 @@ const DashboardView = () => {
                 คุณคือที่ปรึกษาธุรกิจร้านคาเฟ่มืออาชีพ "AI Manager"
 
                 📅 **ข้อมูลเดือน ${monthNameThai} (${selectedMonth}):**
-                - รายได้รวม: ${revenue.toLocaleString()} บาท (${count} ออเดอร์)
+                - รายได้รวม: ${revenue.toLocaleString()} บาท (${count} บิล)
                 - รายจ่ายรวม: ${cost.toLocaleString()} บาท
                 - กำไรสุทธิ: ${profit.toLocaleString()} บาท (Margin ${profitMargin}%)
                 - ต้นทุนของเสีย: ${totalWasteCost.toLocaleString()} บาท
@@ -364,7 +380,7 @@ const DashboardView = () => {
                 - วัตถุดิบใกล้หมด: ${lowStockCount} รายการ
 
                 📊 **ข้อมูลวันนี้ (${today}) เปรียบเทียบ:**
-                - รายได้วันนี้: ${todayRevenue.toLocaleString()} บาท (${todayOrderCount} ออเดอร์)
+                - รายได้วันนี้: ${todayRevenue.toLocaleString()} บาท (${todayOrderCount} บิล)
                 - รายจ่ายวันนี้: ${todayExpenseTotal.toLocaleString()} บาท
                 - กำไรวันนี้: ${(todayRevenue - todayExpenseTotal).toLocaleString()} บาท
 
@@ -709,11 +725,12 @@ const DashboardView = () => {
                     <Card padding="lg" hoverable className="flex flex-col justify-between">
                         <div className="flex justify-between items-start mb-6">
                             <div className="w-14 h-14 bg-blue-50 text-[var(--accent-ai)] rounded-2xl flex items-center justify-center shadow-inner"><Target size={24} /></div>
-                            <span className="text-xs font-medium text-[var(--accent-ai)] bg-blue-50 px-3 py-1.5 rounded-xl border border-[var(--border-color)]  tracking-widest num">{monthlyStats.count} ออเดอร์</span>
+                            <span className="text-xs font-medium text-[var(--accent-ai)] bg-blue-50 px-3 py-1.5 rounded-xl border border-[var(--border-color)]  tracking-widest num">{monthlyStats.cups} แก้ว</span>
                         </div>
                         <div>
-                            <p className="text-xs font-medium text-[var(--text-muted)]  tracking-widest mb-2">ออเดอร์สำเร็จ</p>
+                            <p className="text-xs font-medium text-[var(--text-muted)]  tracking-widest mb-2">บิลที่ปิดแล้ว</p>
                             <p className="text-4xl font-bold text-[var(--text-primary)] tracking-tighter num">{(monthlyStats.count).toLocaleString()}</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-2 num">{monthlyStats.cups.toLocaleString()} แก้ว · ขนม {monthlyStats.pieces.toLocaleString()} ชิ้น</p>
                         </div>
                     </Card>
 
@@ -780,14 +797,14 @@ const DashboardView = () => {
                         {/* Orders Comparison */}
                         <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700">
                             <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-medium text-slate-400  tracking-wider">ออเดอร์</span>
+                                <span className="text-xs font-medium text-slate-400  tracking-wider">บิล</span>
                                 <div className={`flex items-center gap-1 text-xs font-medium ${growthStats.orderGrowth >= 0 ? 'text-[var(--accent-emerald)]' : 'text-[var(--state-danger)]'}`}>
                                     {growthStats.orderGrowth >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                                     {Math.abs(growthStats.orderGrowth)}%
                                 </div>
                             </div>
                             <p className="text-2xl font-bold text-white num">{monthlyStats.count}</p>
-                            <p className="text-xs text-slate-500 mt-1">เดือนก่อน: {lastMonthStats.count}</p>
+                            <p className="text-xs text-slate-500 mt-1 num">เดือนก่อน: {lastMonthStats.count} · เดือนนี้ {monthlyStats.cups} แก้ว</p>
                         </div>
 
                         {/* Cost Comparison */}

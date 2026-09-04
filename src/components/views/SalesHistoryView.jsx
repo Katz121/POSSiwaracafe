@@ -2,7 +2,7 @@ import React,
   { useEffect,
   useMemo,
   useState } from 'react';
-import { Banknote,
+import { Banknote, CupSoda,
   ChevronDown,
   ChevronRight,
   Download,
@@ -149,16 +149,17 @@ const profit = data.totals.revenue - data.totals.expense;
     .filter(t => t.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())).sort((a, b) => sort === 
   'count' ? b.count - a.count : sort === 'average' ? b.average - a.average : b.amount - a.amount).slice(0, 20);
     const exportTimeline = () =>
-    csv([['วันที่', 'จำนวนบิล', 'ยอดขาย', 'รายจ่าย', 'กำไร'], ...data.months.flatMap(m => 
-  [...m.days.values()].map(d => [d.key, d.bills.length, d.revenue, d.expense, d.revenue - d.expense]))], 
+    csv([['วันที่', 'จำนวนบิล', 'แก้ว', 'ขนม (ชิ้น)', 'ยอดขาย', 'รายจ่าย', 'กำไร'], ...data.months.flatMap(m => 
+  [...m.days.values()].map(d => [d.key, d.bills.length, d.cups, d.pieces, d.revenue, d.expense,
+    d.revenue - d.expense]))], 
   'sales-history.csv');
   const exportExpenses = () =>
     csv([['หมวด', 'หัวข้อ', 'จำนวนครั้ง', 'ยอดรวม', 'เฉลี่ยต่อครั้ง', 'ครั้งล่าสุด'], ...data.titleRows
       .map(t => [data.catRows.find(c => c.titles.has(t.name))?.name || '', t.name, t.count, t.amount, t.average, 
   t.latest])], 'sales-expenses.csv');
   const exportDays = () =>
-    csv([['วันที่', 'วันในสัปดาห์', 'ยอดขาย', 'รายจ่าย', 'กำไร', 'จำนวนบิล'], ...data.days.map(d => [d.key, 
-  dayName(d.key), d.revenue, d.expense, d.revenue - d.expense, d.bills.length])], 'sales-days.csv');
+    csv([['วันที่', 'วันในสัปดาห์', 'ยอดขาย', 'รายจ่าย', 'กำไร', 'จำนวนบิล', 'แก้ว'], ...data.days.map(d => [d.key, 
+  dayName(d.key), d.revenue, d.expense, d.revenue - d.expense, d.bills.length, d.cups])], 'sales-days.csv');
   return <main
   className="h-full overflow-y-auto bg-[var(--bg-tertiary)] p-4 pb-28 md:p-6 lg:p-8">
 <div
@@ -177,7 +178,7 @@ const profit = data.totals.revenue - data.totals.expense;
       </button>)}</div>
 </header>
 <section
-  className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+  className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
 <Summary icon={TrendingUp} label="ยอดขาย"
   value={money(data.totals.revenue)} />
 <Summary icon={Receipt} label="รายจ่าย"
@@ -185,9 +186,13 @@ const profit = data.totals.revenue - data.totals.expense;
 <Summary icon={profit >= 0 ? TrendingUp : TrendingDown} label="กำไร"
   value={money(profit)}
   danger={profit < 0} />
-<Summary icon={FileText} label="จำนวนบิล"
+<Summary icon={FileText} label="บิลที่ปิดแล้ว"
   value={data.totals.bills}
   sub={`เฉลี่ย ${money(data.totals.bills ? data.totals.revenue / data.totals.bills : 0)}/บิล`} />
+<Summary icon={CupSoda} label="แก้วที่ขาย"
+  value={data.totals.cups}
+  sub={`ขนม ${data.totals.pieces} ชิ้น · ${data.totals.bills
+    ? (data.totals.cups / data.totals.bills).toFixed(1) : 0} แก้ว/บิล`} />
 </section>
 <p
   className="-mt-3 text-xs text-[var(--text-muted)]">กำไรคำนวณจากยอดขายลบรายจ่ายที่บันทึกในระบบ 
@@ -270,19 +275,30 @@ function Timeline({ data, open, flip, exportCsv }) { return <div
   size="xs"
   onClick={() => data.months.forEach(m => open.has(m.key) && flip(m.key))}>หุบทั้งหมด</Button>
 </div>
-</div>{data.months.length ? data.months.map(m => <React.Fragment
+</div>{data.months.length ? <><div
+  className={"grid grid-cols-[minmax(180px,1fr)_80px_80px_120px_120px_120px] gap-3 border-b " +
+  "border-[var(--border-color)] px-4 py-2 text-xs font-medium text-[var(--text-muted)]"}>
+<span>ช่วงเวลา</span>
+<span className="text-right">บิล</span>
+<span className="text-right">แก้ว</span>
+<span className="text-right">ยอดขาย</span>
+<span className="text-right">รายจ่าย</span>
+<span className="text-right">กำไร</span>
+</div>{data.months.map(m => <React.Fragment
   key={m.key}>
 <button
   type="button"
   disabled={m.key === 'unknown'}
   onClick={() => flip(m.key)}
-  className={"grid w-full grid-cols-[minmax(180px,1fr)_100px_120px_120px_1" + 
-  "20px] gap-3 border-b border-[var(--border-color)] p-4 text-l" + "eft text-sm"}>
+  className={"grid w-full grid-cols-[minmax(180px,1fr)_80px_80px_120px_120px_120px] gap-3 " +
+  "border-b border-[var(--border-color)] p-4 text-left text-sm"}>
 <span
   className="flex items-center gap-2">{m.key !== 'unknown' && <Expand open={open.has(m.key)} />}{m.key === 
   'unknown' ? 'ไม่ระบุวันที่' : monthName(m.key)}</span>
 <span
   className="num text-right">{m.bills.length}</span>
+<span
+  className="num text-right">{m.cups}</span>
 <span
   className="num text-right">{money(m.revenue)}</span>
 <span
@@ -291,8 +307,8 @@ function Timeline({ data, open, flip, exportCsv }) { return <div
   className="num text-right">{money(m.revenue - m.expense)}</span>
 </button>{open.has(m.key) && m.key !== 'unknown' && [...m.days.values()].sort((a, b) => 
   b.key.localeCompare(a.key)).map(d => <DayRow
-  key={d.key} d={d} open={open} flip={flip} />)}</React.Fragment>) : <EmptyState icon="receipt" title="ยังไม่มีข้อมูล"
-  size="sm" />}</Card>
+  key={d.key} d={d} open={open} flip={flip} />)}</React.Fragment>)}</>
+  : <EmptyState icon="receipt" title="ยังไม่มีข้อมูล" size="sm" />}</Card>
 </div>;
 }
 function DayRow({ d, open, flip }) { const isOpen = open.has(d.key);
@@ -300,13 +316,15 @@ return <React.Fragment>
 <button
   type="button"
   onClick={() => flip(d.key)}
-  className={"grid w-full grid-cols-[minmax(180px,1fr)_100px_120px_120px_1" + 
-  "20px] gap-3 border-b border-[var(--border-color)] bg-[var(--" + "bg-secondary)] p-3 text-left text-sm"}>
+  className={"grid w-full grid-cols-[minmax(180px,1fr)_80px_80px_120px_120px_120px] gap-3 " +
+  "border-b border-[var(--border-color)] bg-[var(--bg-secondary)] p-3 text-left text-sm"}>
 <span
   className="flex items-center gap-2 pl-6">
 <Expand open={isOpen} />{d.key}</span>
 <span
   className="num text-right">{d.bills.length}</span>
+<span
+  className="num text-right">{d.cups}</span>
 <span
   className="num text-right">{money(d.revenue)}</span>
 <span

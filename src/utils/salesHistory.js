@@ -30,6 +30,32 @@ const monthName = key => {
   return `${months[month - 1]} ${year}`;
 };
 
+// หมวดที่ขายเป็นชิ้น ไม่ใช่แก้ว · ที่เหลือทั้งหมดถือเป็นเครื่องดื่ม
+// เขียนแบบ "ยกเว้น" เพื่อให้หมวดเครื่องดื่มใหม่ที่ร้านเพิ่มทีหลังถูกนับเป็นแก้วอัตโนมัติ
+const PIECE_CATEGORY_HINTS = ['cake', 'bakery', 'เค้ก', 'เบเกอรี่', 'ขนม'];
+
+export const isPieceCategory = category => {
+  const name = String(category || '').trim().toLowerCase();
+  return PIECE_CATEGORY_HINTS.some(hint => name.includes(hint));
+};
+
+// นับหน่วยที่ขายในบิลหนึ่งใบ แยกแก้ว (เครื่องดื่ม) กับชิ้น (ขนม)
+export const countUnits = order => {
+  let cups = 0;
+  let pieces = 0;
+
+  (order.items || []).forEach(item => {
+    const quantity = Number(item.quantity) || 0;
+    if (isPieceCategory(item.category)) {
+      pieces += quantity;
+    } else {
+      cups += quantity;
+    }
+  });
+
+  return { cups, pieces };
+};
+
 export const validDate = value => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) {
     return false;
@@ -90,6 +116,8 @@ export function buildSalesHistory(orders, expenses, range, now = new Date()) {
     bills: [],
     revenue: 0,
     expense: 0,
+    cups: 0,
+    pieces: 0,
     days: new Map(),
   };
 
@@ -109,6 +137,8 @@ export function buildSalesHistory(orders, expenses, range, now = new Date()) {
         bills: [],
         revenue: 0,
         expense: 0,
+        cups: 0,
+        pieces: 0,
         days: new Map(),
       });
     }
@@ -123,6 +153,8 @@ export function buildSalesHistory(orders, expenses, range, now = new Date()) {
         bills: [],
         revenue: 0,
         expense: 0,
+        cups: 0,
+        pieces: 0,
         expenses: [],
       });
     }
@@ -165,12 +197,17 @@ export function buildSalesHistory(orders, expenses, range, now = new Date()) {
       return;
     }
 
+    const { cups, pieces } = countUnits(order);
     bucketData.bills.push(order);
     bucketData.revenue += Number(order.total) || 0;
+    bucketData.cups += cups;
+    bucketData.pieces += pieces;
     if (bucketData !== unknown) {
       const dayData = day(bucketData, date);
       dayData.bills.push(order);
       dayData.revenue += Number(order.total) || 0;
+      dayData.cups += cups;
+      dayData.pieces += pieces;
     }
   });
 
@@ -214,8 +251,10 @@ export function buildSalesHistory(orders, expenses, range, now = new Date()) {
       bills: result.bills + bucketData.bills.length,
       revenue: result.revenue + bucketData.revenue,
       expense: result.expense + bucketData.expense,
+      cups: result.cups + bucketData.cups,
+      pieces: result.pieces + bucketData.pieces,
     }),
-    { bills: 0, revenue: 0, expense: 0 },
+    { bills: 0, revenue: 0, expense: 0, cups: 0, pieces: 0 },
   );
   const catRows = [...categories.values()].sort((a, b) => b.amount - a.amount);
   // คำนวณ trend โดยเทียบยอดรวมครึ่งแรกกับครึ่งหลังของรายการที่เรียงตามวันที่
