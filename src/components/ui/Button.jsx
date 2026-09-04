@@ -29,7 +29,7 @@ const Button = forwardRef(({
   leftIcon,
   rightIcon,
   fullWidth = false,
-  noUppercase = false, // legacy: ปุ่มไม่บังคับ uppercase แล้ว คง prop ไว้ไม่ให้ caller พัง
+  noUppercase = true, // default = ไม่บังคับตัวพิมพ์ใหญ่ (ไทยไม่มีตัวพิมพ์ใหญ่) · ส่ง false ถ้าอยากได้ label อังกฤษตัวใหญ่
   className = '',
   onClick,
   type = 'button',
@@ -49,6 +49,7 @@ const Button = forwardRef(({
         inline-flex items-center justify-center gap-2
         font-bold tracking-wider
         transition-all duration-200
+        ${noUppercase ? '' : 'uppercase tracking-wider'}
         focus:outline-none focus:ring-4 focus:ring-[var(--accent-emerald-light)]
         disabled:opacity-50 disabled:cursor-not-allowed
         ${variants[variant]}
