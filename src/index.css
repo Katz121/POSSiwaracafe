@@ -425,36 +425,6 @@ html.dark .bg-\[\#effdf6\] {
   background-color: var(--bg-primary) !important;
 }
 
-html.dark .bg-white,
-html.dark .bg-\[\#FFFDF8\] {
-  background-color: var(--bg-secondary) !important;
-}
-
-html.dark .bg-gray-50,
-html.dark .bg-gray-100,
-html.dark .bg-\[\#F3EDE2\] {
-  background-color: var(--bg-tertiary) !important;
-}
-
-/* Text */
-html.dark .text-gray-800,
-html.dark .text-gray-900 {
-  color: var(--text-primary) !important;
-}
-html.dark .text-gray-600,
-html.dark .text-gray-700 {
-  color: var(--text-secondary) !important;
-}
-html.dark .text-gray-400,
-html.dark .text-gray-500 {
-  color: var(--text-muted) !important;
-}
-
-/* Borders */
-html.dark .border-gray-100,
-html.dark .border-gray-200 {
-  border-color: var(--border-color) !important;
-}
 html.dark .border-white\/20,
 html.dark .border-white\/40,
 html.dark .border-white\/50 {
@@ -475,16 +445,8 @@ html.dark textarea::placeholder {
 }
 
 /* Cards & panels */
-html.dark .shadow-sm,
-html.dark .shadow-lg,
-html.dark .shadow-xl,
-html.dark .shadow-2xl {
+html.dark .shadow-sm {
   --tw-shadow-color: var(--shadow-color);
-}
-
-/* Navigation bar */
-html.dark .bg-white\/95 {
-  background-color: var(--nav-bg) !important;
 }
 
 /* Modals */
@@ -493,10 +455,6 @@ html.dark .bg-black\/70,
 html.dark .bg-black\/80 {
   background-color: rgba(0, 0, 0, 0.82) !important;
 }
-
-/* Hover states */
-html.dark .hover\:bg-gray-50:hover  { background-color: var(--bg-tertiary) !important; }
-html.dark .hover\:bg-gray-100:hover { background-color: var(--border-color) !important; }
 
 /* Emerald accent */
 html.dark .bg-emerald-500      { background-color: var(--accent-emerald) !important; }

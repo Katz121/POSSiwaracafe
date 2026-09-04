@@ -437,7 +437,7 @@ export default function App() {
 
         {/* ── Loading / Auth State ── */}
         {(isAuthLoading || (user && isSyncing)) && (
-          <div className="fixed inset-0 z-[500] flex items-center justify-center overflow-hidden">
+          <div className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center overflow-hidden">
             {/* Gradient backdrop */}
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950" />
 
@@ -450,7 +450,7 @@ export default function App() {
               bg-sky-100/60 dark:bg-sky-900/20" />
 
             {/* Glass card */}
-            <div className="relative z-10 flex flex-col items-center gap-6 px-12 py-10 rounded-3xl
+            <div className="relative z-10 flex flex-col items-center gap-6 px-12 py-8 rounded-[var(--radius)]
               bg-white/70 border border-white/85 shadow-[0_20px_80px_rgba(0,0,0,0.10),0_4px_16px_rgba(0,0,0,0.06)]
               dark:bg-slate-900/70 dark:border-slate-700/50 dark:shadow-[0_20px_80px_rgba(0,0,0,0.45)]
               backdrop-blur-2xl">
@@ -464,7 +464,7 @@ export default function App() {
 
               {/* Brand name */}
               <div className="text-center -mt-1">
-                <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white leading-none">
+                 <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)] leading-none">
                   SIWARA
                 </h1>
                 <p className="text-[11px] font-semibold tracking-[0.22em] text-emerald-500 uppercase mt-1.5">
@@ -475,7 +475,7 @@ export default function App() {
               {/* Spinner + status */}
               <div className="flex flex-col items-center gap-2.5">
                 <Spinner size="md" />
-                <p className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                 <p className="text-xs font-medium text-[var(--text-muted)]">
                   {isAuthLoading ? 'กำลังตรวจสอบสิทธิ์…' : 'กำลังโหลดข้อมูล…'}
                 </p>
               </div>
@@ -483,7 +483,7 @@ export default function App() {
               {/* Bottom tag */}
               <div className="flex items-center gap-1.5 -mt-1">
                 <Sparkles size={10} className="text-emerald-400" />
-                <span className="text-[10px] font-semibold tracking-widest text-slate-300 dark:text-slate-600 uppercase">
+                 <span className="text-[10px] font-medium tracking-widest text-[var(--text-muted)]">
                   Connecting to Cloud
                 </span>
                 <Sparkles size={10} className="text-emerald-400" />
@@ -495,7 +495,7 @@ export default function App() {
         {/* ── Full-App Lock Screen ── */}
         {/* Shown only after data has loaded (user && !isSyncing) AND the PIN gate is active */}
         {user && !isSyncing && needsLock && (
-          <div className="fixed inset-0 z-[490] flex items-center justify-center overflow-hidden">
+          <div className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center overflow-hidden">
             {/* Gradient backdrop */}
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950" />
 
@@ -506,7 +506,7 @@ export default function App() {
               bg-teal-200/50 dark:bg-teal-500/10" />
 
             {/* Glass card */}
-            <div className="relative z-10 flex flex-col items-center gap-6 px-10 py-10 w-full max-w-sm rounded-3xl
+            <div className="relative z-10 flex flex-col items-center gap-6 px-10 py-8 w-full max-w-sm rounded-[var(--radius)]
               bg-white/70 border border-white/85 shadow-[0_20px_80px_rgba(0,0,0,0.10),0_4px_16px_rgba(0,0,0,0.06)]
               dark:bg-slate-900/70 dark:border-slate-700/50 dark:shadow-[0_20px_80px_rgba(0,0,0,0.45)]
               backdrop-blur-2xl">
@@ -520,7 +520,7 @@ export default function App() {
 
               {/* Title */}
               <div className="text-center -mt-1">
-                <h1 className="text-xl font-black tracking-tight text-slate-900 dark:text-white leading-snug">
+                 <h1 className="text-xl font-bold tracking-tight text-[var(--text-primary)] leading-snug">
                   🔒 ใส่รหัสเข้าใช้งานระบบ
                 </h1>
                 <p className="text-xs font-semibold tracking-wider text-emerald-500 uppercase mt-1.5">
@@ -539,7 +539,7 @@ export default function App() {
                   onChange={(e) => { setLockPinInput(e.target.value); setLockPinError(''); }}
                   onKeyDown={(e) => e.key === 'Enter' && handleLockSubmit()}
                   size="lg"
-                  inputClassName="text-4xl font-black tracking-[1em] text-center text-emerald-600 dark:text-emerald-400"
+                 inputClassName="num text-4xl font-bold tracking-[1em] text-center text-[var(--accent-emerald)]"
                   placeholder="••••••"
                 />
                 {lockPinError && (
@@ -557,7 +557,7 @@ export default function App() {
                   onChange={(e) => setRememberDevice(e.target.checked)}
                   className="w-5 h-5 rounded-md accent-emerald-500 cursor-pointer"
                 />
-                <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+              <span className="text-sm font-semibold text-[var(--text-secondary)]">
                   จำอุปกรณ์นี้ (ไม่ต้องใส่ PIN อีก)
                 </span>
               </label>
@@ -577,14 +577,14 @@ export default function App() {
 
         {/* Sync Error Display */}
         {syncError && (
-          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[400] bg-orange-500 text-white px-8 py-4 rounded-2xl shadow-2xl font-black text-sm transition-all duration-300">
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[var(--z-toast)] bg-orange-500 text-white px-8 py-4 rounded-[var(--radius)] shadow-[var(--elev-3)] font-semibold text-sm transition-all duration-300">
             {syncError}
           </div>
         )}
 
         {/* Error Message Display */}
         {errorMessage && (
-          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[400] bg-red-500 text-white px-8 py-4 rounded-2xl shadow-2xl font-black text-sm transition-all duration-300">
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[var(--z-toast)] bg-red-500 text-white px-8 py-4 rounded-[var(--radius)] shadow-[var(--elev-3)] font-semibold text-sm transition-all duration-300">
             {errorMessage}
             <button onClick={() => setErrorMessage('')} aria-label="ปิดข้อความ" className="ml-4 opacity-70 hover:opacity-100">✕</button>
           </div>
@@ -624,11 +624,11 @@ export default function App() {
           closeOnBackdrop={false}
         >
           <div className="text-center py-4">
-            <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-900/30 rounded-full mx-auto flex items-center justify-center text-emerald-500 mb-6 shadow-inner">
+             <div className="w-20 h-20 bg-emerald-50 rounded-full mx-auto flex items-center justify-center text-emerald-500 mb-6 shadow-inner">
               <Lock size={40} />
             </div>
-            <h3 className="font-black text-2xl mb-2 uppercase tracking-tight">Protected Access</h3>
-            <p className="text-sm text-gray-400 font-bold mb-8 uppercase tracking-wider">ระบุรหัส PIN เพื่อดำเนินการต่อ</p>
+             <h3 className="font-bold text-2xl mb-2 tracking-tight">Protected Access</h3>
+             <p className="text-sm text-[var(--text-muted)] font-medium mb-8 tracking-wider">ระบุรหัส PIN เพื่อดำเนินการต่อ</p>
             <Input
               type="password"
               maxLength={4}
@@ -637,7 +637,7 @@ export default function App() {
               onChange={(e) => setPinInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && checkPin()}
               size="lg"
-              inputClassName="text-4xl font-black tracking-[1em] text-center text-emerald-600 dark:text-emerald-400 mb-8"
+             inputClassName="num text-4xl font-bold tracking-[1em] text-center text-[var(--accent-emerald)] mb-8"
               placeholder="••••"
             />
             <div className="grid grid-cols-2 gap-4">
@@ -659,11 +659,11 @@ export default function App() {
           showClose={false}
         >
           <div className="text-center py-4">
-            <div className="w-24 h-24 bg-red-50 dark:bg-red-900/30 rounded-full mx-auto flex items-center justify-center text-red-500 mb-6 shadow-inner">
+             <div className="w-24 h-24 bg-red-50 rounded-full mx-auto flex items-center justify-center text-red-500 mb-6 shadow-inner">
               <Trash2 size={48} />
             </div>
-            <h3 className="font-black text-2xl mb-3 tracking-tight uppercase">ต้องการลบบิลนี้?</h3>
-            <p className="text-gray-400 font-medium mb-8 text-sm px-4">
+             <h3 className="font-bold text-2xl mb-3 tracking-tight">ต้องการลบบิลนี้?</h3>
+             <p className="text-[var(--text-muted)] font-medium mb-8 text-sm px-4">
               ข้อมูลบิลนี้จะถูกลบออกจากระบบอย่างถาวรและไม่สามารถเรียกคืนได้
             </p>
             <div className="grid grid-cols-2 gap-4">
@@ -680,9 +680,9 @@ export default function App() {
         {/* ── Navigation Bar — Glass Morphism ── */}
         <div
           data-app="nav"
-          className="fixed bottom-3 md:bottom-5 left-1/2 -translate-x-1/2 z-[150] transition-all duration-500"
+          className="fixed bottom-3 md:bottom-5 left-1/2 -translate-x-1/2 z-[var(--z-nav)] transition-all duration-500"
         >
-          <div className="glass-nav flex items-center p-1.5 rounded-[2.2rem] gap-1">
+          <div className="glass-nav flex items-center p-1 rounded-[var(--radius)] gap-1">
 
             {/* Primary Nav Items */}
             {[
@@ -696,12 +696,12 @@ export default function App() {
                 key={key}
                 onClick={() => handleViewChange(key)}
                 className={[
-                  'relative flex items-center gap-1.5 px-3 md:px-4 lg:px-5 py-2.5 md:py-3',
-                  'rounded-[1.6rem] text-[11px] md:text-xs font-semibold leading-none shrink-0',
+                  'relative flex items-center gap-1 px-3 md:px-4 lg:px-5 py-2 md:py-3',
+                  'rounded-[var(--radius-sm)] text-[11px] md:text-xs font-medium leading-none shrink-0',
                   'transition-all duration-300',
                   view === key
                     ? 'bg-emerald-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.42)]'
-                    : 'text-slate-400 dark:text-slate-500 hover:text-emerald-500 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95',
+                    : 'text-[var(--text-muted)] hover:text-[var(--accent-emerald)] hover:bg-black/5 active:scale-95',
                 ].join(' ')}
               >
                 <Icon
@@ -709,37 +709,37 @@ export default function App() {
                   strokeWidth={view === key ? 2.5 : 1.8}
                   className="md:w-[17px] md:h-[17px]"
                 />
-                <span className="tracking-wide font-bold leading-none">{label}</span>
+                <span className="tracking-wide font-medium leading-none">{label}</span>
               </button>
             ))}
 
             {/* Divider */}
-            <div className="w-px h-5 mx-0.5 rounded-full bg-slate-200/70 dark:bg-slate-700/60 shrink-0" />
+            <div className="w-px h-5 mx-1 rounded-full bg-[var(--border-color)] shrink-0" />
 
             {/* More Menu */}
             <div className="relative">
               <button
                 onClick={() => setShowMoreMenu(!showMoreMenu)}
                 className={[
-                  'flex items-center gap-1.5 px-3 md:px-4 lg:px-5 py-2.5 md:py-3',
-                  'rounded-[1.6rem] text-[11px] md:text-xs font-bold leading-none shrink-0',
+                  'flex items-center gap-1 px-3 md:px-4 lg:px-5 py-2 md:py-3',
+                  'rounded-[var(--radius-sm)] text-[11px] md:text-xs font-medium leading-none shrink-0',
                   'transition-all duration-300',
                   ['expenses', 'menu_manage', 'members_manage', 'financial', 'admin', 'category_summary'].includes(view)
                     ? 'bg-emerald-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.42)]'
-                    : 'text-slate-400 dark:text-slate-500 hover:text-emerald-500 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95',
+                    : 'text-[var(--text-muted)] hover:text-[var(--accent-emerald)] hover:bg-black/5 active:scale-95',
                 ].join(' ')}
               >
                 <MoreHorizontal size={15} strokeWidth={1.8} className="md:w-[17px] md:h-[17px]" />
-                <span className="tracking-wide font-bold leading-none">เพิ่มเติม</span>
+                <span className="tracking-wide font-medium leading-none">เพิ่มเติม</span>
               </button>
 
               {/* Popup */}
               {showMoreMenu && (
                 <>
-                  <div className="fixed inset-0 z-[149]" onClick={() => setShowMoreMenu(false)} />
-                  <div className="absolute bottom-full mb-3 right-0 z-[160]
-                    glass-strong rounded-2xl p-1.5 min-w-[175px]
-                    border border-white/80 dark:border-slate-700/50">
+                  <div className="fixed inset-0 z-[var(--z-modal-bg)]" onClick={() => setShowMoreMenu(false)} />
+                  <div className="absolute bottom-full mb-3 right-0 z-[var(--z-dropdown)]
+                    glass-strong rounded-[var(--radius)] p-1 min-w-[175px]
+                    border border-[var(--border-color)] shadow-[var(--elev-2)]">
 
                     {[
                       { key: 'expenses',         icon: DollarSign,    label: 'รายจ่าย'      },
@@ -753,11 +753,11 @@ export default function App() {
                         key={key}
                         onClick={() => { handleViewChange(key); setShowMoreMenu(false); }}
                         className={[
-                          'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl',
-                          'text-xs font-semibold transition-all duration-200',
+                          'w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-sm)]',
+                          'text-xs font-medium transition-all duration-200',
                           view === key
                             ? 'bg-emerald-500 text-white shadow-sm'
-                            : 'text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-white/5 hover:text-emerald-600',
+                            : 'text-[var(--text-secondary)] hover:bg-emerald-50 hover:text-[var(--accent-emerald)]',
                         ].join(' ')}
                       >
                         <Icon size={15} strokeWidth={1.8} />
@@ -770,18 +770,18 @@ export default function App() {
             </div>
 
             {/* Divider */}
-            <div className="w-px h-5 mx-0.5 rounded-full bg-slate-200/70 dark:bg-slate-700/60 shrink-0" />
+            <div className="w-px h-5 mx-1 rounded-full bg-[var(--border-color)] shrink-0" />
 
             {/* Dark Mode Toggle */}
             <button
               onClick={toggleDarkMode}
               aria-label={isDark ? 'โหมดสว่าง' : 'โหมดมืด'}
               className={[
-                'flex items-center justify-center w-10 h-10 rounded-2xl shrink-0',
+                'flex items-center justify-center w-10 h-10 rounded-[var(--radius-sm)] shrink-0',
                 'transition-all duration-300 active:scale-90',
                 isDark
                   ? 'bg-amber-400/20 text-amber-300 hover:bg-amber-400/30'
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700',
+                  : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)] hover:text-[var(--text-primary)]',
               ].join(' ')}
             >
               {isDark
@@ -794,7 +794,7 @@ export default function App() {
               onClick={() => signOut(auth)}
               aria-label="ออกจากระบบ"
               title="ออกจากระบบ"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-500 transition-all duration-300 hover:bg-red-100 active:scale-90 dark:bg-red-500/10 dark:hover:bg-red-500/20"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-red-50 text-red-500 transition-all duration-300 hover:bg-red-100 active:scale-90"
             >
               <LogOut size={16} strokeWidth={1.8} />
             </button>

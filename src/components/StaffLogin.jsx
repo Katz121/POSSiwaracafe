@@ -37,20 +37,20 @@ export default function StaffLogin() {
   };
 
   return (
-    <div className="fixed inset-0 z-[510] flex items-center justify-center overflow-hidden px-4">
+    <div className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center overflow-hidden px-4">
       <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950" />
       <div className="absolute top-1/4 left-1/3 w-80 h-80 rounded-full blur-3xl opacity-60 bg-emerald-200/50 dark:bg-emerald-500/10" />
       <div className="absolute bottom-1/4 right-1/4 w-72 h-72 rounded-full blur-3xl opacity-50 bg-teal-200/50 dark:bg-teal-500/10" />
 
       <form
         onSubmit={handleSubmit}
-        className="relative z-10 w-full max-w-sm rounded-3xl border border-white/85 bg-white/75 px-8 py-9 shadow-[0_20px_80px_rgba(0,0,0,0.10)] backdrop-blur-2xl dark:border-slate-700/50 dark:bg-slate-900/75"
+        className="relative z-10 w-full max-w-sm rounded-[var(--radius)] border border-[var(--border-color)] bg-[var(--bg-secondary)]/75 px-8 py-8 shadow-[var(--elev-3)] backdrop-blur-2xl"
       >
         <div className="mb-7 flex flex-col items-center text-center">
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_8px_24px_rgba(16,185,129,0.40)]">
             <Coffee size={30} className="text-white" />
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">SIWARA</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">SIWARA</h1>
           <p className="mt-1 text-xs font-semibold tracking-[0.18em] text-emerald-500 uppercase">Staff Sign In</p>
         </div>
 

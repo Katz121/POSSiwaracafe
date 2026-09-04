@@ -18,28 +18,28 @@ export default function NewOrderAlert({ orders }) {
       <button
         onClick={soundOn ? disableSound : enableSound}
         aria-label={soundOn ? 'ปิดเสียงแจ้งเตือนออเดอร์' : 'เปิดเสียงแจ้งเตือนออเดอร์'}
-        className={`fixed top-4 right-4 z-[420] w-11 h-11 rounded-full flex items-center justify-center
-          shadow-lg transition-all active:scale-95 ${
+        className={`fixed top-4 right-4 z-[var(--z-toast)] w-11 h-11 rounded-full flex items-center justify-center
+          shadow-[var(--elev-3)] transition-all active:scale-95 ${
             soundOn
               ? 'bg-emerald-500 text-white'
-              : 'bg-white text-gray-400 border border-gray-200 animate-pulse dark:bg-slate-800 dark:border-slate-700'
+              : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border border-[var(--border-color)] animate-pulse'
           }`}
       >
         {soundOn ? <Bell size={18} /> : <BellOff size={18} />}
       </button>
 
       {alerts.length > 0 && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[430] w-[min(92vw,26rem)] flex flex-col gap-2">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[var(--z-toast)] w-[min(92vw,26rem)] flex flex-col gap-2">
           {alerts.map((o) => (
             <div
               key={o.id}
-              className="bg-orange-500 text-white rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3 animate-bounce-once"
+              className="bg-orange-500 text-white rounded-[var(--radius)] shadow-[var(--elev-3)] px-4 py-3 flex items-center gap-3 animate-bounce-once"
             >
               <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
                 <QrCode size={20} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-black text-sm leading-tight">
+                <p className="font-semibold text-sm leading-tight">
                   ออเดอร์ใหม่จาก QR · คิว {o.queueNumber}
                 </p>
                 <p className="text-xs text-white/85 truncate">

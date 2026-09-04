@@ -129,7 +129,7 @@ const Table = ({
                   onClick={() => column.sortable !== false && handleSort(column.key)}
                   className={`
                     ${cellPadding}
-                    text-left text-xs font-semibold uppercase tracking-wider
+                    text-left text-xs font-semibold tracking-wider
                     text-[var(--text-secondary)]
                     ${column.sortable !== false && sortable ? 'cursor-pointer hover:bg-[var(--border-light)]' : ''}
                     ${column.align === 'right' ? 'text-right' : ''}

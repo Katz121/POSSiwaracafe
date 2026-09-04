@@ -57,20 +57,20 @@ export default function SmartAlerts({ data, onAction, compact = false }) {
     return (
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="relative p-3 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all"
+        className="relative p-3 rounded-[var(--radius)] bg-[var(--bg-secondary)] border border-[var(--border-color)] shadow-[var(--elev-1)] hover:shadow-[var(--elev-2)] transition-all"
       >
-        <Bell size={22} className="text-gray-600" />
+        <Bell size={22} className="text-[var(--text-secondary)]" />
         {alerts.length > 0 && (
-          <span className={`absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs font-black flex items-center justify-center text-white ${criticalCount > 0 ? 'bg-red-500' : warningCount > 0 ? 'bg-amber-500' : 'bg-blue-500'}`}>
+          <span className={`absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs font-medium num flex items-center justify-center text-white ${criticalCount > 0 ? 'bg-[var(--state-danger)]' : warningCount > 0 ? 'bg-[var(--state-warn)]' : 'bg-blue-500'}`}>
             {alerts.length}
           </span>
         )}
 
         {/* Dropdown */}
         {isExpanded && (
-          <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50 animate-in slide-in-from-top-2">
-            <div className="p-4 bg-gray-50 border-b border-gray-100">
-              <h4 className="font-black text-sm text-gray-800">การแจ้งเตือน ({alerts.length})</h4>
+          <div className="absolute top-full right-0 mt-2 w-80 bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-3)] border border-[var(--border-color)] overflow-hidden z-[var(--z-dropdown)] animate-in slide-in-from-top-2">
+            <div className="p-4 bg-[var(--bg-tertiary)] border-b border-[var(--border-color)]">
+              <h4 className="font-semibold text-sm text-[var(--text-primary)]">การแจ้งเตือน ({alerts.length})</h4>
             </div>
             <div className="max-h-80 overflow-y-auto">
               {alerts.map(alert => {
@@ -87,13 +87,13 @@ export default function SmartAlerts({ data, onAction, compact = false }) {
                       <SeverityIcon size={18} className={colors.icon} />
                       <div className="flex-1 min-w-0">
                         <p className={`font-bold text-sm ${colors.text}`}>{alert.title}</p>
-                        <p className="text-xs text-gray-500 mt-1 truncate">{alert.message}</p>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1 truncate">{alert.message}</p>
                       </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id); }}
-                        className="p-1 hover:bg-white/50 rounded-lg"
+                        className="p-1 hover:bg-[var(--bg-tertiary)] rounded-[var(--radius-sm)]"
                       >
-                        <X size={14} className="text-gray-400" />
+                        <X size={14} className="text-[var(--text-muted)]" />
                       </button>
                     </div>
                   </div>
@@ -116,31 +116,31 @@ export default function SmartAlerts({ data, onAction, compact = false }) {
         return (
           <div
             key={alert.id}
-            className={`${colors.bg} ${colors.border} border-2 rounded-2xl p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-all group`}
+            className={`${colors.bg} ${colors.border} border-2 rounded-[var(--radius)] p-5 flex items-center gap-4 shadow-[var(--elev-1)] hover:shadow-[var(--elev-2)] transition-all group`}
           >
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${colors.bg} border ${colors.border}`}>
+            <div className={`w-12 h-12 rounded-[var(--radius-sm)] flex items-center justify-center ${colors.bg} border ${colors.border}`}>
               <SeverityIcon size={24} className={colors.icon} />
             </div>
 
             <div className="flex-1 min-w-0">
-              <h4 className={`font-black text-sm ${colors.text}`}>{alert.title}</h4>
-              <p className="text-xs text-gray-500 mt-1">{alert.message}</p>
+              <h4 className={`font-semibold text-sm ${colors.text}`}>{alert.title}</h4>
+              <p className="text-xs text-[var(--text-secondary)] mt-1">{alert.message}</p>
             </div>
 
             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
               {alert.action && (
                 <button
                   onClick={() => handleAction(alert)}
-                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider ${colors.text} bg-white border ${colors.border} hover:scale-105 transition-transform flex items-center gap-1`}
+                  className={`px-4 py-2 rounded-[var(--radius-sm)] text-xs font-medium ${colors.text} bg-[var(--bg-secondary)] border ${colors.border} hover:scale-105 transition-transform flex items-center gap-1`}
                 >
                   {alert.action.label} <ChevronRight size={12} />
                 </button>
               )}
               <button
                 onClick={() => dismissAlert(alert.id)}
-                className="p-2 hover:bg-white/50 rounded-xl transition-colors"
+                className="p-2 hover:bg-[var(--bg-tertiary)] rounded-[var(--radius-sm)] transition-colors"
               >
-                <X size={16} className="text-gray-400" />
+                <X size={16} className="text-[var(--text-muted)]" />
               </button>
             </div>
           </div>
@@ -150,7 +150,7 @@ export default function SmartAlerts({ data, onAction, compact = false }) {
       {alerts.length > 3 && (
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full py-3 text-center text-xs font-bold text-gray-400 hover:text-gray-600 transition-colors"
+          className="w-full py-3 text-center text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
         >
           {isExpanded ? 'ซ่อน' : `ดูเพิ่มเติม (${alerts.length - 3} รายการ)`}
         </button>
@@ -163,15 +163,15 @@ export default function SmartAlerts({ data, onAction, compact = false }) {
         return (
           <div
             key={alert.id}
-            className={`${colors.bg} ${colors.border} border rounded-xl p-4 flex items-center gap-3`}
+            className={`${colors.bg} ${colors.border} border rounded-[var(--radius)] p-4 flex items-center gap-3`}
           >
             <SeverityIcon size={18} className={colors.icon} />
             <div className="flex-1">
               <p className={`font-bold text-xs ${colors.text}`}>{alert.title}</p>
-              <p className="text-xs text-gray-500">{alert.message}</p>
+              <p className="text-xs text-[var(--text-secondary)]">{alert.message}</p>
             </div>
             <button onClick={() => dismissAlert(alert.id)} className="p-1">
-              <X size={14} className="text-gray-400" />
+              <X size={14} className="text-[var(--text-muted)]" />
             </button>
           </div>
         );

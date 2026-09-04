@@ -913,7 +913,7 @@ function CheckoutStep({
       initial={{ opacity: 0, x: 40 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -40 }}
-      className="flex flex-col min-h-screen bg-gray-50"
+      className="flex flex-col min-h-screen bg-[var(--bg-tertiary)]"
     >
       {/* Header */}
               <div className="bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-4 py-4 flex items-center gap-3 sticky top-0 z-10 backdrop-blur-sm">
@@ -1861,7 +1861,7 @@ function CustomerOrderApp() {
   const itemCount = cart.reduce((s, i) => s + Number(i.quantity), 0);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[var(--bg-tertiary)]">
       {/* ---- Header ---- */}
         <header className="bg-[var(--bg-secondary)] border-b border-[var(--border-color)] sticky top-0 z-20 backdrop-blur-sm">
         <div className="px-4 py-4 flex items-center justify-between">

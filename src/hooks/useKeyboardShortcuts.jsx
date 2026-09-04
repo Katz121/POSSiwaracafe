@@ -108,22 +108,22 @@ export function KeyboardShortcutsHelp({ isOpen, onClose }) {
     .map(([k, v]) => ({ key: k, ...v }));
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-white rounded-[2rem] shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
-        <div className="p-6 bg-gray-900 text-white">
-          <h2 className="text-xl font-black uppercase tracking-wider">Keyboard Shortcuts</h2>
-          <p className="text-gray-400 text-sm mt-1">กด ? เพื่อเปิด/ปิดหน้านี้</p>
+    <div className="fixed inset-0 z-[var(--z-modal-bg)] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-3)] max-w-2xl w-full max-h-[80vh] overflow-hidden">
+        <div className="p-6 bg-[var(--text-primary)] text-white">
+          <h2 className="text-xl font-bold tracking-wider">Keyboard Shortcuts</h2>
+          <p className="text-[var(--text-muted)] text-sm mt-1">กด ? เพื่อเปิด/ปิดหน้านี้</p>
         </div>
 
         <div className="p-6 overflow-y-auto max-h-[60vh] space-y-6">
           {/* Navigation */}
           <div>
-            <h3 className="font-black text-sm text-gray-800 uppercase tracking-wider mb-3">นำทาง</h3>
+            <h3 className="font-semibold text-sm text-[var(--text-primary)] tracking-wider mb-3">นำทาง</h3>
             <div className="grid grid-cols-2 gap-2">
               {navigationShortcuts.map(s => (
-                <div key={s.key} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
-                  <kbd className="px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-mono font-bold shadow-lg">{s.key}</kbd>
-                  <span className="text-sm font-bold text-gray-600">{s.label}</span>
+                <div key={s.key} className="flex items-center gap-3 bg-[var(--bg-tertiary)] rounded-[var(--radius-sm)] p-3">
+                  <kbd className="px-3 py-1.5 bg-[var(--text-primary)] text-white rounded-[var(--radius-sm)] text-xs font-mono font-medium shadow-[var(--elev-2)]">{s.key}</kbd>
+                  <span className="text-sm font-semibold text-[var(--text-secondary)]">{s.label}</span>
                 </div>
               ))}
             </div>
@@ -131,12 +131,12 @@ export function KeyboardShortcutsHelp({ isOpen, onClose }) {
 
           {/* POS Actions */}
           <div>
-            <h3 className="font-black text-sm text-gray-800 uppercase tracking-wider mb-3">หน้า POS</h3>
+            <h3 className="font-semibold text-sm text-[var(--text-primary)] tracking-wider mb-3">หน้า POS</h3>
             <div className="grid grid-cols-2 gap-2">
               {posShortcuts.map(s => (
-                <div key={s.key} className="flex items-center gap-3 bg-emerald-50 rounded-xl p-3">
-                  <kbd className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-mono font-bold shadow-lg">{s.key}</kbd>
-                  <span className="text-sm font-bold text-emerald-700">{s.label}</span>
+                <div key={s.key} className="flex items-center gap-3 bg-emerald-50 rounded-[var(--radius-sm)] p-3">
+                  <kbd className="px-3 py-1.5 bg-emerald-600 text-white rounded-[var(--radius-sm)] text-xs font-mono font-medium shadow-[var(--elev-2)]">{s.key}</kbd>
+                  <span className="text-sm font-semibold text-[var(--accent-emerald)]">{s.label}</span>
                 </div>
               ))}
             </div>
@@ -144,24 +144,24 @@ export function KeyboardShortcutsHelp({ isOpen, onClose }) {
 
           {/* Other */}
           <div>
-            <h3 className="font-black text-sm text-gray-800 uppercase tracking-wider mb-3">อื่นๆ</h3>
+            <h3 className="font-semibold text-sm text-[var(--text-primary)] tracking-wider mb-3">อื่นๆ</h3>
             <div className="flex gap-2">
-              <div className="flex items-center gap-3 bg-violet-50 rounded-xl p-3">
-                <kbd className="px-3 py-1.5 bg-violet-600 text-white rounded-lg text-xs font-mono font-bold shadow-lg">/</kbd>
-                <span className="text-sm font-bold text-violet-700">ค้นหา</span>
+                <div className="flex items-center gap-3 bg-violet-50 rounded-[var(--radius-sm)] p-3">
+                <kbd className="px-3 py-1.5 bg-violet-600 text-white rounded-[var(--radius-sm)] text-xs font-mono font-medium shadow-[var(--elev-2)]">/</kbd>
+                <span className="text-sm font-semibold text-[var(--accent-ai)]">ค้นหา</span>
               </div>
-              <div className="flex items-center gap-3 bg-violet-50 rounded-xl p-3">
-                <kbd className="px-3 py-1.5 bg-violet-600 text-white rounded-lg text-xs font-mono font-bold shadow-lg">?</kbd>
-                <span className="text-sm font-bold text-violet-700">ช่วยเหลือ</span>
+                <div className="flex items-center gap-3 bg-violet-50 rounded-[var(--radius-sm)] p-3">
+                <kbd className="px-3 py-1.5 bg-violet-600 text-white rounded-[var(--radius-sm)] text-xs font-mono font-medium shadow-[var(--elev-2)]">?</kbd>
+                <span className="text-sm font-semibold text-[var(--accent-ai)]">ช่วยเหลือ</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="p-4 bg-gray-50 border-t border-gray-100">
+        <div className="p-4 bg-[var(--bg-tertiary)] border-t border-[var(--border-color)]">
           <button
             onClick={onClose}
-            className="w-full py-3 bg-gray-900 text-white rounded-xl font-black text-sm uppercase tracking-wider hover:bg-gray-800 transition-colors"
+            className="w-full py-3 bg-[var(--text-primary)] text-white rounded-[var(--radius-sm)] font-medium text-sm tracking-wider hover:bg-[var(--text-secondary)] transition-colors"
           >
             ปิด (Esc)
           </button>
