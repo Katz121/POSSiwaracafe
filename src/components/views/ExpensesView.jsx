@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { DollarSign, Calendar, Trash2, BarChart3, RefreshCcw, Zap, X } from 'lucide-react';
+import { DollarSign, Calendar, Trash2, Edit, BarChart3, RefreshCcw, Zap, X } from 'lucide-react';
 import { collection, doc, addDoc, deleteDoc, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate } from '../../utils/calculations';
-import { Button, EmptyState, useToast } from '../ui';
-import { EXPENSE_CATEGORIES } from '../../config/constants';
+import { Button, Input, Select, EmptyState, useToast } from '../ui';
+import { EXPENSE_CATEGORIES, STOCK_CATEGORIES, getStockCategory } from '../../config/constants';
+
+const isStockCategory = (category) => category === 'วัตถุดิบ' || STOCK_CATEGORIES.includes(category);
 
 export default function ExpensesView() {
   const { expenses, orders, quickExpenses, runDbAction, callGeminiAPI, handleViewChange, setAdminTab, stock } = useAppContext();
@@ -15,6 +17,8 @@ export default function ExpensesView() {
   const [expenseViewMode, setExpenseViewMode] = useState('daily');
   const [expenseFilterDate, setExpenseFilterDate] = useState(getISODate());
   const [newExpense, setNewExpense] = useState({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [showExpenseSuggestions, setShowExpenseSuggestions] = useState(false);
   const [financialInsight, setFinancialInsight] = useState('');
   const [isAnalyzingFinances, setIsAnalyzingFinances] = useState(false);
 
@@ -36,16 +40,17 @@ export default function ExpensesView() {
     }
 
     const qty = Number(expense.quantity);
-    if (expense.category === 'วัตถุดิบ' && qty <= 0) {
+    if (isStockCategory(expense.category) && qty <= 0) {
       errors.quantity = 'จำนวนต้องมากกว่า 0';
     }
 
     const price = Number(expense.pricePerUnit);
-    if (expense.category === 'วัตถุดิบ' && price <= 0) {
+    const amount = Number(expense.amount) || (qty * price);
+    const calculatedUnitCost = qty > 0 ? amount / qty : price;
+    if (isStockCategory(expense.category) && calculatedUnitCost <= 0) {
       errors.pricePerUnit = 'ราคาต้องมากกว่า 0';
     }
 
-    const amount = expense.amount || (qty * price);
     if (!amount || amount <= 0) {
       errors.amount = 'ราคารวมต้องมากกว่า 0';
     }
@@ -81,7 +86,7 @@ export default function ExpensesView() {
   // Helper 3: Sync expense ไปยัง stock
   const syncExpenseToStock = useCallback(async (expense, stock, runDbAction) => {
     // Guard: เฉพาะหมวด "วัตถุดิบ" เท่านั้น
-    if (expense.category !== 'วัตถุดิบ') return { success: false, action: 'skip' };
+    if (!isStockCategory(expense.category)) return { success: false, action: 'skip' };
 
     // Validation: ต้องมี title, quantity > 0, และ pricePerUnit
     if (!expense.title || !expense.quantity || expense.quantity <= 0 || !expense.pricePerUnit) {
@@ -152,6 +157,61 @@ export default function ExpensesView() {
       return { success: false, action: 'error', error: error.message };
     }
   }, [findStockByName, calculateWeightedAverageUnitCost]);
+
+  // Keep names aligned with the stock master and existing expense entries.
+  const expenseTitleSuggestions = useMemo(() => {
+    const seen = new Set();
+    const suggestions = [];
+    const addSuggestion = (value) => {
+      const title = String(value || '').trim();
+      const key = title.toLocaleLowerCase();
+      if (!title || seen.has(key)) return;
+      seen.add(key);
+      suggestions.push(title);
+    };
+
+    stock.forEach(item => addSuggestion(item.name));
+    expenses.forEach(expense => addSuggestion(expense.title));
+
+    return suggestions.sort((a, b) => a.localeCompare(b, 'th'));
+  }, [stock, expenses]);
+
+  const visibleExpenseSuggestions = useMemo(() => {
+    const query = String(newExpense.title || '').trim().toLocaleLowerCase();
+    return expenseTitleSuggestions
+      .filter(title => !query || title.toLocaleLowerCase().includes(query))
+      .sort((a, b) => {
+        if (!query) return a.localeCompare(b, 'th');
+        const aValue = a.toLocaleLowerCase();
+        const bValue = b.toLocaleLowerCase();
+        const score = (value) => {
+          if (value === query) return 0;
+          if (value.startsWith(query)) return 1;
+          if (value.split(/\s+/).some(word => word.startsWith(query))) return 2;
+          return 3;
+        };
+        return score(aValue) - score(bValue) || a.localeCompare(b, 'th');
+      });
+  }, [expenseTitleSuggestions, newExpense.title]);
+
+  const applyExpenseTitle = (typedTitle) => {
+    const matchedExpenseTitle = expenseTitleSuggestions.find(
+      suggestion => suggestion.toLocaleLowerCase() === typedTitle.trim().toLocaleLowerCase()
+    );
+    const title = matchedExpenseTitle || typedTitle;
+    const matchedStock = findStockByName(stock, title);
+    setNewExpense({
+      ...newExpense,
+      title,
+      ...(matchedStock
+        ? {
+            category: getStockCategory(matchedStock),
+            unit: matchedStock.unit || newExpense.unit,
+            pricePerUnit: matchedStock.unitCost || newExpense.pricePerUnit
+          }
+        : {})
+    });
+  };
 
   // Computed stats
   const filteredExpenseStats = useMemo(() => {
@@ -297,7 +357,9 @@ export default function ExpensesView() {
         title: String(newExpense.title),
         quantity: Number(newExpense.quantity) || 0,
         unit: String(newExpense.unit || ''),
-        pricePerUnit: Number(newExpense.pricePerUnit) || 0,
+        pricePerUnit: Number(newExpense.quantity) > 0
+          ? Number(finalAmount) / Number(newExpense.quantity)
+          : Number(newExpense.pricePerUnit) || 0,
         amount: Number(finalAmount),
         category: String(newExpense.category),
         date: expenseFilterDate,
@@ -306,13 +368,17 @@ export default function ExpensesView() {
 
       // Step 1: บันทึกรายจ่าย
       await runDbAction(async () => {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'), expenseData);
-      }, 'บันทึกค่าใช้จ่ายไม่สำเร็จ');
+        if (editingExpense) {
+          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', editingExpense.id), expenseData);
+        } else {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'), expenseData);
+        }
+      }, editingExpense ? 'แก้ไขค่าใช้จ่ายไม่สำเร็จ' : 'บันทึกค่าใช้จ่ายไม่สำเร็จ');
 
-      toast.success('บันทึกรายจ่ายสำเร็จ');
+      toast.success(editingExpense ? 'แก้ไขรายจ่ายสำเร็จ' : 'บันทึกรายจ่ายสำเร็จ');
 
       // Step 2: Sync ไปยังสต็อก (ถ้าเป็นวัตถุดิบ)
-      if (newExpense.category === 'วัตถุดิบ') {
+      if (!editingExpense && isStockCategory(newExpense.category)) {
         const syncResult = await syncExpenseToStock(expenseData, stock, runDbAction);
 
         if (syncResult?.success) {
@@ -329,73 +395,86 @@ export default function ExpensesView() {
       }
 
       // Reset form
+      setEditingExpense(null);
       setNewExpense({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
     } catch {
       toast.error('บันทึกรายจ่ายไม่สำเร็จ');
     } finally {
       setIsSyncing(false);
     }
-  }, [newExpense, expenseFilterDate, stock, runDbAction, syncExpenseToStock, validateExpense, toast]);
+  }, [newExpense, editingExpense, expenseFilterDate, stock, runDbAction, syncExpenseToStock, validateExpense, toast]);
 
   return (
-    <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-gray-800">
-      <header className="h-16 md:h-20 lg:h-24 bg-white border-b border-gray-100 px-4 md:px-8 lg:px-12 flex items-center justify-between shadow-sm z-10">
-        <div className="flex items-center gap-2 md:gap-4 text-red-600 uppercase font-black">
+    <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-[var(--text-primary)]">
+      <header className="h-16 md:h-20 lg:h-24 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-4 md:px-8 lg:px-12 flex items-center justify-between shadow-sm z-[var(--z-nav)]">
+        <div className="flex items-center gap-2 md:gap-4 text-red-600  font-semibold">
           <DollarSign size={24} className="md:w-7 md:h-7 lg:w-8 lg:h-8" />
-          <h1 className="text-lg md:text-xl lg:text-2xl font-black uppercase tracking-tight text-gray-800">ระบบรายจ่าย</h1>
+          <h1 className="text-lg md:text-xl lg:text-2xl font-bold  tracking-tight text-[var(--text-primary)]">ระบบรายจ่าย</h1>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
-            <button onClick={() => setExpenseViewMode('daily')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${expenseViewMode === 'daily' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-red-500'}`}>รายวัน</button>
-            <button onClick={() => setExpenseViewMode('monthly')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${expenseViewMode === 'monthly' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-red-500'}`}>รายเดือน</button>
-            <button onClick={() => setExpenseViewMode('all')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${expenseViewMode === 'all' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-red-500'}`}>ทั้งหมด</button>
+          <div className="flex items-center gap-2 bg-[var(--bg-tertiary)] p-1.5 rounded-2xl border border-[var(--border-color)]">
+            <button onClick={() => setExpenseViewMode('daily')} className={`px-5 py-2.5 rounded-xl text-xs font-semibold  tracking-wider transition-all ${expenseViewMode === 'daily' ? 'bg-red-500 text-white shadow-[var(--elev-2)]' : 'text-[var(--text-muted)] hover:text-red-500'}`}>รายวัน</button>
+            <button onClick={() => setExpenseViewMode('monthly')} className={`px-5 py-2.5 rounded-xl text-xs font-semibold  tracking-wider transition-all ${expenseViewMode === 'monthly' ? 'bg-red-500 text-white shadow-[var(--elev-2)]' : 'text-[var(--text-muted)] hover:text-red-500'}`}>รายเดือน</button>
+            <button onClick={() => setExpenseViewMode('all')} className={`px-5 py-2.5 rounded-xl text-xs font-medium  tracking-wider transition-all ${expenseViewMode === 'all' ? 'bg-red-500 text-white shadow-[var(--elev-2)]' : 'text-[var(--text-muted)] hover:text-red-500'}`}>ทั้งหมด</button>
           </div>
           {expenseViewMode !== 'all' && (
             <div className="relative flex items-center bg-red-50 border border-red-100 rounded-3xl p-1.5 shadow-sm">
               <Calendar className="text-red-500 ml-4" size={22} />
-              <input type="date" value={expenseFilterDate} onChange={(e) => setExpenseFilterDate(e.target.value)} className="bg-transparent border-none py-3 pl-3 pr-6 text-base font-black text-red-700 outline-none cursor-pointer" />
+              <input type="date" value={expenseFilterDate} onChange={(e) => setExpenseFilterDate(e.target.value)} className="bg-transparent border-none py-3 pl-3 pr-6 text-base font-semibold text-red-700 outline-none cursor-pointer" />
             </div>
           )}
         </div>
       </header>
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-6 p-4 md:p-6 lg:p-8 overflow-auto">
+      <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-6 p-4 md:p-6 lg:p-6 overflow-auto">
         {/* Left Column: Summary Cards & Form - Optimized for iPad */}
         <div className="w-full md:w-[420px] lg:w-[480px] xl:w-[520px] space-y-4 md:space-y-5 lg:space-y-6 shrink-0">
           {/* Total Expense Card - iPad Optimized */}
-          <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-[3rem] p-8 md:p-10 text-white shadow-xl border-b-8 border-red-700/30">
-            <p className="text-xs md:text-sm font-black uppercase tracking-[0.3em] opacity-70 mb-3 md:mb-4">รายจ่ายรวม{expenseViewMode === 'daily' ? 'วันนี้' : expenseViewMode === 'monthly' ? 'เดือนนี้' : 'ทั้งหมด'}</p>
-            <p className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tighter">฿{filteredExpenseStats.total.toLocaleString()}</p>
+          <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-[var(--radius)] p-6 md:p-6 text-white shadow-[var(--elev-2)] border-b-8 border-red-700/30">
+            <p className="text-xs md:text-sm font-medium  tracking-[0.3em] opacity-70 mb-3 md:mb-4">รายจ่ายรวม{expenseViewMode === 'daily' ? 'วันนี้' : expenseViewMode === 'monthly' ? 'เดือนนี้' : 'ทั้งหมด'}</p>
+            <p className="text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tighter">฿{filteredExpenseStats.total.toLocaleString()}</p>
             <p className="text-sm md:text-base font-bold opacity-60 mt-3 md:mt-4">{filteredExpenseStats.count} รายการ</p>
           </div>
 
           {/* Category Breakdown - iPad Optimized */}
-          <div className="bg-white rounded-[3rem] p-6 md:p-8 shadow-sm border border-gray-100">
-            <h3 className="text-xs md:text-sm font-black text-gray-400 uppercase tracking-[0.3em] mb-4 md:mb-6">แยกตามหมวดหมู่</h3>
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 md:p-6 shadow-sm border border-[var(--border-color)]">
+            <h3 className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-[0.3em] mb-4 md:mb-6">แยกตามหมวดหมู่</h3>
             <div className="space-y-3 md:space-y-4">
               {filteredExpenseStats.byCategory.length > 0 ? (
                 filteredExpenseStats.byCategory.map(([cat, amount]) => (
-                  <div key={cat} className="flex items-center justify-between p-4 md:p-5 bg-gray-50 rounded-2xl border border-gray-100">
-                    <span className="text-sm md:text-base font-black text-gray-700">{cat}</span>
-                    <span className="text-base md:text-lg font-black text-red-500">฿{amount.toLocaleString()}</span>
+                  <div key={cat} className="flex items-center justify-between p-4 md:p-4 bg-[var(--bg-tertiary)] rounded-2xl border border-[var(--border-color)]">
+                    <span className="text-sm md:text-base font-semibold text-[var(--text-primary)]">{cat}</span>
+                    <span className="text-base md:text-lg font-semibold text-red-500">฿{amount.toLocaleString()}</span>
                   </div>
                 ))
               ) : (
-                <p className="text-center text-xs md:text-sm text-gray-400 font-black uppercase tracking-widest py-4">ไม่มีข้อมูล</p>
+                <p className="text-center text-xs md:text-sm text-[var(--text-muted)] font-medium  tracking-widest py-4">ไม่มีข้อมูล</p>
               )}
             </div>
           </div>
 
           {/* Add Expense Form - iPad Optimized */}
-          <div className="bg-white rounded-[3rem] p-6 md:p-8 shadow-sm border border-gray-100 space-y-4 md:space-y-5">
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 md:p-6 shadow-sm border border-[var(--border-color)] space-y-4 md:space-y-5">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs md:text-sm font-black text-gray-400 uppercase tracking-[0.3em]">เพิ่มรายจ่ายใหม่</h3>
+              <h3 className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-[0.3em]">{editingExpense ? 'แก้ไขรายจ่าย' : 'เพิ่มรายจ่ายใหม่'}</h3>
+              {editingExpense && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingExpense(null);
+                    setNewExpense({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
+                  }}
+                  className="text-xs font-medium text-[var(--text-muted)] hover:text-red-500"
+                >
+                  ยกเลิกแก้ไข
+                </button>
+              )}
               <Zap size={18} className="text-red-400 animate-pulse md:w-5 md:h-5" />
             </div>
 
             {/* Success Message Toast - iPad Optimized */}
             {syncMessage && (
-              <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl p-4 md:p-5 flex items-center gap-3 md:gap-4 shadow-lg animate-in slide-in-from-top-2">
-                <div className="w-8 h-8 md:w-10 md:h-10 bg-white/20 rounded-full flex items-center justify-center shrink-0">
+              <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl p-4 md:p-4 flex items-center gap-3 md:gap-4 shadow-[var(--elev-2)] animate-in slide-in-from-top-2">
+                <div className="w-8 h-8 md:w-10 md:h-10 bg-[var(--bg-secondary)]/20 rounded-full flex items-center justify-center shrink-0">
                   <span className="text-lg md:text-xl">✓</span>
                 </div>
                 <p className="text-xs md:text-sm font-bold leading-relaxed">{syncMessage}</p>
@@ -409,7 +488,7 @@ export default function ExpensesView() {
                   key={item.id || idx}
                   type="button"
                   onClick={() => applyQuickExpense(item)}
-                  className="px-4 py-3 md:px-5 md:py-3.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs md:text-sm font-black transition-all border border-red-100 active:scale-95 flex items-center gap-2"
+                  className="px-4 py-3 md:px-5 md:py-3.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs md:text-sm font-medium transition-all border border-red-100 active:scale-95 flex items-center gap-2"
                 >
                   <span className="text-base md:text-lg">{item.icon}</span>
                   <span>{item.label}</span>
@@ -421,7 +500,7 @@ export default function ExpensesView() {
                   setAdminTab('quickExpenses');
                   handleViewChange('admin');
                 }}
-                className="px-4 py-3 md:px-5 md:py-3.5 bg-gray-50 hover:bg-gray-100 text-gray-400 rounded-xl text-xs md:text-sm font-black transition-all border border-gray-100 active:scale-95"
+                className="px-4 py-3 md:px-5 md:py-3.5 bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] rounded-xl text-xs md:text-sm font-medium transition-all border border-[var(--border-color)] active:scale-95"
                 title="จัดการคีย์ลัด"
               >
                 + แก้ไข #
@@ -429,45 +508,74 @@ export default function ExpensesView() {
             </div>
 
             <form onSubmit={handleAddExpense} className="space-y-4 md:space-y-5">
-              <div>
-                <label className="text-xs md:text-sm font-black text-gray-400 uppercase tracking-widest ml-4 mb-2 block">ชื่อรายจ่าย</label>
+              <div className="relative">
+                <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">ชื่อรายจ่าย</label>
                 <input
                   type="text"
                   placeholder="ซื้อนมสด, กาแฟ..."
                   required
                   value={newExpense.title}
+                  onFocus={() => setShowExpenseSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowExpenseSuggestions(false), 150)}
                   onChange={e => {
-                    setNewExpense({ ...newExpense, title: e.target.value });
+                    applyExpenseTitle(e.target.value);
+                    setShowExpenseSuggestions(true);
                     if (validationErrors.title) setValidationErrors({ ...validationErrors, title: '' });
                   }}
-                  className={`w-full bg-gray-50 border rounded-2xl p-4 md:p-5 text-sm md:text-base font-black outline-none shadow-inner focus:bg-white transition-all ${validationErrors.title ? 'border-red-300 bg-red-50' : 'border-gray-100'}`}
+                  className={`w-full bg-[var(--bg-tertiary)] border rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner focus:bg-[var(--bg-secondary)] transition-all ${validationErrors.title ? 'border-red-300 bg-red-50' : 'border-[var(--border-color)]'}`}
                   aria-label="ชื่อรายจ่าย"
                   aria-invalid={!!validationErrors.title}
                 />
+                {showExpenseSuggestions && visibleExpenseSuggestions.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full z-[var(--z-dropdown)] mt-2 max-h-72 overflow-y-auto rounded-2xl border border-emerald-100 bg-[var(--bg-secondary)] shadow-[var(--elev-2)]">
+                    {visibleExpenseSuggestions.map(title => (
+                      <button
+                        key={title}
+                        type="button"
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          applyExpenseTitle(title);
+                          setShowExpenseSuggestions(false);
+                        }}
+                        className="block w-full border-b border-gray-50 px-5 py-4 text-left text-sm font-semibold text-[var(--text-primary)] last:border-b-0 hover:bg-emerald-50 active:bg-emerald-100"
+                      >
+                        {title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {isStockCategory(newExpense.category) && expenseTitleSuggestions.length > 0 && (
+                  <p className="text-emerald-600 text-xs md:text-sm font-bold ml-4 mt-1.5">
+                    เลือกชื่อจากรายการแนะนำ เพื่อให้ชื่อวัตถุดิบตรงกับคลัง
+                  </p>
+                )}
                 {validationErrors.title && (
                   <p className="text-red-500 text-xs md:text-sm font-bold ml-4 mt-1.5">{validationErrors.title}</p>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-4 md:gap-5">
+              <div className="grid grid-cols-2 gap-4 md:gap-4">
                 <div>
-                  <label className="text-xs md:text-sm font-black text-gray-400 uppercase tracking-widest ml-4 mb-2 block">ราคา/หน่วย</label>
+                    <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">ต้นทุน/หน่วย (คำนวณอัตโนมัติ)</label>
                   <input
                     type="number"
                     placeholder="0.00"
-                    value={newExpense.pricePerUnit}
+                    value={newExpense.quantity > 0 && newExpense.amount > 0
+                      ? (Number(newExpense.amount) / Number(newExpense.quantity)).toFixed(4)
+                      : newExpense.pricePerUnit}
                     onChange={e => {
                       setNewExpense({ ...newExpense, pricePerUnit: e.target.value });
                       if (validationErrors.pricePerUnit) setValidationErrors({ ...validationErrors, pricePerUnit: '' });
                     }}
-                    className={`w-full bg-gray-50 border rounded-2xl p-4 md:p-5 text-sm md:text-base font-black outline-none shadow-inner ${validationErrors.pricePerUnit ? 'border-red-300 bg-red-50' : 'border-gray-100'}`}
+                    className={`w-full bg-[var(--bg-tertiary)] border rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner ${validationErrors.pricePerUnit ? 'border-red-300 bg-red-50' : 'border-[var(--border-color)]'}`}
                     aria-label="ราคาต่อหน่วย"
+                    readOnly={isStockCategory(newExpense.category) && Number(newExpense.quantity) > 0}
                   />
                   {validationErrors.pricePerUnit && (
                     <p className="text-red-500 text-xs md:text-sm font-bold ml-4 mt-1.5">{validationErrors.pricePerUnit}</p>
                   )}
                 </div>
                 <div>
-                  <label className="text-xs md:text-sm font-black text-gray-400 uppercase tracking-widest ml-4 mb-2 block">จำนวน</label>
+                  <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">จำนวน</label>
                   <input
                     type="number"
                     placeholder="0"
@@ -476,7 +584,7 @@ export default function ExpensesView() {
                       setNewExpense({ ...newExpense, quantity: e.target.value });
                       if (validationErrors.quantity) setValidationErrors({ ...validationErrors, quantity: '' });
                     }}
-                    className={`w-full bg-gray-50 border rounded-2xl p-4 md:p-5 text-sm md:text-base font-black outline-none shadow-inner ${validationErrors.quantity ? 'border-red-300 bg-red-50' : 'border-gray-100'}`}
+                    className={`w-full bg-[var(--bg-tertiary)] border rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner ${validationErrors.quantity ? 'border-red-300 bg-red-50' : 'border-[var(--border-color)]'}`}
                     aria-label="จำนวน"
                   />
                   {validationErrors.quantity && (
@@ -484,29 +592,29 @@ export default function ExpensesView() {
                   )}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4 md:gap-5">
+              <div className="grid grid-cols-2 gap-4 md:gap-4">
                 <div>
-                  <label className="text-xs md:text-sm font-black text-gray-400 uppercase tracking-widest ml-4 mb-2 block">หน่วยเรียก</label>
+                  <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">หน่วยเรียก</label>
                   <input
                     type="text"
                     placeholder="กล่อง, ถุง..."
                     value={newExpense.unit}
                     onChange={e => setNewExpense({ ...newExpense, unit: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 md:p-5 text-sm md:text-base font-black outline-none shadow-inner"
+                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner"
                     aria-label="หน่วยเรียก"
                   />
                 </div>
                 <div>
-                  <label className="text-xs md:text-sm font-black text-gray-400 uppercase tracking-widest ml-4 mb-2 block">ราคารวม</label>
+                  <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">ราคารวม</label>
                   <input
                     type="number"
-                    placeholder="คำนวณอัตโนมัติ..."
+                    placeholder="กรอกยอดซื้อรวม..."
                     value={newExpense.amount || (Number(newExpense.quantity) * Number(newExpense.pricePerUnit)) || ''}
                     onChange={e => {
                       setNewExpense({ ...newExpense, amount: e.target.value });
                       if (validationErrors.amount) setValidationErrors({ ...validationErrors, amount: '' });
                     }}
-                    className={`w-full bg-gray-100 border rounded-2xl p-4 md:p-5 text-sm md:text-base font-black outline-none shadow-inner focus:bg-white transition-all text-red-500 ${validationErrors.amount ? 'border-red-300 bg-red-50' : 'border-gray-100'}`}
+                    className={`w-full bg-[var(--bg-tertiary)] border rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner focus:bg-[var(--bg-secondary)] transition-all text-red-500 ${validationErrors.amount ? 'border-red-300 bg-red-50' : 'border-[var(--border-color)]'}`}
                     aria-label="ราคารวม"
                   />
                   {validationErrors.amount && (
@@ -515,18 +623,18 @@ export default function ExpensesView() {
                 </div>
               </div>
               <div>
-                <label className="text-xs md:text-sm font-black text-gray-400 uppercase tracking-widest ml-4 mb-2 block">หมวดหมู่</label>
+                <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">หมวดหมู่</label>
                 <select
                   value={newExpense.category}
                   onChange={e => setNewExpense({ ...newExpense, category: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 md:p-5 text-sm md:text-base font-black outline-none shadow-inner cursor-pointer text-gray-800"
+                  className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner cursor-pointer text-[var(--text-primary)]"
                   aria-label="หมวดหมู่"
                 >
                   {EXPENSE_CATEGORIES.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
-                {newExpense.category === 'วัตถุดิบ' && (
+                {isStockCategory(newExpense.category) && (
                   <div className="mt-3 p-3 md:p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 md:gap-3">
                     <div className="w-6 h-6 md:w-7 md:h-7 bg-emerald-500 rounded-full flex items-center justify-center shrink-0">
                       <span className="text-white text-sm md:text-base">✓</span>
@@ -543,20 +651,20 @@ export default function ExpensesView() {
                 loading={isSyncing}
                 className="!mt-4"
               >
-                บันทึกรายจ่าย
+                {editingExpense ? 'อัปเดตรายจ่าย' : 'บันทึกรายจ่าย'}
               </Button>
             </form>
           </div>
         </div>
 
         {/* Right Column: Expense List */}
-        <div className="flex-1 bg-white rounded-[3.5rem] shadow-xl border border-gray-100 overflow-hidden flex flex-col">
-          <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-white sticky top-0 z-10">
-            <h2 className="text-lg font-black text-gray-800 uppercase tracking-tight">รายการค่าใช้จ่าย</h2>
+        <div className="flex-1 bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-2)] border border-[var(--border-color)] overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-[var(--bg-secondary)] sticky top-0 z-[var(--z-nav)]">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]  tracking-tight">รายการค่าใช้จ่าย</h2>
             <button
               onClick={handleAnalyzeFinances}
               disabled={isAnalyzingFinances}
-              className="bg-gray-50 hover:bg-emerald-50 text-gray-400 hover:text-emerald-500 p-3 rounded-2xl transition-all active:scale-95 border border-transparent hover:border-emerald-100"
+              className="bg-[var(--bg-tertiary)] hover:bg-emerald-50 text-[var(--text-muted)] hover:text-emerald-500 p-3 rounded-2xl transition-all active:scale-95 border border-transparent hover:border-emerald-100"
               title="วิเคราะห์การเงินด้วย AI"
             >
               {isAnalyzingFinances ? <RefreshCcw size={20} className="animate-spin text-emerald-500" /> : <Zap size={20} fill="currentColor" />}
@@ -565,15 +673,15 @@ export default function ExpensesView() {
 
           {/* AI Financial Insight Card */}
           {financialInsight && (
-            <div className="mx-6 mt-6 p-6 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-[2.5rem] text-white shadow-lg shadow-emerald-500/20 animate-in slide-in-from-top-4 relative overflow-hidden">
-              <div className="flex items-start gap-4 relative z-10">
-                <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center shrink-0">
+            <div className="mx-6 mt-6 p-6 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-[var(--radius)] text-white shadow-[var(--elev-2)] shadow-emerald-500/20 animate-in slide-in-from-top-4 relative overflow-hidden">
+              <div className="flex items-start gap-4 relative z-[var(--z-nav)]">
+                <div className="w-12 h-12 bg-[var(--bg-secondary)]/20 backdrop-blur-sm rounded-2xl flex items-center justify-center shrink-0">
                   <BarChart3 size={24} className="text-white" />
                 </div>
                 <div className="flex-1">
                   <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-black text-sm uppercase tracking-widest opacity-90">AI วิเคราะห์การเงิน</h3>
-                    <button onClick={() => setFinancialInsight('')} aria-label="ปิดการวิเคราะห์" className="p-1 hover:bg-white/20 rounded-lg transition-colors"><X size={16} /></button>
+                    <h3 className="font-semibold text-sm  tracking-widest opacity-90">AI วิเคราะห์การเงิน</h3>
+                    <button onClick={() => setFinancialInsight('')} aria-label="ปิดการวิเคราะห์" className="p-1 hover:bg-[var(--bg-secondary)]/20 rounded-lg transition-colors"><X size={16} /></button>
                   </div>
                   <p className="text-sm font-medium leading-relaxed opacity-95 whitespace-pre-wrap">{financialInsight}</p>
                 </div>
@@ -591,18 +699,18 @@ export default function ExpensesView() {
               />
             )}
             {filteredExpenseStats.expenses.map(e => (
-              <div key={e.id} className="flex items-center justify-between p-6 bg-gray-50 rounded-[2rem] border border-gray-100 hover:bg-white transition-all group">
-                <div className="flex items-center gap-5 min-w-0">
+              <div key={e.id} className="flex items-center justify-between p-6 bg-[var(--bg-tertiary)] rounded-[var(--radius)] border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-all group">
+                <div className="flex items-center gap-4 min-w-0">
                   <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-red-500 shrink-0">
                     <DollarSign size={24} />
                   </div>
                   <div className="min-w-0">
-                    <p className="font-black text-gray-800 text-base truncate">{String(e.title)}</p>
+                    <p className="font-semibold text-[var(--text-primary)] text-base truncate">{String(e.title)}</p>
                     <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                      <span className="text-xs font-black text-gray-400 uppercase">{e.date}</span>
-                      <span className="text-xs font-black text-red-500 bg-red-50 px-2 py-0.5 rounded-lg border border-red-100">{e.category}</span>
+                      <span className="text-xs font-medium text-[var(--text-muted)] ">{e.date}</span>
+                      <span className="text-xs font-medium text-red-500 bg-red-50 px-2 py-0.5 rounded-lg border border-red-100">{e.category}</span>
                       {e.quantity > 0 && (
-                        <span className="text-xs font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">
+                        <span className="text-xs font-medium text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">
                           {Number(e.quantity).toLocaleString()} {e.unit} (@฿{Number(e.pricePerUnit).toLocaleString()})
                         </span>
                       )}
@@ -610,14 +718,35 @@ export default function ExpensesView() {
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="text-xl font-black text-red-500">฿{Number(e.amount).toLocaleString()}</span>
+                  <span className="text-xl font-semibold text-red-500">฿{Number(e.amount).toLocaleString()}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingExpense(e);
+                      setNewExpense({
+                        title: e.title || '',
+                        quantity: e.quantity || '',
+                        unit: e.unit || 'ชิ้น',
+                        pricePerUnit: e.pricePerUnit || '',
+                        amount: e.amount || '',
+                        category: e.category || 'วัตถุดิบ'
+                      });
+                      setValidationErrors({});
+                      setSyncMessage('');
+                    }}
+                    className="text-[var(--text-muted)] hover:text-blue-500 transition-colors active:scale-90 opacity-0 group-hover:opacity-100"
+                    aria-label="แก้ไขค่าใช้จ่าย"
+                    title="แก้ไขค่าใช้จ่าย"
+                  >
+                    <Edit size={18} />
+                  </button>
                   <button
                     onClick={async () => {
                       await runDbAction(async () => {
                         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', e.id));
                       }, 'ลบค่าใช้จ่ายไม่สำเร็จ');
                     }}
-                    className="text-gray-300 hover:text-red-500 transition-colors active:scale-90 opacity-0 group-hover:opacity-100"
+                    className="text-[var(--text-muted)] hover:text-red-500 transition-colors active:scale-90 opacity-0 group-hover:opacity-100"
                   >
                     <Trash2 size={18} />
                   </button>
