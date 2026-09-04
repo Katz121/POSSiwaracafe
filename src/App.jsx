@@ -2,7 +2,7 @@
 import {
   User, ChefHat, FileText, Package, DollarSign, ClipboardList, Users,
   PieChart, LayoutDashboard, Lock, Trash2, Moon, Sun, MoreHorizontal,
-  Coffee, Sparkles, LogOut
+  Coffee, Sparkles, LogOut, TrendingUp
 } from 'lucide-react';
 
 // UI Components
@@ -51,6 +51,7 @@ const MenuManageView = lazy(() => import('./components/views/MenuManageView'));
 const MembersView = lazy(() => import('./components/views/MembersView'));
 const AdminView = lazy(() => import('./components/views/AdminView'));
 const FinancialView = lazy(() => import('./components/views/FinancialView'));
+const SalesHistoryView = lazy(() => import('./components/views/SalesHistoryView'));
 
 // One-way token derived from the PIN. Stored on a "remembered" device so the app
 // stays unlocked across restarts — and so that changing the PIN later
@@ -612,6 +613,7 @@ export default function App() {
             {view === 'members_manage' && <MembersView />}
             {view === 'admin' && <AdminView />}
             {view === 'financial' && <FinancialView />}
+            {view === 'sales_history' && <SalesHistoryView />}
           </Suspense>
         </ErrorBoundary>
 
@@ -724,7 +726,7 @@ export default function App() {
                   'flex items-center gap-1 px-3 md:px-4 lg:px-5 py-2 md:py-3',
                   'rounded-[var(--radius-sm)] text-[11px] md:text-xs font-medium leading-none shrink-0',
                   'transition-all duration-300',
-                  ['expenses', 'menu_manage', 'members_manage', 'financial', 'admin', 'category_summary'].includes(view)
+                  ['expenses', 'menu_manage', 'members_manage', 'financial', 'admin', 'category_summary', 'sales_history'].includes(view)
                     ? 'bg-emerald-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.42)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--accent-emerald)] hover:bg-black/5 active:scale-95',
                 ].join(' ')}
@@ -742,6 +744,7 @@ export default function App() {
                     border border-[var(--border-color)] shadow-[var(--elev-2)]">
 
                     {[
+                      { key: 'sales_history',    icon: TrendingUp,     label: 'ประวัติการขาย' },
                       { key: 'expenses',         icon: DollarSign,    label: 'รายจ่าย'      },
                       { key: 'menu_manage',       icon: ClipboardList, label: 'จัดการเมนู'   },
                       { key: 'members_manage',    icon: Users,         label: 'สมาชิก'       },
