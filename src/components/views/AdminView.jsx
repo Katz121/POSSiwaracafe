@@ -26,7 +26,9 @@ import {
   DEFAULT_CAKE_SALE_PERCENT,
   DEFAULT_CAKE_SALE_START,
   DEFAULT_CAKE_SALE_END,
-  DEFAULT_COMBO_PERCENT
+  DEFAULT_COMBO_PERCENT,
+  STOCK_CATEGORIES,
+  getStockCategory
 } from '../../config/constants';
 
 export default function AdminView() {
@@ -64,6 +66,19 @@ export default function AdminView() {
     aiUtils,
     lockApp
   } = useAppContext();
+
+  const stockLinkGroups = useMemo(() => {
+    const categoryOrder = new Map(STOCK_CATEGORIES.map((category, index) => [category, index]));
+    const groups = new Map();
+    stock.forEach(item => {
+      const category = getStockCategory(item);
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category).push(item);
+    });
+    return [...groups.entries()]
+      .sort(([a], [b]) => (categoryOrder.get(a) ?? STOCK_CATEGORIES.length) - (categoryOrder.get(b) ?? STOCK_CATEGORIES.length))
+      .map(([category, items]) => [category, items.sort((a, b) => String(a.name).localeCompare(String(b.name), 'th'))]);
+  }, [stock]);
 
   // Constants
   const ADMIN_PIN = adminPin || DEFAULT_ADMIN_PIN;
@@ -512,19 +527,19 @@ export default function AdminView() {
   };
 
   return (
-    <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 text-gray-800 overflow-hidden leading-none">
-      <header className="h-16 md:h-20 lg:h-24 bg-white border-b border-gray-100 px-4 md:px-8 lg:px-12 flex items-center justify-between shadow-sm z-10 text-gray-800">
-        <div className="flex items-center gap-2 md:gap-4 text-emerald-600 uppercase font-black"><PieChart size={24} className="md:w-8 md:h-8 lg:w-9 lg:h-9" /><h1 className="text-base md:text-xl lg:text-2xl font-black uppercase tracking-tight text-gray-800 leading-none">สรุปยอด</h1></div>
-        <div className="flex items-center gap-2 md:gap-3 lg:gap-5 text-gray-800 leading-none">
-          <div className="relative flex items-center bg-emerald-50 border border-emerald-100 rounded-xl md:rounded-2xl lg:rounded-[2rem] p-1 md:p-1.5 shadow-sm leading-none"><Calendar className="text-emerald-500 ml-2 md:ml-4" size={18} /><input type="date" value={selectedHistoryDate} onChange={(e) => setSelectedHistoryDate(e.target.value)} className="bg-transparent border-none py-2 md:py-3 lg:py-3.5 pl-2 pr-3 md:pl-3 md:pr-6 text-sm md:text-base font-black text-emerald-700 outline-none cursor-pointer shadow-none leading-none w-[110px] md:w-auto" /></div>
+    <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 text-[var(--text-primary)] overflow-hidden leading-none">
+      <header className="h-16 md:h-20 lg:h-24 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-4 md:px-8 lg:px-12 flex items-center justify-between shadow-sm z-[var(--z-nav)] text-[var(--text-primary)]">
+        <div className="flex items-center gap-2 md:gap-4 text-emerald-600  "><PieChart size={24} className="md:w-8 md:h-8 lg:w-9 lg:h-9" /><h1 className="text-base md:text-xl lg:text-2xl   tracking-tight text-[var(--text-primary)] leading-none">สรุปยอด</h1></div>
+        <div className="flex items-center gap-2 md:gap-3 lg:gap-4 text-[var(--text-primary)] leading-none">
+          <div className="relative flex items-center bg-emerald-50 border border-emerald-100 rounded-xl md:rounded-2xl lg:rounded-[2rem] p-1 md:p-2 shadow-sm leading-none"><Calendar className="text-emerald-500 ml-2 md:ml-4" size={18} /><input type="date" value={selectedHistoryDate} onChange={(e) => setSelectedHistoryDate(e.target.value)} className="bg-transparent border-none py-2 md:py-3 lg:py-3.5 pl-2 pr-3 md:pl-3 md:pr-6 text-sm md:text-base  text-emerald-700 outline-none cursor-pointer shadow-none leading-none w-[110px] md:w-auto" /></div>
           {/* Excel Button Removed from Header */}
-          <button onClick={toggleVatSystem} className={`hidden md:flex px-4 lg:px-8 py-2.5 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-xs font-black items-center gap-2 border transition-all leading-none ${vatEnabled ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-gray-50 text-gray-400 border-gray-100'}`}>{vatEnabled ? 'VAT ON' : 'VAT OFF'}</button>
-          <button onClick={togglePinSecurity} className={`hidden md:flex px-4 lg:px-8 py-2.5 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-xs font-black items-center gap-2 border transition-all leading-none ${pinEnabled ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>{pinEnabled ? 'PIN ON' : 'PIN OFF'}</button>
+          <button onClick={toggleVatSystem} className={`hidden md:flex px-4 lg:px-8 py-2.5 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-xs  items-center gap-2 border transition-all leading-none ${vatEnabled ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border-[var(--border-color)]'}`}>{vatEnabled ? 'VAT ON' : 'VAT OFF'}</button>
+          <button onClick={togglePinSecurity} className={`hidden md:flex px-4 lg:px-8 py-2.5 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-xs  items-center gap-2 border transition-all leading-none ${pinEnabled ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>{pinEnabled ? 'PIN ON' : 'PIN OFF'}</button>
         </div>
       </header>
 
       {/* Tab Bar */}
-      <div className="flex items-center gap-1 md:gap-2 px-4 md:px-8 lg:px-12 py-3 bg-white/50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700 shrink-0">
+      <div className="flex items-center gap-1 md:gap-2 px-4 md:px-8 lg:px-12 py-3 bg-[var(--bg-secondary)]/50 /50 border-b border-[var(--border-color)]  shrink-0">
         {[
           { key: 'stats', icon: BarChart3, label: 'สรุปยอด' },
           { key: 'settings', icon: Settings, label: 'ตั้งค่า' },
@@ -533,7 +548,7 @@ export default function AdminView() {
           <button
             key={key}
             onClick={() => setActiveAdminTab(key)}
-            className={`flex items-center gap-2 px-4 md:px-6 py-2.5 md:py-3 rounded-xl md:rounded-2xl text-xs md:text-sm font-black uppercase tracking-wider transition-all ${activeAdminTab === key ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            className={`flex items-center gap-2 px-4 md:px-6 py-2.5 md:py-3 rounded-xl md:rounded-2xl text-xs md:text-sm   tracking-wider transition-all ${activeAdminTab === key ? 'bg-emerald-500 text-white shadow-[var(--elev-2)] shadow-emerald-500/20' : 'text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)]'}`}
           >
             <Icon size={16} />
             <span>{label}</span>
@@ -541,29 +556,29 @@ export default function AdminView() {
         ))}
       </div>
 
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-8 p-4 md:p-6 lg:p-8 overflow-auto text-gray-800">
+      <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-8 p-4 md:p-6 lg:p-6 overflow-auto text-[var(--text-primary)]">
         <div className={`w-full ${activeAdminTab === 'stats' ? 'lg:w-[400px] xl:w-[480px]' : ''} space-y-4 md:space-y-6 lg:space-y-8 shrink-0 animate-in fade-in duration-300`}>
 
           {/* ==================== TAB: สรุปยอด ==================== */}
           {activeAdminTab === 'stats' && <>
           {/* Daily Stats Card */}
-          <div className="bg-gray-900 rounded-2xl md:rounded-[2.5rem] lg:rounded-[3rem] p-6 md:p-8 lg:p-10 text-white shadow-2xl relative overflow-hidden border-b-8 border-emerald-500/20">
+          <div className="bg-[var(--text-primary)] rounded-2xl md:rounded-[2.5rem] lg:rounded-[var(--radius)] p-6 md:p-6 lg:p-6 text-white shadow-[var(--elev-3)] relative overflow-hidden border-b-8 border-emerald-500/20">
             <TrendingUp size={160} className="absolute -right-12 -bottom-12 opacity-10" />
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.3em] opacity-50 mb-3 px-1">สรุปยอดรายวัน ({new Date(selectedHistoryDate).toLocaleDateString('th-TH')})</p>
-                <p className={`text-7xl font-black tracking-tighter mb-6 ${dailyNetStats.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <p className="text-xs   tracking-[0.3em] opacity-50 mb-3 px-1">สรุปยอดรายวัน ({new Date(selectedHistoryDate).toLocaleDateString('th-TH')})</p>
+                <p className={`text-7xl font-bold num tracking-tighter mb-6 ${dailyNetStats.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                   ฿{Number(dailyNetStats.profit).toLocaleString()}
                 </p>
               </div>
-              <button onClick={() => toggleAdminPanel('daily')} className="p-3 rounded-2xl bg-white/10 hover:bg-white/20 transition-all">
+              <button onClick={() => toggleAdminPanel('daily')} className="p-3 rounded-2xl bg-[var(--bg-secondary)]/10 hover:bg-[var(--bg-secondary)]/20 transition-all">
                 {adminPanels.daily ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
               </button>
             </div>
             {adminPanels.daily && (
-              <div className="grid grid-cols-2 gap-6 mt-8 border-t border-white/10 pt-8 font-black uppercase tracking-[0.2em] text-xs opacity-60">
-                <div className="flex flex-col gap-2"><span>รายรับ:</span><span className="text-2xl text-white tracking-tighter">฿{Number(dailyNetStats.revenue).toLocaleString()}</span></div>
-                <div className="flex flex-col gap-2"><span className="text-red-400">รายจ่าย:</span><span className="text-2xl text-red-400 tracking-tighter">฿{Number(dailyNetStats.cost).toLocaleString()}</span></div>
+              <div className="grid grid-cols-2 gap-6 mt-8 border-t border-white/10 pt-8   tracking-[0.2em] text-xs opacity-60">
+                <div className="flex flex-col gap-2 num"><span>รายรับ:</span><span className="text-2xl text-white tracking-tighter">฿{Number(dailyNetStats.revenue).toLocaleString()}</span></div>
+                <div className="flex flex-col gap-2 num"><span className="text-red-400">รายจ่าย:</span><span className="text-2xl text-red-400 tracking-tighter">฿{Number(dailyNetStats.cost).toLocaleString()}</span></div>
               </div>
             )}
             {/* Starting Cash Reminder */}
@@ -571,9 +586,9 @@ export default function AdminView() {
               <div className="mt-6 bg-amber-500/20 border border-amber-400/30 rounded-2xl p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Banknote size={20} className="text-amber-400" />
-                  <span className="text-xs font-black text-amber-300 uppercase tracking-widest">เงินตั้งต้น (ทอน)</span>
+                  <span className="text-xs  text-amber-300  tracking-widest">เงินตั้งต้น (ทอน)</span>
                 </div>
-                <span className="text-xl font-black text-amber-400">฿{STARTING_CASH.toLocaleString()}</span>
+                <span className="text-xl font-semibold text-amber-400 num">฿{STARTING_CASH.toLocaleString()}</span>
               </div>
             )}
           </div>
@@ -583,10 +598,10 @@ export default function AdminView() {
           {/* ==================== TAB: ตั้งค่า ==================== */}
           {activeAdminTab === 'settings' && <>
           {/* Settings Panel */}
-          <div className="bg-white rounded-[3rem] p-8 border border-gray-100 shadow-sm space-y-6">
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">ตั้งค่าระบบ</h2>
-              <button onClick={() => toggleAdminPanel('settings')} className="p-2 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-all">
+              <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">ตั้งค่าระบบ</h2>
+              <button onClick={() => toggleAdminPanel('settings')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
                 {adminPanels.settings ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
               </button>
             </div>
@@ -594,52 +609,52 @@ export default function AdminView() {
               <>
                 <div className="space-y-4">
                   {/* Starting Cash - Prominent */}
-                  <div className="bg-amber-50 p-5 rounded-2xl border-2 border-amber-200">
-                    <label className="text-xs font-black text-amber-600 uppercase tracking-widest flex items-center gap-2"><Banknote size={14} /> เงินตั้งต้นร้าน (เงินทอน)</label>
-                    <input type="number" value={settingsDraft.startingCash} onChange={(e) => setSettingsDraft({ ...settingsDraft, startingCash: e.target.value })} className="w-full mt-2 bg-white border border-amber-200 rounded-2xl p-4 text-lg font-black outline-none text-amber-700 focus:ring-4 focus:ring-amber-200" placeholder="0" />
+                  <div className="bg-amber-50 p-4 rounded-2xl border-2 border-amber-200">
+                    <label className="text-xs font-medium text-amber-600  tracking-widest flex items-center gap-2"><Banknote size={14} /> เงินตั้งต้นร้าน (เงินทอน)</label>
+                    <input type="number" value={settingsDraft.startingCash} onChange={(e) => setSettingsDraft({ ...settingsDraft, startingCash: e.target.value })} className="w-full mt-2 bg-[var(--bg-secondary)] border border-amber-200 rounded-2xl p-4 text-lg font-semibold outline-none text-amber-700 focus:ring-4 focus:ring-amber-200 num" placeholder="0" />
                     <p className="text-xs text-amber-500 mt-2 font-bold">เงินสำรองไว้ทอน - ไม่นับรวมกับยอดขาย แสดงแยกในรายงาน</p>
                   </div>
                   <div>
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">PIN แอดมิน</label>
-                    <input type="password" maxLength={6} value={settingsDraft.adminPin} onChange={(e) => setSettingsDraft({ ...settingsDraft, adminPin: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="เช่น 1234" />
+                    <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">PIN แอดมิน</label>
+                    <input type="password" maxLength={6} value={settingsDraft.adminPin} onChange={(e) => setSettingsDraft({ ...settingsDraft, adminPin: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none" placeholder="เช่น 1234" />
                     {lockApp && (
                       <button
                         type="button"
                         onClick={() => { lockApp(); toast.success('ล็อกและลืมอุปกรณ์นี้แล้ว'); }}
-                        className="mt-3 w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gray-100 text-gray-600 font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all"
+                        className="mt-3 w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-[var(--bg-tertiary)] text-[var(--text-secondary)] font-semibold text-xs  tracking-widest hover:bg-[var(--bg-tertiary)] transition-all"
                       >
                         <Lock size={14} /> ล็อก &amp; ลืมอุปกรณ์นี้
                       </button>
                     )}
-                    <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">ใช้เมื่ออยากให้เครื่องนี้ถาม PIN ใหม่ — หรือเปลี่ยน PIN แล้วทุกเครื่องที่ "จำไว้" จะถูกล็อกอัตโนมัติ</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-2 font-bold leading-relaxed">ใช้เมื่ออยากให้เครื่องนี้ถาม PIN ใหม่ — หรือเปลี่ยน PIN แล้วทุกเครื่องที่ "จำไว้" จะถูกล็อกอัตโนมัติ</p>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">แต้มขั้นต่ำแลก</label>
-                      <input type="number" value={settingsDraft.redeemPointsThreshold} onChange={(e) => setSettingsDraft({ ...settingsDraft, redeemPointsThreshold: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" />
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">แต้มขั้นต่ำแลก</label>
+                      <input type="number" value={settingsDraft.redeemPointsThreshold} onChange={(e) => setSettingsDraft({ ...settingsDraft, redeemPointsThreshold: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
                     </div>
                     <div>
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ส่วนลดแลกแต้ม</label>
-                      <input type="number" value={settingsDraft.redeemDiscountValue} onChange={(e) => setSettingsDraft({ ...settingsDraft, redeemDiscountValue: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" />
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ส่วนลดแลกแต้ม</label>
+                      <input type="number" value={settingsDraft.redeemDiscountValue} onChange={(e) => setSettingsDraft({ ...settingsDraft, redeemDiscountValue: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ส่วนลดแก้วส่วนตัว</label>
-                    <input type="number" value={settingsDraft.ownGlassDiscount} onChange={(e) => setSettingsDraft({ ...settingsDraft, ownGlassDiscount: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" />
+                    <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ส่วนลดแก้วส่วนตัว</label>
+                    <input type="number" value={settingsDraft.ownGlassDiscount} onChange={(e) => setSettingsDraft({ ...settingsDraft, ownGlassDiscount: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
                   </div>
-                  <div className="col-span-2 border-t border-gray-50 pt-4 mt-2">
-                    <label className="text-xs font-black text-emerald-500 uppercase tracking-widest flex items-center gap-2"><Zap size={14} /> Gemini API Key (สำหรับ AI Features)</label>
+                  <div className="col-span-2 border-t border-[var(--border-color)] pt-4 mt-2">
+                    <label className="text-xs font-medium text-emerald-500  tracking-widest flex items-center gap-2"><Zap size={14} /> Gemini API Key (สำหรับ AI Features)</label>
                     <div className="flex gap-2">
                       <input type="password" value={settingsDraft.geminiApiKey} onChange={(e) => setSettingsDraft({ ...settingsDraft, geminiApiKey: e.target.value })} className="flex-1 mt-2 bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 text-sm font-bold text-emerald-700 outline-none placeholder:text-emerald-300" placeholder="AIzaSy..." />
-                      <button onClick={handleTestAI} className="mt-2 px-4 bg-emerald-100 text-emerald-600 rounded-2xl font-black text-xs uppercase tracking-wider hover:bg-emerald-200 transition-all">Test AI</button>
+                      <button onClick={handleTestAI} className="mt-2 px-4 bg-emerald-100 text-emerald-600 rounded-2xl font-semibold text-xs  tracking-wider hover:bg-emerald-200 transition-all">Test AI</button>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2 font-bold">รับฟรีที่ <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline hover:text-emerald-500">aistudio.google.com</a></p>
+                    <p className="text-xs text-[var(--text-muted)] mt-2 font-bold">รับฟรีที่ <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline hover:text-emerald-500">aistudio.google.com</a></p>
 
                     {/* AI Stats */}
                     {aiUtils?.getApiStats && (
                       <div className="mt-4 bg-violet-50/50 border border-violet-100 rounded-2xl p-4 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-black text-violet-600 uppercase tracking-widest">AI Usage Stats</span>
+                          <span className="text-xs font-medium text-violet-600  tracking-widest">AI Usage Stats</span>
                           <button
                             onClick={() => {
                               aiUtils?.clearAICache?.();
@@ -654,21 +669,21 @@ export default function AdminView() {
                           const stats = aiUtils.getApiStats();
                           return (
                             <div className="grid grid-cols-4 gap-2 text-center">
-                              <div className="bg-white rounded-xl p-2">
-                                <p className="text-lg font-black text-violet-600">{stats.requestCount}</p>
-                                <p className="text-[8px] font-bold text-gray-400 uppercase">Requests</p>
+                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
+                                <p className="text-lg font-semibold text-violet-600">{stats.requestCount}</p>
+                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">Requests</p>
                               </div>
-                              <div className="bg-white rounded-xl p-2">
-                                <p className="text-lg font-black text-emerald-600">{stats.cacheSize}</p>
-                                <p className="text-[8px] font-bold text-gray-400 uppercase">Cached</p>
+                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
+                                <p className="text-lg font-semibold text-emerald-600">{stats.cacheSize}</p>
+                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">Cached</p>
                               </div>
-                              <div className="bg-white rounded-xl p-2">
-                                <p className="text-lg font-black text-blue-600">{stats.chatHistoryCount}</p>
-                                <p className="text-[8px] font-bold text-gray-400 uppercase">History</p>
+                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
+                                <p className="text-lg font-semibold text-blue-600">{stats.chatHistoryCount}</p>
+                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">History</p>
                               </div>
-                              <div className="bg-white rounded-xl p-2">
-                                <p className="text-xs font-black text-gray-600">{stats.lastRequestTime}</p>
-                                <p className="text-[8px] font-bold text-gray-400 uppercase">Last Call</p>
+                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
+                                <p className="text-xs font-medium text-[var(--text-secondary)]">{stats.lastRequestTime}</p>
+                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">Last Call</p>
                               </div>
                             </div>
                           );
@@ -679,7 +694,7 @@ export default function AdminView() {
                     {/* AI Upsell Tracking Stats */}
                     <div className="mt-4 bg-amber-50/50 border border-amber-100 rounded-2xl p-4 space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-black text-amber-600 uppercase tracking-widest flex items-center gap-2">
+                        <span className="text-xs font-medium text-amber-600  tracking-widest flex items-center gap-2">
                           <Target size={14} /> AI Upsell Performance
                         </span>
                         <div className="flex gap-1">
@@ -702,37 +717,37 @@ export default function AdminView() {
                         return (
                           <>
                             <div className="grid grid-cols-4 gap-2 text-center">
-                              <div className="bg-white rounded-xl p-2">
-                                <p className="text-lg font-black text-amber-600">{upsellStats.totalShown}</p>
-                                <p className="text-[8px] font-bold text-gray-400 uppercase">แสดง</p>
+                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
+                                <p className="text-lg font-semibold text-amber-600 num">{upsellStats.totalShown}</p>
+                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">แสดง</p>
                               </div>
-                              <div className="bg-white rounded-xl p-2">
-                                <p className="text-lg font-black text-emerald-600">{upsellStats.totalAccepted}</p>
-                                <p className="text-[8px] font-bold text-gray-400 uppercase">ยอมรับ</p>
+                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
+                                <p className="text-lg font-semibold text-emerald-600 num">{upsellStats.totalAccepted}</p>
+                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">ยอมรับ</p>
                               </div>
-                              <div className="bg-white rounded-xl p-2">
-                                <p className="text-lg font-black text-blue-600">{upsellStats.conversionRate}%</p>
-                                <p className="text-[8px] font-bold text-gray-400 uppercase">Conversion</p>
+                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
+                                <p className="text-lg font-semibold text-blue-600 num">{upsellStats.conversionRate}%</p>
+                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">Conversion</p>
                               </div>
-                              <div className="bg-white rounded-xl p-2">
-                                <p className="text-lg font-black text-violet-600">฿{upsellStats.totalRevenue.toLocaleString()}</p>
-                                <p className="text-[8px] font-bold text-gray-400 uppercase">รายได้</p>
+                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
+                                <p className="text-lg font-semibold text-violet-600 num">฿{upsellStats.totalRevenue.toLocaleString()}</p>
+                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">รายได้</p>
                               </div>
                             </div>
                             {upsellStats.topItems.length > 0 && (
-                              <div className="mt-2 bg-white rounded-xl p-3">
-                                <p className="text-xs font-black text-gray-500 uppercase mb-2">Top Performing Items</p>
+                              <div className="mt-2 bg-[var(--bg-secondary)] rounded-xl p-3">
+                                <p className="text-xs font-medium text-[var(--text-secondary)]  mb-2">Top Performing Items</p>
                                 <div className="space-y-1">
                                   {upsellStats.topItems.slice(0, 3).map((item, idx) => (
                                     <div key={idx} className="flex items-center justify-between text-xs">
-                                      <span className="font-bold text-gray-600 truncate">{item.name}</span>
-                                      <span className="font-black text-emerald-600">{item.conversionRate}% ({item.accepted}/{item.shown})</span>
+                                      <span className="font-bold text-[var(--text-secondary)] truncate">{item.name}</span>
+                                      <span className="font-semibold text-emerald-600 num">{item.conversionRate}% ({item.accepted}/{item.shown})</span>
                                     </div>
                                   ))}
                                 </div>
                               </div>
                             )}
-                            <p className="text-xs text-gray-400 text-center">
+                            <p className="text-xs text-[var(--text-muted)] text-center">
                               วันนี้: แสดง {upsellStats.todayShown} | ยอมรับ {upsellStats.todayAccepted} | รายได้ ฿{upsellStats.todayRevenue.toLocaleString()}
                             </p>
                           </>
@@ -741,7 +756,7 @@ export default function AdminView() {
                     </div>
                   </div>
                 </div>
-                <button onClick={saveSettings} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-lg hover:bg-emerald-700 transition-all">
+                <button onClick={saveSettings} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-semibold text-xs  tracking-[0.3em] shadow-[var(--elev-2)] hover:bg-emerald-700 transition-all">
                   บันทึกการตั้งค่า
                 </button>
               </>
@@ -792,31 +807,31 @@ export default function AdminView() {
               }
             };
             return (
-              <div className="bg-white rounded-[3rem] p-8 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
+              <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
                 <div className="flex items-center gap-3">
                   <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><QrCode size={22} /></div>
-                  <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">QR สั่งอาหารหน้าร้าน</h2>
+                  <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">QR สั่งอาหารหน้าร้าน</h2>
                 </div>
                 <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
                   <Smartphone size={18} className="text-emerald-500 shrink-0 mt-0.5" />
                   <p className="text-xs font-bold text-emerald-700 leading-relaxed">ให้ลูกค้าสแกนเพื่อสั่งอาหารเองผ่านมือถือ ออเดอร์จะเข้าคิวอัตโนมัติ และชำระเงินที่เคาน์เตอร์</p>
                 </div>
                 <div className="flex flex-col items-center gap-4 py-2">
-                  <div className="bg-white p-4 rounded-3xl border-2 border-emerald-100 shadow-inner">
+                  <div className="bg-[var(--bg-secondary)] p-4 rounded-3xl border-2 border-emerald-100 shadow-inner">
                     <QRCodeSVG id="qr-self-order-svg" value={orderUrl} size={220} level="M" includeMargin />
                   </div>
-                  <p className="text-xs font-mono font-bold text-gray-500 bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 select-all text-center break-all">{orderUrl}</p>
+                  <p className="text-xs font-mono font-bold text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl px-4 py-3 select-all text-center break-all">{orderUrl}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={handlePrintQR}
-                    className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-gray-800 text-white font-black text-xs uppercase tracking-widest shadow-lg hover:bg-gray-900 active:scale-95 transition-all"
+                    className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-[var(--text-primary)] text-white font-semibold text-xs  tracking-widest shadow-[var(--elev-2)] hover:bg-[var(--text-primary)] active:scale-95 transition-all"
                   >
                     <Printer size={16} /> พิมพ์ QR
                   </button>
                   <button
                     onClick={handleCopyLink}
-                    className={`flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all ${linkCopied ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white'}`}
+                    className={`flex items-center justify-center gap-2 py-4 rounded-2xl font-semibold text-xs  tracking-widest shadow-[var(--elev-2)] active:scale-95 transition-all ${linkCopied ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white'}`}
                   >
                     <QrCode size={16} /> {linkCopied ? 'คัดลอกแล้ว!' : 'คัดลอกลิงก์'}
                   </button>
@@ -826,10 +841,10 @@ export default function AdminView() {
           })()}
 
           {/* Review Link Card */}
-          <div className="bg-white rounded-[3rem] p-8 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><Star size={22} /></div>
-              <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">ลิงก์รีวิวร้าน</h2>
+              <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">ลิงก์รีวิวร้าน</h2>
             </div>
             <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
               <Star size={18} className="text-emerald-500 shrink-0 mt-0.5" />
@@ -839,16 +854,16 @@ export default function AdminView() {
               type="url"
               value={settingsDraft.reviewUrl}
               onChange={(e) => setSettingsDraft({ ...settingsDraft, reviewUrl: e.target.value })}
-              className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold outline-none focus:bg-white focus:border-emerald-200 transition-all"
+              className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-bold outline-none focus:bg-[var(--bg-secondary)] focus:border-emerald-200 transition-all"
               placeholder="https://g.page/..."
             />
           </div>
 
           {/* Cake Clearance (Happy Hour) Card */}
-          <div className="bg-white rounded-[3rem] p-8 border border-amber-100 shadow-sm space-y-6 border-t-4 border-t-amber-400">
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-amber-100 shadow-sm space-y-6 border-t-4 border-t-amber-400">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-amber-50 rounded-2xl text-amber-500"><Cake size={22} /></div>
-              <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">Happy Hour เค้ก (ลดราคาตามช่วงเวลา)</h2>
+              <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">Happy Hour เค้ก (ลดราคาตามช่วงเวลา)</h2>
             </div>
             <div className="flex items-start gap-3 bg-amber-50 rounded-2xl p-4 border border-amber-100">
               <Cake size={18} className="text-amber-500 shrink-0 mt-0.5" />
@@ -859,22 +874,22 @@ export default function AdminView() {
             <button
               type="button"
               onClick={() => setSettingsDraft({ ...settingsDraft, cakeSaleEnabled: !settingsDraft.cakeSaleEnabled })}
-              className="w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all"
+              className="w-full flex items-center justify-between px-4 py-4 rounded-2xl transition-all"
               style={{
                 background: settingsDraft.cakeSaleEnabled ? '#ecfdf5' : '#f9fafb',
                 border: `2px solid ${settingsDraft.cakeSaleEnabled ? '#6ee7b7' : '#f3f4f6'}`
               }}
             >
-              <span className="text-sm font-black text-gray-700">เปิดใช้งานลดราคาช่วงเวลา</span>
-              <div className={`w-12 h-6 rounded-full relative transition-colors ${settingsDraft.cakeSaleEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
-                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${settingsDraft.cakeSaleEnabled ? 'right-0.5' : 'left-0.5'}`} />
+              <span className="text-sm font-semibold text-[var(--text-primary)]">เปิดใช้งานลดราคาช่วงเวลา</span>
+              <div className={`w-12 h-6 rounded-full relative transition-colors ${settingsDraft.cakeSaleEnabled ? 'bg-emerald-500' : 'bg-[var(--bg-tertiary)]'}`}>
+                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-[var(--bg-secondary)] shadow transition-all ${settingsDraft.cakeSaleEnabled ? 'right-0.5' : 'left-0.5'}`} />
               </div>
             </button>
 
             {/* Percent + Time */}
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><Percent size={12} /> ส่วนลด</label>
+                <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest flex items-center gap-1"><Percent size={12} /> ส่วนลด</label>
                 <div className="relative mt-2">
                   <input
                     type="number"
@@ -882,37 +897,37 @@ export default function AdminView() {
                     max={100}
                     value={settingsDraft.cakeSalePercent}
                     onChange={(e) => setSettingsDraft({ ...settingsDraft, cakeSalePercent: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 pr-8 text-sm font-black outline-none"
+                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 pr-8 text-sm font-semibold outline-none"
                     placeholder="20"
                   />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-gray-400">%</span>
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium text-[var(--text-muted)]">%</span>
                 </div>
               </div>
               <div>
-                <label className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><Clock size={12} /> เริ่ม</label>
+                <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest flex items-center gap-1"><Clock size={12} /> เริ่ม</label>
                 <input
                   type="time"
                   value={settingsDraft.cakeSaleStart}
                   onChange={(e) => setSettingsDraft({ ...settingsDraft, cakeSaleStart: e.target.value })}
-                  className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none cursor-pointer"
+                  className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none cursor-pointer"
                 />
               </div>
               <div>
-                <label className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><Clock size={12} /> สิ้นสุด</label>
+                <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest flex items-center gap-1"><Clock size={12} /> สิ้นสุด</label>
                 <input
                   type="time"
                   value={settingsDraft.cakeSaleEnd}
                   onChange={(e) => setSettingsDraft({ ...settingsDraft, cakeSaleEnd: e.target.value })}
-                  className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none cursor-pointer"
+                  className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none cursor-pointer"
                 />
               </div>
             </div>
 
             {/* Category checklist */}
             <div>
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3 block">หมวดหมู่ที่เข้าร่วม</label>
+              <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest mb-3 block">หมวดหมู่ที่เข้าร่วม</label>
               {dynamicCategories.length === 0 ? (
-                <p className="text-xs text-gray-400 font-bold italic py-2">ยังไม่มีหมวดหมู่ในระบบ</p>
+                <p className="text-xs text-[var(--text-muted)] font-bold italic py-2">ยังไม่มีหมวดหมู่ในระบบ</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {dynamicCategories.map((cat) => {
@@ -928,10 +943,10 @@ export default function AdminView() {
                             : [...current, cat.name];
                           setSettingsDraft({ ...settingsDraft, cakeSaleCategories: next });
                         }}
-                        className={`px-4 py-2 rounded-2xl text-xs font-black transition-all border ${
+                        className={`px-4 py-2 rounded-2xl text-xs font-medium transition-all border ${
                           isSelected
                             ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                            : 'bg-gray-50 text-gray-500 border-gray-100 hover:border-amber-300 hover:text-amber-600'
+                            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:border-amber-300 hover:text-amber-600'
                         }`}
                       >
                         {cat.name}
@@ -944,10 +959,10 @@ export default function AdminView() {
           </div>
 
           {/* Cake + Drink Combo Discount Card */}
-          <div className="bg-white rounded-[3rem] p-8 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><Cake size={22} /></div>
-              <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">คอมโบ เค้ก + เครื่องดื่ม</h2>
+              <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">คอมโบ เค้ก + เครื่องดื่ม</h2>
             </div>
             <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
               <Percent size={18} className="text-emerald-500 shrink-0 mt-0.5" />
@@ -958,21 +973,21 @@ export default function AdminView() {
             <button
               type="button"
               onClick={() => setSettingsDraft({ ...settingsDraft, comboEnabled: !settingsDraft.comboEnabled })}
-              className="w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all"
+              className="w-full flex items-center justify-between px-4 py-4 rounded-2xl transition-all"
               style={{
                 background: settingsDraft.comboEnabled ? '#ecfdf5' : '#f9fafb',
                 border: `2px solid ${settingsDraft.comboEnabled ? '#6ee7b7' : '#f3f4f6'}`
               }}
             >
-              <span className="text-sm font-black text-gray-700">เปิดใช้งานส่วนลดคอมโบ</span>
-              <div className={`w-12 h-6 rounded-full relative transition-colors ${settingsDraft.comboEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
-                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${settingsDraft.comboEnabled ? 'right-0.5' : 'left-0.5'}`} />
+              <span className="text-sm font-semibold text-[var(--text-primary)]">เปิดใช้งานส่วนลดคอมโบ</span>
+              <div className={`w-12 h-6 rounded-full relative transition-colors ${settingsDraft.comboEnabled ? 'bg-emerald-500' : 'bg-[var(--bg-tertiary)]'}`}>
+                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-[var(--bg-secondary)] shadow transition-all ${settingsDraft.comboEnabled ? 'right-0.5' : 'left-0.5'}`} />
               </div>
             </button>
 
             {/* Percent input */}
             <div>
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-1"><Percent size={12} /> ส่วนลดคอมโบ</label>
+              <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest flex items-center gap-1"><Percent size={12} /> ส่วนลดคอมโบ</label>
               <div className="relative mt-2">
                 <input
                   type="number"
@@ -980,19 +995,19 @@ export default function AdminView() {
                   max={100}
                   value={settingsDraft.comboPercent}
                   onChange={(e) => setSettingsDraft({ ...settingsDraft, comboPercent: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 pr-8 text-sm font-black outline-none"
+                  className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 pr-8 text-sm font-semibold outline-none"
                   placeholder="10"
                 />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-gray-400">%</span>
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium text-[var(--text-muted)]">%</span>
               </div>
             </div>
           </div>
 
           {/* Spend threshold discount card */}
-          <div className="bg-white rounded-[3rem] p-8 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><Percent size={22} /></div>
-              <h2 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">ส่วนลดเมื่อสั่งครบยอด (หน้า QR)</h2>
+              <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">ส่วนลดเมื่อสั่งครบยอด (หน้า QR)</h2>
             </div>
             <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
               <Percent size={18} className="text-emerald-500 shrink-0 mt-0.5" />
@@ -1000,12 +1015,12 @@ export default function AdminView() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">สั่งครบ (บาท)</label>
-                <input type="number" value={settingsDraft.spendThreshold} onChange={(e) => setSettingsDraft({ ...settingsDraft, spendThreshold: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="0" />
+                <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">สั่งครบ (บาท)</label>
+                <input type="number" value={settingsDraft.spendThreshold} onChange={(e) => setSettingsDraft({ ...settingsDraft, spendThreshold: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" placeholder="0" />
               </div>
               <div>
-                <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ลด (%)</label>
-                <input type="number" value={settingsDraft.spendDiscount} onChange={(e) => setSettingsDraft({ ...settingsDraft, spendDiscount: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="0" />
+                <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ลด (%)</label>
+                <input type="number" value={settingsDraft.spendDiscount} onChange={(e) => setSettingsDraft({ ...settingsDraft, spendDiscount: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" placeholder="0" />
               </div>
             </div>
           </div>
@@ -1015,62 +1030,62 @@ export default function AdminView() {
           {/* ==================== TAB: จัดการ ==================== */}
           {activeAdminTab === 'manage' && <>
           {/* Backdated Sales Panel */}
-          <div className="bg-white rounded-[3rem] p-8 border border-gray-100 shadow-sm space-y-6">
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="font-black text-lg text-gray-800 flex items-center gap-3 uppercase tracking-tighter">
+              <h2 className="font-bold text-lg text-[var(--text-primary)] flex items-center gap-3  tracking-tighter">
                 <History size={22} className="text-blue-500" /> บันทึกยอดขายย้อนหลัง
               </h2>
-              <button onClick={() => toggleAdminPanel('backdatedSales')} className="p-2 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-all">
+              <button onClick={() => toggleAdminPanel('backdatedSales')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
                 {adminPanels.backdatedSales ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
               </button>
             </div>
             {adminPanels.backdatedSales && (
               <form onSubmit={addBackdatedSale} className="space-y-5">
                 <div>
-                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest">รายการขาย / ชื่อสินค้า</label>
+                  <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">รายการขาย / ชื่อสินค้า</label>
                   <input
                     type="text"
                     required
                     value={backdatedSale.title}
                     onChange={(e) => setBackdatedSale({ ...backdatedSale, title: e.target.value })}
-                    className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none focus:bg-white transition-all"
+                    className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none focus:bg-[var(--bg-secondary)] transition-all"
                     placeholder="เช่น ยอดขายเงินสด, ชานมไข่มุก..."
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ยอดเงิน (บาท)</label>
+                    <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ยอดเงิน (บาท)</label>
                     <input
                       type="number"
                       required
                       value={backdatedSale.amount}
                       onChange={(e) => setBackdatedSale({ ...backdatedSale, amount: e.target.value })}
-                      className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none"
+                      className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none"
                       placeholder="0"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">วันที่ขาย</label>
+                    <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">วันที่ขาย</label>
                     <input
                       type="date"
                       required
                       value={backdatedSale.date}
                       onChange={(e) => setBackdatedSale({ ...backdatedSale, date: e.target.value })}
-                      className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none cursor-pointer"
+                      className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none cursor-pointer"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest">หมายเหตุ (ไม่บังคับ)</label>
+                  <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">หมายเหตุ (ไม่บังคับ)</label>
                   <input
                     type="text"
                     value={backdatedSale.note}
                     onChange={(e) => setBackdatedSale({ ...backdatedSale, note: e.target.value })}
-                    className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none"
+                    className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none"
                     placeholder="รายละเอียดเพิ่มเติม..."
                   />
                 </div>
-                <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl active:scale-95 border-b-4 border-blue-800">
+                <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-semibold text-xs  tracking-[0.2em] shadow-[var(--elev-2)] active:scale-95 border-b-4 border-blue-800">
                   บันทึกยอดขายย้อนหลัง
                 </button>
               </form>
@@ -1078,12 +1093,12 @@ export default function AdminView() {
           </div>
 
           {/* Bean Modifiers Panel */}
-          <div className="bg-white rounded-[3rem] p-8 border border-gray-100 shadow-sm space-y-6">
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="font-black text-lg text-gray-800 flex items-center gap-3 uppercase tracking-tighter">
+              <h2 className="font-bold text-lg text-[var(--text-primary)] flex items-center gap-3  tracking-tighter">
                 <Coffee size={22} className="text-amber-500" /> จัดการ #แท็กเมล็ดกาแฟ
               </h2>
-              <button onClick={() => toggleAdminPanel('beanModifiers')} className="p-2 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-all">
+              <button onClick={() => toggleAdminPanel('beanModifiers')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
                 {adminPanels.beanModifiers ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
               </button>
             </div>
@@ -1113,97 +1128,101 @@ export default function AdminView() {
                 }} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ชื่อแท็ก (เช่น คั่วอ่อน)</label>
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ชื่อแท็ก (เช่น คั่วอ่อน)</label>
                       <input
                         type="text"
                         required
                         value={newBeanModifier.name}
                         onChange={(e) => setNewBeanModifier({ ...newBeanModifier, name: e.target.value })}
-                        className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none"
+                        className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none"
                         placeholder="คั่วอ่อน"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ราคาเมล็ดนี้ (บาท)</label>
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ราคาเมล็ดนี้ (บาท)</label>
                       <input
                         type="number"
                         required
                         value={newBeanModifier.price}
                         onChange={(e) => setNewBeanModifier({ ...newBeanModifier, price: e.target.value })}
-                        className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none"
+                        className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none"
                         placeholder="80"
                       />
-                      <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">ระบบจะคิด<strong>ราคาที่สูงกว่า</strong>ระหว่างราคาเมนูกับราคาเมล็ด — เมนูที่แพงกว่าจะไม่ถูกลดราคาเพราะเลือกเมล็ด</p>
+                      <p className="text-xs text-[var(--text-muted)] mt-2 font-bold leading-relaxed">ระบบจะคิด<strong>ราคาที่สูงกว่า</strong>ระหว่างราคาเมนูกับราคาเมล็ด — เมนูที่แพงกว่าจะไม่ถูกลดราคาเพราะเลือกเมล็ด</p>
                     </div>
                   </div>
 
                   {/* Group (เมล็ดกาแฟ / มัทฉะ / ...) */}
                   <div>
-                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest">กลุ่ม (เช่น เมล็ดกาแฟ, มัทฉะ)</label>
+                    <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">กลุ่ม (เช่น เมล็ดกาแฟ, มัทฉะ)</label>
                     <input
                       type="text"
                       value={newBeanModifier.group}
                       onChange={(e) => setNewBeanModifier({ ...newBeanModifier, group: e.target.value })}
-                      className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none"
+                      className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none"
                       placeholder="เมล็ดกาแฟ"
                       list="modifier-groups"
                     />
                     <datalist id="modifier-groups">
                       {[...new Set((beanModifiers || []).map(b => b.group || 'เมล็ดกาแฟ'))].map(g => <option key={g} value={g} />)}
                     </datalist>
-                    <p className="text-xs text-gray-400 mt-2 font-bold leading-relaxed">เมนูจะเลือกได้ว่าจะใช้ตัวเลือกจากกลุ่มไหน (เมนูกาแฟ→เมล็ดกาแฟ, เพียวมัทฉะ→มัทฉะ)</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-2 font-bold leading-relaxed">เมนูจะเลือกได้ว่าจะใช้ตัวเลือกจากกลุ่มไหน (เมนูกาแฟ→เมล็ดกาแฟ, เพียวมัทฉะ→มัทฉะ)</p>
                   </div>
 
                   {/* Default/base bean toggle */}
                   <button
                     type="button"
                     onClick={() => setNewBeanModifier({ ...newBeanModifier, isDefault: !newBeanModifier.isDefault })}
-                    className="w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all"
+                    className="w-full flex items-center justify-between px-4 py-4 rounded-2xl transition-all"
                     style={{
                       background: newBeanModifier.isDefault ? '#fffbeb' : '#f9fafb',
                       border: `2px solid ${newBeanModifier.isDefault ? '#fcd34d' : '#f3f4f6'}`
                     }}
                   >
-                    <span className="text-sm font-black text-gray-700 text-left">เมล็ดเริ่มต้น (เบส) — เลือกแล้วใช้ราคาเมนู ไม่บวกเพิ่ม</span>
-                    <div className={`w-12 h-6 rounded-full relative transition-colors shrink-0 ${newBeanModifier.isDefault ? 'bg-amber-500' : 'bg-gray-300'}`}>
-                      <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${newBeanModifier.isDefault ? 'right-0.5' : 'left-0.5'}`} />
+                    <span className="text-sm font-semibold text-[var(--text-primary)] text-left">เมล็ดเริ่มต้น (เบส) — เลือกแล้วใช้ราคาเมนู ไม่บวกเพิ่ม</span>
+                    <div className={`w-12 h-6 rounded-full relative transition-colors shrink-0 ${newBeanModifier.isDefault ? 'bg-amber-500' : 'bg-[var(--bg-tertiary)]'}`}>
+                      <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-[var(--bg-secondary)] shadow transition-all ${newBeanModifier.isDefault ? 'right-0.5' : 'left-0.5'}`} />
                     </div>
                   </button>
 
                   {/* Bean Stock Linking UI */}
                   <div className="bg-amber-50/50 p-6 rounded-[2rem] border border-amber-100 space-y-4">
                     <div className="flex items-center justify-between px-1">
-                      <div className="flex items-center gap-2 text-xs font-black text-amber-600 uppercase tracking-wider"><Link2 size={16} /> ผูกสต็อกของเมล็ดนี้</div>
-                      <button type="button" onClick={addBeanStockLink} className="text-amber-600 font-black text-xs bg-white border border-amber-100 px-4 py-2 rounded-xl shadow-sm hover:bg-amber-50 active:scale-95 leading-none flex items-center gap-1"><Plus size={14} /> เพิ่มพัสดุ</button>
+                      <div className="flex items-center gap-2 text-xs font-medium text-amber-600  tracking-wider"><Link2 size={16} /> ผูกสต็อกของเมล็ดนี้</div>
+                      <button type="button" onClick={addBeanStockLink} className="text-amber-600 font-semibold text-xs bg-[var(--bg-secondary)] border border-amber-100 px-4 py-2 rounded-xl shadow-sm hover:bg-amber-50 active:scale-95 leading-none flex items-center gap-1"><Plus size={14} /> เพิ่มพัสดุ</button>
                     </div>
                     <div className="space-y-3">
                       {(newBeanModifier.stockLinks || []).map((link, idx) => (
-                        <div key={idx} className="bg-white/80 p-5 rounded-[2rem] border border-amber-50 shadow-sm space-y-4 text-gray-800">
+                        <div key={idx} className="bg-[var(--bg-secondary)]/80 p-4 rounded-[2rem] border border-amber-50 shadow-sm space-y-4 text-[var(--text-primary)]">
                           <div className="flex flex-col gap-2">
-                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">เลือกเมล็ด/วัตถุดิบ</label>
+                            <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest ml-1">เลือกเมล็ด/วัตถุดิบ</label>
                             <select
                               value={link.stockId}
                               onChange={(e) => updateBeanStockLink(idx, 'stockId', e.target.value)}
-                              className="w-full bg-amber-50/20 border border-amber-100 rounded-xl px-4 h-14 text-sm font-black outline-none text-gray-800"
+                              className="w-full bg-amber-50/20 border border-amber-100 rounded-xl px-4 h-14 text-sm font-semibold outline-none text-[var(--text-primary)]"
                             >
                               <option value="">เลือกพัสดุ...</option>
-                              {stock.map(s => <option key={s.id} value={s.id}>{String(s.name)}</option>)}
+                              {stockLinkGroups.map(([category, items]) => (
+                                <optgroup key={category} label={category}>
+                                  {items.map(s => <option key={s.id} value={s.id}>{String(s.name)}</option>)}
+                                </optgroup>
+                              ))}
                             </select>
                           </div>
 
                           <div className="flex items-end gap-3">
                             <div className="flex-1 space-y-2">
-                              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">ปริมาณที่หัก</label>
+                              <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest ml-1">ปริมาณที่หัก</label>
                               <div className="relative flex items-center bg-amber-50/20 rounded-xl px-4 h-14 border border-amber-100">
                                 <input
                                   type="number"
                                   step="any"
                                   value={link.usage}
                                   onChange={(e) => updateBeanStockLink(idx, 'usage', e.target.value)}
-                                  className="w-full bg-transparent border-none text-left text-lg font-black outline-none text-gray-800"
+                                  className="w-full bg-transparent border-none text-left text-lg font-semibold outline-none text-[var(--text-primary)]"
                                   placeholder="0.00"
                                 />
-                                <div className="bg-white px-3 py-1.5 rounded-lg border border-amber-100 text-xs font-black text-amber-600 uppercase shadow-sm shrink-0">
+                                <div className="bg-[var(--bg-secondary)] px-3 py-2 rounded-lg border border-amber-100 text-xs font-medium text-amber-600  shadow-sm shrink-0">
                                   {stock.find(s => s.id === link.stockId)?.unit || 'หน่วย'}
                                 </div>
                               </div>
@@ -1219,7 +1238,7 @@ export default function AdminView() {
                         </div>
                       ))}
                       {(newBeanModifier.stockLinks || []).length === 0 && (
-                        <p className="text-center text-xs text-gray-400 font-bold italic py-2">ยังไม่ได้ผูกสต็อก</p>
+                        <p className="text-center text-xs text-[var(--text-muted)] font-bold italic py-2">ยังไม่ได้ผูกสต็อก</p>
                       )}
                     </div>
                   </div>
@@ -1232,12 +1251,12 @@ export default function AdminView() {
                           setNewBeanModifier({ name: '', price: '', stockLinks: [], isDefault: false, group: 'เมล็ดกาแฟ' });
                           setEditingBeanModifierId(null);
                         }}
-                        className="flex-1 bg-gray-100 text-gray-500 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] active:scale-95"
+                        className="flex-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] py-4 rounded-2xl font-semibold text-xs  tracking-[0.2em] active:scale-95"
                       >
                         ยกเลิก
                       </button>
                     )}
-                    <button type="submit" className={`flex-[2] ${editingBeanModifierId ? 'bg-blue-500 border-blue-700' : 'bg-amber-500 border-amber-700'} text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl active:scale-95 border-b-4`}>
+                    <button type="submit" className={`flex-[2] ${editingBeanModifierId ? 'bg-blue-500 border-blue-700' : 'bg-amber-500 border-amber-700'} text-white py-4 rounded-2xl font-semibold text-xs  tracking-[0.2em] shadow-[var(--elev-2)] active:scale-95 border-b-4`}>
                       {editingBeanModifierId ? 'บันทึกการแก้ไข' : 'เพิ่ม #แท็ก'}
                     </button>
                   </div>
@@ -1246,7 +1265,7 @@ export default function AdminView() {
                 {/* List of existing bean modifiers */}
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-2 scrollbar-hide">
                   {beanModifiers.length === 0 ? (
-                    <p className="text-center text-xs text-gray-400 font-black uppercase tracking-widest py-4">ยังไม่มีแท็ก</p>
+                    <p className="text-center text-xs text-[var(--text-muted)] font-semibold  tracking-widest py-4">ยังไม่มีแท็ก</p>
                   ) : (
                     beanModifiers.map(mod => {
                       const isHidden = mod.available === false;
@@ -1256,24 +1275,24 @@ export default function AdminView() {
                         return sum + (Number(s?.unitCost || 0) * Number(link.usage || 0));
                       }, 0) + Number(mod.additionalCost || 0);
                       return (
-                      <div key={mod.id} className={`flex items-center justify-between p-4 rounded-2xl border ${isHidden ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-amber-50 border-amber-100'}`}>
+                      <div key={mod.id} className={`flex items-center justify-between p-4 rounded-2xl border ${isHidden ? 'bg-[var(--bg-tertiary)] border-[var(--border-color)] opacity-60' : 'bg-amber-50 border-amber-100'}`}>
                         <div className="flex items-center gap-3">
-                          <span className={`font-black ${isHidden ? 'text-gray-400 line-through' : 'text-amber-700'}`}>#{mod.name}</span>
-                          <span className="text-sm font-bold text-gray-400">฿{Number(mod.price).toLocaleString()}</span>
+                          <span className={`font-semibold ${isHidden ? 'text-[var(--text-muted)] line-through' : 'text-amber-700'}`}>#{mod.name}</span>
+                          <span className="text-sm font-bold text-[var(--text-muted)] num">฿{Number(mod.price).toLocaleString()}</span>
                           {beanCost > 0 && (
-                            <span className="text-xs font-black text-rose-500 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-100">ทุน ฿{beanCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                            <span className="text-xs font-medium text-rose-500 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-100 num">ทุน ฿{beanCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                           )}
                           {mod.isDefault && (
-                            <span className="text-xs font-black text-amber-700 bg-amber-200 px-2 py-0.5 rounded-lg">เบส</span>
+                            <span className="text-xs font-medium text-amber-700 bg-amber-200 px-2 py-0.5 rounded-lg">เบส</span>
                           )}
-                          <span className="text-xs font-black text-gray-500 bg-gray-100 px-2 py-0.5 rounded-lg">{mod.group || 'เมล็ดกาแฟ'}</span>
+                          <span className="text-xs font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-2 py-0.5 rounded-lg">{mod.group || 'เมล็ดกาแฟ'}</span>
                           {isHidden && (
-                            <span className="text-xs font-black text-gray-500 bg-gray-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                            <span className="text-xs font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-2 py-0.5 rounded-lg flex items-center gap-1">
                               <EyeOff size={10} /> ซ่อน (เมล็ดหมด)
                             </span>
                           )}
                           {!isHidden && (mod.stockLinks || []).length > 0 && (
-                            <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 flex items-center gap-1">
+                            <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 flex items-center gap-1">
                               <Link2 size={10} /> {(mod.stockLinks || []).length} สต็อก
                             </span>
                           )}
@@ -1283,7 +1302,7 @@ export default function AdminView() {
                             onClick={() => runDbAction(async () => {
                               await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'beanModifiers', mod.id), { available: isHidden });
                             }, 'อัปเดตการแสดงผลไม่สำเร็จ')}
-                            className={`p-2 rounded-xl transition-all ${isHidden ? 'text-gray-400 hover:text-emerald-600 hover:bg-emerald-50' : 'text-amber-500 hover:text-amber-700 hover:bg-amber-100'}`}
+                            className={`p-2 rounded-xl transition-all ${isHidden ? 'text-[var(--text-muted)] hover:text-emerald-600 hover:bg-emerald-50' : 'text-amber-500 hover:text-amber-700 hover:bg-amber-100'}`}
                             title={isHidden ? 'แสดงเมล็ดนี้' : 'ซ่อนเมล็ดนี้ (เมล็ดหมด)'}
                           >
                             {isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -1324,12 +1343,12 @@ export default function AdminView() {
 
 
           {/* Quick Expenses Panel */}
-          <div id="panel-quickExpenses" className="bg-white rounded-[3rem] p-8 border border-gray-100 shadow-sm space-y-6">
+          <div id="panel-quickExpenses" className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="font-black text-lg text-gray-800 flex items-center gap-3 uppercase tracking-tighter">
+              <h2 className="font-bold text-lg text-[var(--text-primary)] flex items-center gap-3  tracking-tighter">
                 <Zap size={22} className="text-red-500" /> จัดการ #คีย์ลัดรายจ่าย
               </h2>
-              <button onClick={() => toggleAdminPanel('quickExpenses')} className="p-2 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-all">
+              <button onClick={() => toggleAdminPanel('quickExpenses')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
                 {adminPanels.quickExpenses ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
               </button>
             </div>
@@ -1360,28 +1379,28 @@ export default function AdminView() {
                 }} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ชื่อปุ่ม (เช่น #ค่าไฟ)</label>
-                      <input type="text" required value={newQuickExpense.label} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, label: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="#ค่าไฟ" />
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ชื่อปุ่ม (เช่น #ค่าไฟ)</label>
+                      <input type="text" required value={newQuickExpense.label} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, label: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none" placeholder="#ค่าไฟ" />
                     </div>
                     <div>
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ชื่อที่บันทึก (เช่น ค่าไฟประจำเดือน)</label>
-                      <input type="text" required value={newQuickExpense.title} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, title: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="ค่าไฟ" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ยอดเงิน (ถ้ามี)</label>
-                      <input type="number" value={newQuickExpense.amount} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, amount: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="ไม่ต้องใส่ถ้าเปลี่ยนทุกวัน" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">หน่วย (เช่น บิล, รอบ)</label>
-                      <input type="text" value={newQuickExpense.unit} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, unit: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none" placeholder="บิล" />
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ชื่อที่บันทึก (เช่น ค่าไฟประจำเดือน)</label>
+                      <input type="text" required value={newQuickExpense.title} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, title: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none" placeholder="ค่าไฟ" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">ไอคอน</label>
-                      <select value={newQuickExpense.icon} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, icon: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black outline-none">
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ยอดเงิน (ถ้ามี)</label>
+                      <input type="number" value={newQuickExpense.amount} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, amount: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" placeholder="ไม่ต้องใส่ถ้าเปลี่ยนทุกวัน" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">หน่วย (เช่น บิล, รอบ)</label>
+                      <input type="text" value={newQuickExpense.unit} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, unit: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none" placeholder="บิล" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ไอคอน</label>
+                      <select value={newQuickExpense.icon} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, icon: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none">
                         <option value="💰">💰 เงิน</option>
                         <option value="🧊">🧊 น้ำแข็ง</option>
                         <option value="💡">💡 ไฟ</option>
@@ -1393,8 +1412,8 @@ export default function AdminView() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest">หมวดหมู่</label>
-                      <select value={newQuickExpense.category} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, category: e.target.value })} className="w-full mt-2 bg-gray-50 border border-gray-100 rounded-2xl p-4 text-xs font-black outline-none">
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">หมวดหมู่</label>
+                      <select value={newQuickExpense.category} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, category: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-xs font-medium outline-none">
                         {EXPENSE_CATEGORIES.map(cat => (
                           <option key={cat} value={cat}>{cat}</option>
                         ))}
@@ -1403,9 +1422,9 @@ export default function AdminView() {
                   </div>
                   <div className="flex gap-2">
                     {editingQuickExpenseId && (
-                      <button type="button" onClick={() => { setNewQuickExpense({ label: '', title: '', amount: '', unit: '', category: DEFAULT_EXPENSE_CATEGORY, icon: '💰' }); setEditingQuickExpenseId(null); }} className="flex-1 bg-gray-100 text-gray-500 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em]">ยกเลิก</button>
+                      <button type="button" onClick={() => { setNewQuickExpense({ label: '', title: '', amount: '', unit: '', category: DEFAULT_EXPENSE_CATEGORY, icon: '💰' }); setEditingQuickExpenseId(null); }} className="flex-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] py-4 rounded-2xl font-semibold text-xs  tracking-[0.2em]">ยกเลิก</button>
                     )}
-                    <button type="submit" className={`flex-[2] ${editingQuickExpenseId ? 'bg-blue-500 border-blue-700' : 'bg-red-500 border-red-700'} text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl border-b-4`}>
+                    <button type="submit" className={`flex-[2] ${editingQuickExpenseId ? 'bg-blue-500 border-blue-700' : 'bg-red-500 border-red-700'} text-white py-4 rounded-2xl font-semibold text-xs  tracking-[0.2em] shadow-[var(--elev-2)] border-b-4`}>
                       {editingQuickExpenseId ? 'บันทึกการแก้ไข' : 'เพิ่มคีย์ลัด'}
                     </button>
                   </div>
@@ -1414,7 +1433,7 @@ export default function AdminView() {
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-2 scrollbar-hide">
                   {quickExpenses.length === 0 && (
                     <div className="text-center py-4 space-y-4">
-                      <p className="text-xs text-gray-400 font-black uppercase tracking-widest">ยังไม่มีคีย์ลัด</p>
+                      <p className="text-xs text-[var(--text-muted)] font-semibold  tracking-widest">ยังไม่มีคีย์ลัด</p>
                       <button onClick={async () => {
                         const defaults = [
                           { label: '#ค่าน้ำแข็ง 35.-', title: 'ค่าน้ำแข็ง', amount: 35, unit: 'บิล', category: 'ค่าน้ำแข็ง', icon: '🧊' },
@@ -1426,7 +1445,7 @@ export default function AdminView() {
                             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'quickExpenses'), { ...d, createdAt: serverTimestamp() });
                           }
                         }, 'ตั้งค่าเริ่มต้นไม่สำเร็จ');
-                      }} className="text-xs font-black text-red-500 border border-red-200 px-4 py-2 rounded-xl hover:bg-red-50">ใช้ค่าเริ่มต้นทางร้าน</button>
+                      }} className="text-xs font-medium text-red-500 border border-red-200 px-4 py-2 rounded-xl hover:bg-red-50">ใช้ค่าเริ่มต้นทางร้าน</button>
                     </div>
                   )}
                   {quickExpenses.map(item => (
@@ -1434,8 +1453,8 @@ export default function AdminView() {
                       <div className="flex items-center gap-3">
                         <span className="text-xl">{item.icon}</span>
                         <div>
-                          <p className="font-black text-red-700 text-sm">{item.label}</p>
-                          <p className="text-xs font-bold text-gray-400 uppercase tracking-tighter">{item.title} | {item.category}</p>
+                          <p className="font-semibold text-red-700 text-sm">{item.label}</p>
+                          <p className="text-xs font-bold text-[var(--text-muted)]  tracking-tighter">{item.title} | {item.category}</p>
                         </div>
                       </div>
                       <div className="flex gap-1">
@@ -1457,74 +1476,74 @@ export default function AdminView() {
           {/* Monthly & Expenses — shown in stats tab */}
           {activeAdminTab === 'stats' && <>
           {/* Monthly Stats Panel */}
-          <div className="bg-white rounded-[3rem] p-10 border border-gray-100 shadow-xl relative overflow-hidden border-t-[10px] border-t-emerald-500 shadow-emerald-500/5">
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-[var(--elev-2)] relative overflow-hidden border-t-[10px] border-t-emerald-500 shadow-emerald-500/5">
             <div className="flex justify-between items-start mb-8">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.3em] text-gray-400 mb-2">ภาพรวมผลกำไรรายเดือน</p>
-                <h3 className="text-xl font-black text-gray-800 tracking-tight">
+                <p className="text-xs font-medium  tracking-[0.3em] text-[var(--text-muted)] mb-2">ภาพรวมผลกำไรรายเดือน</p>
+                <h3 className="text-xl font-semibold text-[var(--text-primary)] tracking-tight">
                   {new Date(selectedHistoryDate).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
                 </h3>
               </div>
               <div className="flex items-center gap-2">
                 <div className="p-3 bg-emerald-50 text-emerald-500 rounded-2xl shadow-sm"><BarChart3 size={28} /></div>
-                <button onClick={() => toggleAdminPanel('monthly')} className="p-2 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-all">
+                <button onClick={() => toggleAdminPanel('monthly')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
                   {adminPanels.monthly ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                 </button>
               </div>
             </div>
             {adminPanels.monthly && (
-              <div className="space-y-6 text-gray-800">
-                <div className="flex justify-between items-end border-b border-gray-50 pb-5">
-                  <span className="text-gray-400 font-black text-[12px] uppercase tracking-wider">รายรับรวม</span>
-                  <span className="text-3xl font-black text-emerald-600 tracking-tighter">฿{monthlyStats.revenue.toLocaleString()}</span>
+              <div className="space-y-6 text-[var(--text-primary)]">
+                <div className="flex justify-between items-end border-b border-[var(--border-color)] pb-4">
+                  <span className="text-[var(--text-muted)] font-semibold text-[12px]  tracking-wider">รายรับรวม</span>
+                  <span className="text-3xl font-semibold text-emerald-600 tracking-tighter num">฿{monthlyStats.revenue.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between items-end border-b border-gray-50 pb-5">
-                  <span className="text-gray-400 font-black text-[12px] uppercase tracking-wider">รายจ่ายรวม</span>
-                  <span className="text-2xl font-black text-red-400 tracking-tighter">฿{monthlyStats.cost.toLocaleString()}</span>
+                <div className="flex justify-between items-end border-b border-[var(--border-color)] pb-4">
+                  <span className="text-[var(--text-muted)] font-semibold text-[12px]  tracking-wider">รายจ่ายรวม</span>
+                  <span className="text-2xl font-semibold text-red-400 tracking-tighter num">฿{monthlyStats.cost.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-end pt-6">
-                  <span className="text-gray-800 font-black text-[14px] uppercase tracking-[0.2em]">กำไรสุทธิ</span>
-                  <span className={`text-4xl font-black tracking-tighter drop-shadow-sm ${monthlyStats.profit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                  <span className="text-[var(--text-primary)] font-semibold text-[14px]  tracking-[0.2em]">กำไรสุทธิ</span>
+                  <span className={`text-4xl font-semibold tracking-tighter drop-shadow-sm ${monthlyStats.profit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                     ฿{monthlyStats.profit.toLocaleString()}
                   </span>
                 </div>
-                <div className="bg-emerald-500/5 p-5 rounded-3xl flex justify-between items-center mt-6 border border-emerald-500/10">
-                  <span className="text-xs font-black text-emerald-600 uppercase tracking-widest">จำนวนบิลที่ปิดสำเร็จ:</span>
-                  <span className="text-lg font-black text-emerald-700">{monthlyStats.count} <small className="text-xs opacity-60">บิล</small></span>
+                <div className="bg-emerald-500/5 p-4 rounded-3xl flex justify-between items-center mt-6 border border-emerald-500/10">
+                  <span className="text-xs font-medium text-emerald-600  tracking-widest">จำนวนบิลที่ปิดสำเร็จ:</span>
+                  <span className="text-lg font-semibold text-emerald-700 num">{monthlyStats.count} <small className="text-xs opacity-60">บิล</small></span>
                 </div>
               </div>
             )}
           </div>
 
           {/* Daily Expenses Panel */}
-          <div className="bg-white rounded-[3rem] p-10 border border-gray-100 shadow-sm space-y-8 text-gray-800">
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-8 text-[var(--text-primary)]">
             <div className="flex items-center justify-between">
-              <h2 className="font-black text-xl text-gray-800 flex items-center gap-3 uppercase tracking-tighter"><DollarSign size={24} className="text-red-500" /> บันทึกรายจ่ายรายวัน</h2>
-              <button onClick={() => toggleAdminPanel('expenses')} className="p-2 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-all">
+              <h2 className="font-bold text-xl text-[var(--text-primary)] flex items-center gap-3  tracking-tighter"><DollarSign size={24} className="text-red-500" /> บันทึกรายจ่ายรายวัน</h2>
+              <button onClick={() => toggleAdminPanel('expenses')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
                 {adminPanels.expenses ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
               </button>
             </div>
             {adminPanels.expenses && (
               <>
-                <form onSubmit={addExpense} className="space-y-5 text-gray-800">
-                  <input type="text" placeholder="บันทึกรายจ่ายวันนี้..." required value={newExpense.title} onChange={e => setNewExpense({ ...newExpense, title: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-[1.5rem] p-5 text-sm font-black outline-none shadow-inner focus:bg-white transition-all" />
-                  <div className="grid grid-cols-2 gap-5"><input type="number" placeholder="จำนวนเงิน..." required value={newExpense.amount} onChange={e => setNewExpense({ ...newExpense, amount: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-[1.5rem] p-5 text-sm font-black outline-none shadow-inner" /><select value={newExpense.category} onChange={e => setNewExpense({ ...newExpense, category: e.target.value })} className="w-full bg-gray-50 border border-gray-100 rounded-[1.5rem] p-5 text-xs font-black outline-none shadow-inner cursor-pointer text-gray-800">{EXPENSE_CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}</select></div>
-                  <button type="submit" className="w-full bg-gray-800 text-white py-6 rounded-[2rem] font-black text-xs uppercase shadow-xl active:scale-95 tracking-[0.2em] border-b-4 border-gray-950">บันทึกรายจ่าย</button>
+                <form onSubmit={addExpense} className="space-y-5 text-[var(--text-primary)]">
+                  <input type="text" placeholder="บันทึกรายจ่ายวันนี้..." required value={newExpense.title} onChange={e => setNewExpense({ ...newExpense, title: e.target.value })} className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[1.5rem] p-4 text-sm font-semibold outline-none shadow-inner focus:bg-[var(--bg-secondary)] transition-all" />
+                  <div className="grid grid-cols-2 gap-4 num"><input type="number" placeholder="จำนวนเงิน..." required value={newExpense.amount} onChange={e => setNewExpense({ ...newExpense, amount: e.target.value })} className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[1.5rem] p-4 text-sm font-semibold outline-none shadow-inner" /><select value={newExpense.category} onChange={e => setNewExpense({ ...newExpense, category: e.target.value })} className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[1.5rem] p-4 text-xs font-medium outline-none shadow-inner cursor-pointer text-[var(--text-primary)]">{EXPENSE_CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}</select></div>
+                  <button type="submit" className="w-full bg-[var(--text-primary)] text-white py-6 rounded-[2rem] font-semibold text-xs  shadow-[var(--elev-2)] active:scale-95 tracking-[0.2em] border-b-4 border-[var(--border-color)]">บันทึกรายจ่าย</button>
                 </form>
-                <div className="space-y-3 max-h-56 overflow-y-auto scrollbar-hide border-t border-gray-50 pt-6 text-gray-800">
+                <div className="space-y-3 max-h-56 overflow-y-auto scrollbar-hide border-t border-[var(--border-color)] pt-6 text-[var(--text-primary)]">
                   {expenses.filter(e => e.date === selectedHistoryDate).length === 0 && (
-                    <p className="text-center text-xs text-gray-400 font-black uppercase tracking-widest py-4">ไม่มีข้อมูลรายจ่ายวันนี้</p>
+                    <p className="text-center text-xs text-[var(--text-muted)] font-semibold  tracking-widest py-4">ไม่มีข้อมูลรายจ่ายวันนี้</p>
                   )}
                   {expenses.filter(e => e.date === selectedHistoryDate).map(e => (
-                    <div key={e.id} className="flex justify-between items-center p-4 bg-red-50/40 rounded-2xl border border-red-100/50 text-xs font-black">
-                      <span className="text-gray-700">{String(e.title)}</span>
+                    <div key={e.id} className="flex justify-between items-center p-4 bg-red-50/40 rounded-2xl border border-red-100/50 text-xs font-medium">
+                      <span className="text-[var(--text-primary)]">{String(e.title)}</span>
                       <div className="flex items-center gap-4">
-                        <span className="text-red-500 font-black text-sm">฿{Number(e.amount).toLocaleString()}</span>
+                        <span className="text-red-500 font-semibold text-sm num">฿{Number(e.amount).toLocaleString()}</span>
                         <button onClick={async () => {
                           await runDbAction(async () => {
                             await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', e.id));
                           }, 'ลบค่าใช้จ่ายไม่สำเร็จ');
-                        }} className="text-gray-300 hover:text-red-500 transition-colors active:scale-90"><Trash2 size={16} /></button>
+                        }} className="text-[var(--text-muted)] hover:text-red-500 transition-colors active:scale-90"><Trash2 size={16} /></button>
                       </div>
                     </div>
                   ))}
@@ -1538,13 +1557,13 @@ export default function AdminView() {
 
         {/* Right Panel - Store Management */}
         {(activeAdminTab === 'manage' || activeAdminTab === 'stats') && (
-        <div className={`${activeAdminTab === 'stats' ? 'hidden lg:flex' : 'flex'} flex-1 bg-white rounded-2xl md:rounded-[3rem] lg:rounded-[3.5rem] shadow-xl border border-gray-100 flex-col p-4 md:p-6 lg:p-10 space-y-4 md:space-y-6 lg:space-y-8 text-gray-800 shadow-emerald-500/5`}>
-          <h2 className="font-black text-lg md:text-xl lg:text-2xl text-gray-800 uppercase tracking-tighter font-black px-2 leading-none">Store Management</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 gap-3 md:gap-4 lg:gap-6 flex-1 overflow-y-auto pr-2 scrollbar-hide text-gray-800">
-            <button onClick={() => setView('merchant')} className="p-4 md:p-6 lg:p-10 bg-orange-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-orange-100 text-orange-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all shadow-md active:scale-95"><ChefHat size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">จอภาพครัว</span></button>
-            <button onClick={() => setView('bills')} className="p-4 md:p-6 lg:p-10 bg-blue-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-blue-100 text-blue-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all shadow-md active:scale-95"><FileText size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">ประวัติบิล</span></button>
-            <button onClick={() => setView('stock')} className="p-4 md:p-6 lg:p-10 bg-emerald-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-emerald-100 text-emerald-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all shadow-md active:scale-95"><Package size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">คลังสต็อก</span></button>
-            <button onClick={() => setShowExportConfirm(true)} className="p-4 md:p-6 lg:p-10 bg-green-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-green-100 text-green-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all shadow-md active:scale-95"><Download size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">Excel Report</span></button>
+        <div className={`${activeAdminTab === 'stats' ? 'hidden lg:flex' : 'flex'} flex-1 bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[3.5rem] shadow-[var(--elev-2)] border border-[var(--border-color)] flex-col p-4 md:p-6 lg:p-6 space-y-4 md:space-y-6 lg:space-y-8 text-[var(--text-primary)] shadow-emerald-500/5`}>
+          <h2 className="font-bold text-lg md:text-xl lg:text-2xl text-[var(--text-primary)]  tracking-tighter font-semibold px-2 leading-none">Store Management</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 gap-3 md:gap-4 lg:gap-6 flex-1 overflow-y-auto pr-2 scrollbar-hide text-[var(--text-primary)]">
+            <button onClick={() => setView('merchant')} className="p-4 md:p-6 lg:p-6 bg-orange-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-orange-100 text-orange-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all shadow-md active:scale-95"><ChefHat size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">จอภาพครัว</span></button>
+            <button onClick={() => setView('bills')} className="p-4 md:p-6 lg:p-6 bg-blue-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-blue-100 text-blue-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all shadow-md active:scale-95"><FileText size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">ประวัติบิล</span></button>
+            <button onClick={() => setView('stock')} className="p-4 md:p-6 lg:p-6 bg-emerald-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-emerald-100 text-emerald-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all shadow-md active:scale-95"><Package size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">คลังสต็อก</span></button>
+            <button onClick={() => setShowExportConfirm(true)} className="p-4 md:p-6 lg:p-6 bg-green-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-green-100 text-green-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all shadow-md active:scale-95"><Download size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">Excel Report</span></button>
             <button onClick={() => {
               const backupData = {
                 timestamp: new Date().toISOString(),
@@ -1559,10 +1578,10 @@ export default function AdminView() {
               document.body.appendChild(link);
               link.click();
               document.body.removeChild(link);
-            }} className="p-4 md:p-6 lg:p-10 bg-indigo-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-indigo-100 text-indigo-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all shadow-md active:scale-95"><Save size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">Backup JSON</span></button>
-            <button onClick={() => setShowResetConfirm(true)} className="p-4 md:p-6 lg:p-10 bg-red-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-red-100 text-red-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all active:scale-95 leading-none"><RefreshCcw size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">ล้างคิวใหม่</span></button>
-            <button onClick={() => setShowSeedConfirm(true)} className="p-4 md:p-6 lg:p-10 bg-gray-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-gray-100 text-gray-400 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all active:scale-95 hover:bg-white hover:text-emerald-500 hover:border-emerald-200"><Banknote size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">กู้คืนข้อมูลเริ่มต้น</span></button>
-            <button onClick={handleBackfillSoldCount} disabled={isBackfilling} className="p-4 md:p-6 lg:p-10 bg-amber-50 rounded-2xl md:rounded-[2rem] lg:rounded-[3rem] border-2 border-amber-100 text-amber-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-2xl transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none col-span-2 md:col-span-1"><TrendingUp size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-black text-xs md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] leading-none">{isBackfilling ? 'กำลังคำนวณ...' : 'คำนวณยอดขายย้อนหลัง'}</span></button>
+            }} className="p-4 md:p-6 lg:p-6 bg-indigo-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-indigo-100 text-indigo-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all shadow-md active:scale-95"><Save size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">Backup JSON</span></button>
+            <button onClick={() => setShowResetConfirm(true)} className="p-4 md:p-6 lg:p-6 bg-red-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-red-100 text-red-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all active:scale-95 leading-none"><RefreshCcw size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">ล้างคิวใหม่</span></button>
+            <button onClick={() => setShowSeedConfirm(true)} className="p-4 md:p-6 lg:p-6 bg-[var(--bg-tertiary)] rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-[var(--border-color)] text-[var(--text-muted)] flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all active:scale-95 hover:bg-[var(--bg-secondary)] hover:text-emerald-500 hover:border-emerald-200"><Banknote size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">กู้คืนข้อมูลเริ่มต้น</span></button>
+            <button onClick={handleBackfillSoldCount} disabled={isBackfilling} className="p-4 md:p-6 lg:p-6 bg-amber-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-amber-100 text-amber-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none col-span-2 md:col-span-1"><TrendingUp size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">{isBackfilling ? 'กำลังคำนวณ...' : 'คำนวณยอดขายย้อนหลัง'}</span></button>
           </div>
         </div>
         )}
@@ -1570,14 +1589,14 @@ export default function AdminView() {
 
       {/* Reset Session Confirm Modal */}
       {showResetConfirm && (
-        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 backdrop-blur-3xl p-4 md:p-6 animate-in fade-in text-center text-gray-900 leading-none">
-          <div className="bg-white rounded-2xl md:rounded-[3rem] lg:rounded-[4rem] p-6 md:p-10 lg:p-16 max-w-xl w-full shadow-2xl border border-white/10 leading-none">
-            <div className="w-16 h-16 md:w-20 md:h-20 lg:w-28 lg:h-28 bg-red-50 rounded-full mx-auto flex items-center justify-center text-red-500 mb-6 md:mb-8 lg:mb-10 shadow-inner animate-pulse leading-none"><RefreshCcw size={32} className="md:w-12 md:h-12 lg:w-16 lg:h-16" strokeWidth={2.5} /></div>
-            <h3 className="font-black text-2xl md:text-3xl lg:text-4xl mb-3 md:mb-4 lg:mb-5 tracking-tighter uppercase leading-none">เริ่มรอบวันใหม่?</h3>
-            <p className="text-gray-400 font-bold mb-8 md:mb-12 lg:mb-16 leading-relaxed px-2 md:px-4 lg:px-6 text-sm md:text-base leading-none">ออเดอร์ค้างจะถูกลบและคิวจะกลับไปที่ #1 <br /><span className="text-emerald-500 font-black uppercase text-xs md:text-xs mt-2 md:mt-3 block leading-none">(ข้อมูลประวัติขายและสต็อกจะไม่หายไป)</span></p>
+        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 backdrop-blur-3xl p-4 md:p-6 animate-in fade-in text-center text-[var(--text-primary)] leading-none">
+          <div className="bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[4rem] p-6 md:p-6 lg:p-8 max-w-xl w-full shadow-[var(--elev-3)] border border-white/10 leading-none">
+            <div className="w-16 h-16 md:w-20 md:h-20 lg:w-28 lg:h-28 bg-red-50 rounded-full mx-auto flex items-center justify-center text-red-500 mb-6 md:mb-8 lg:mb-12 shadow-inner animate-pulse leading-none"><RefreshCcw size={32} className="md:w-12 md:h-12 lg:w-16 lg:h-16" strokeWidth={2.5} /></div>
+            <h3 className="font-semibold text-2xl md:text-3xl lg:text-4xl mb-3 md:mb-4 lg:mb-4 tracking-tighter  leading-none">เริ่มรอบวันใหม่?</h3>
+            <p className="text-[var(--text-muted)] font-bold mb-8 md:mb-12 lg:mb-16 leading-relaxed px-2 md:px-4 lg:px-6 text-sm md:text-base leading-none">ออเดอร์ค้างจะถูกลบและคิวจะกลับไปที่ #1 <br /><span className="text-emerald-500 font-semibold  text-xs md:text-xs mt-2 md:mt-3 block leading-none">(ข้อมูลประวัติขายและสต็อกจะไม่หายไป)</span></p>
             <div className="grid grid-cols-2 gap-3 md:gap-4 lg:gap-6 leading-none">
-              <button onClick={() => setShowResetConfirm(false)} className="py-4 md:py-6 lg:py-8 bg-gray-100 rounded-xl md:rounded-2xl lg:rounded-[2rem] font-black uppercase text-xs md:text-sm tracking-widest text-gray-400 active:scale-95 transition-all leading-none">ย้อนกลับ</button>
-              <button onClick={executeResetSession} className="py-4 md:py-6 lg:py-8 bg-red-600 text-white rounded-xl md:rounded-2xl lg:rounded-[2rem] font-black uppercase text-xs md:text-sm tracking-widest shadow-2xl transition-all border-b-4 md:border-b-8 border-red-800 active:scale-95 transition-all leading-none">ตกลง เริ่มใหม่</button>
+              <button onClick={() => setShowResetConfirm(false)} className="py-4 md:py-6 lg:py-8 bg-[var(--bg-tertiary)] rounded-xl md:rounded-2xl lg:rounded-[2rem] font-semibold  text-xs md:text-sm tracking-widest text-[var(--text-muted)] active:scale-95 transition-all leading-none">ย้อนกลับ</button>
+              <button onClick={executeResetSession} className="py-4 md:py-6 lg:py-8 bg-red-600 text-white rounded-xl md:rounded-2xl lg:rounded-[2rem] font-semibold  text-xs md:text-sm tracking-widest shadow-[var(--elev-3)] transition-all border-b-4 md:border-b-8 border-red-800 active:scale-95 transition-all leading-none">ตกลง เริ่มใหม่</button>
             </div>
           </div>
         </div>
