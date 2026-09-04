@@ -628,13 +628,13 @@ export default function PosView() {
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-bold leading-tight line-clamp-1 text-[var(--text-primary)]">{String(item.name)}</div>
               {item.beanModifier && (
-                <span className="inline-block text-[10px] font-black text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded mt-0.5">{item.beanModifier}</span>
+                <span className="inline-block text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-[var(--radius-sm)] mt-0.5">{item.beanModifier}</span>
               )}
               {item.sweetness != null && (
-                <span className="inline-block ml-1 text-[10px] font-black text-orange-700 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/30 px-1.5 py-0.5 rounded mt-0.5">หวาน {item.sweetness}%</span>
+                <span className="inline-block ml-1 text-[10px] font-medium text-orange-700 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/30 px-1.5 py-0.5 rounded-[var(--radius-sm)] mt-0.5">หวาน <span className="num">{item.sweetness}%</span></span>
               )}
               {item.milkLabel && (
-                <span className="inline-block ml-1 text-[10px] font-black text-sky-700 dark:text-sky-400 bg-sky-100 dark:bg-sky-900/30 px-1.5 py-0.5 rounded mt-0.5">{item.milkLabel}</span>
+                <span className="inline-block ml-1 text-[10px] font-medium text-sky-700 dark:text-sky-400 bg-sky-100 dark:bg-sky-900/30 px-1.5 py-0.5 rounded-[var(--radius-sm)] mt-0.5">{item.milkLabel}</span>
               )}
               <div className="text-xs mt-0.5 text-[var(--text-muted)] font-medium">฿{Number(item.price).toLocaleString()} / แก้ว</div>
               <div className="flex items-center gap-2 mt-2">
@@ -642,14 +642,14 @@ export default function PosView() {
                   className="w-7 h-7 rounded-full flex items-center justify-center bg-[var(--bg-tertiary)] text-[var(--text-primary)] active:scale-95 transition-transform">
                   <Minus size={12} strokeWidth={2.5} />
                 </button>
-                <span className="text-sm font-black w-5 text-center text-[var(--text-primary)]">{Number(item.quantity)}</span>
+                <span className="num text-sm font-semibold w-5 text-center text-[var(--text-primary)]">{Number(item.quantity)}</span>
                 <button onClick={() => updateQuantity(cartItemId, 1)} aria-label="เพิ่มจำนวน"
                   className="w-7 h-7 rounded-full flex items-center justify-center bg-[var(--accent-emerald)] text-white active:scale-95 transition-transform">
                   <Plus size={12} strokeWidth={2.5} />
                 </button>
                 {activePromotion && (
                   <button onClick={() => toggleItemPromo(cartItemId)}
-                    className={`ml-auto h-7 px-2 rounded-full text-[10px] font-black flex items-center gap-1 transition-all ${item.promoApplied ? 'bg-violet-600 text-white' : 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300'}`}
+                    className={`ml-auto h-7 px-2 rounded-[var(--radius-sm)] text-[10px] font-medium flex items-center gap-2 transition-all ${item.promoApplied ? 'bg-violet-600 text-white' : 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300'}`}
                     title="ใช้โปรโมชั่นกับเมนูนี้">
                     <Tag size={10} strokeWidth={2.5} />
                     {item.promoApplied ? `${activePromotion.discountPercent}%` : 'PROMO'}
@@ -669,7 +669,7 @@ export default function PosView() {
                 className="p-1 text-[var(--text-muted)] hover:text-red-500 transition-colors">
                 <X size={14} strokeWidth={2.5} />
               </button>
-              <div className="text-sm font-black text-[var(--text-primary)]">฿{(Number(item.price) * Number(item.quantity)).toLocaleString()}</div>
+              <div className="num text-sm font-bold text-[var(--text-primary)]">฿{(Number(item.price) * Number(item.quantity)).toLocaleString()}</div>
             </div>
           </div>
         );
@@ -680,13 +680,13 @@ export default function PosView() {
         <div className="py-3">
           {recommendations.length === 0 ? (
             <button onClick={handleGetRecommendations} disabled={isRecommending}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-100 to-fuchsia-100 dark:from-violet-900/30 dark:to-fuchsia-900/30 text-violet-600 dark:text-violet-300 font-black text-[11px] uppercase tracking-wider flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 transition-all border border-violet-200 dark:border-violet-800">
+              className="w-full py-2.5 rounded-[var(--radius-sm)] bg-gradient-to-r from-violet-100 to-fuchsia-100 dark:from-violet-900/30 dark:to-fuchsia-900/30 text-violet-600 dark:text-violet-300 font-medium text-[11px] flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 transition-all border border-violet-200 dark:border-violet-800">
               {isRecommending ? (<><div className="w-3.5 h-3.5 border-2 border-violet-600 border-t-transparent rounded-full animate-spin" /> กำลังวิเคราะห์...</>) : (<><Zap size={14} fill="currentColor" /> เชียร์ขายอะไรดี? (AI Upsell)</>)}
             </button>
           ) : (
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-violet-500 uppercase tracking-widest flex items-center gap-1"><Zap size={10} fill="currentColor" /> แนะนำทานคู่กัน</span>
+                <span className="text-[10px] font-medium text-violet-500 flex items-center gap-2"><Zap size={10} fill="currentColor" /> แนะนำทานคู่กัน</span>
                 <button onClick={() => setRecommendations([])} aria-label="ปิด" className="text-[var(--text-muted)]"><X size={12} /></button>
               </div>
               {recommendations.map(rec => (
@@ -696,8 +696,8 @@ export default function PosView() {
                     {rec.image && <img src={rec.image} alt={rec.name} className="w-full h-full object-cover" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-black text-[var(--text-primary)] truncate">{rec.name}</p>
-                    <p className="text-[11px] text-[var(--accent-emerald)] font-bold">฿{Number(rec.price).toLocaleString()}</p>
+                    <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{rec.name}</p>
+                    <p className="num text-[11px] text-[var(--accent-emerald)] font-bold">฿{Number(rec.price).toLocaleString()}</p>
                   </div>
                   <PlusCircle size={18} className="text-violet-400 group-hover:text-violet-600 transition-colors" />
                 </div>
@@ -752,7 +752,7 @@ export default function PosView() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles size={14} className="text-[var(--accent-emerald)]" />
-            <span className="text-[11px] font-black uppercase tracking-wider text-[var(--text-secondary)]">สะสมแต้ม</span>
+            <span className="text-[11px] font-medium text-[var(--text-secondary)]">สะสมแต้ม</span>
           </div>
           <div className="flex items-center gap-1">
             {(memberPhone || memberNickname || currentMember) && (
@@ -768,13 +768,13 @@ export default function PosView() {
           </div>
         </div>
         <div className="flex gap-2">
-          <div className="flex-1 min-w-0 flex items-center gap-1.5 px-3 h-9 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
+          <div className="flex-1 min-w-0 flex items-center gap-2 px-3 h-9 rounded-[var(--radius-sm)] bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
             <Phone size={12} className="text-[var(--text-muted)] shrink-0" />
             <input type="tel" maxLength={10} placeholder="เบอร์โทร" value={memberPhone} onChange={(e) => setMemberPhone(e.target.value)}
               className="bg-transparent outline-none text-xs flex-1 min-w-0 w-full font-medium text-[var(--text-primary)]" />
           </div>
           <div className="relative flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 px-3 h-9 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
+            <div className="flex items-center gap-2 px-3 h-9 rounded-[var(--radius-sm)] bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
               <User size={12} className="text-[var(--text-muted)] shrink-0" />
               <input type="text" placeholder="ชื่อเล่น" value={memberNickname}
                 onFocus={() => setIsMemberNameFocused(true)}
@@ -791,7 +791,7 @@ export default function PosView() {
                 className="bg-transparent outline-none text-xs flex-1 min-w-0 w-full font-medium text-[var(--text-primary)]" />
             </div>
             {isMemberNameFocused && memberNameSuggestions.length > 0 && (
-              <div className="absolute z-30 top-full left-0 right-0 mt-1 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] shadow-xl">
+              <div className="absolute z-30 top-full left-0 right-0 mt-1 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border-color)] bg-[var(--bg-primary)] shadow-[var(--elev-2)]">
                 {memberNameSuggestions.map(member => (
                   <button key={member.id || member.phone} type="button"
                     onMouseDown={(event) => event.preventDefault()}
@@ -806,7 +806,7 @@ export default function PosView() {
           </div>
         </div>
         {currentMember?.isGuest && (
-          <div className="flex items-start gap-1.5 pt-1 text-[10px] font-bold text-[var(--text-muted)] leading-snug">
+          <div className="flex items-start gap-2 pt-1 text-[10px] font-medium text-[var(--text-muted)] leading-snug">
             <UserX size={12} className="shrink-0 mt-0.5" />
             <span>ไม่มีเบอร์ = ไม่บันทึกเป็นสมาชิก · ใส่เบอร์เพื่อสะสมแต้ม</span>
           </div>
@@ -814,23 +814,23 @@ export default function PosView() {
         {currentMember && !currentMember.isGuest && (
           <div className="flex items-center justify-between pt-1">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-[11px] font-black text-[var(--text-primary)] truncate">
+              <span className="text-[11px] font-medium text-[var(--text-primary)] truncate">
                 {currentMember.isNew ? (memberNickname || 'ลูกค้าใหม่') : String(currentMember.name)}
               </span>
               {currentMember.isNew && (
-                <span className="bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase shrink-0">New</span>
+                <span className="bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] text-[9px] font-medium px-1.5 py-0.5 rounded-[var(--radius-sm)] uppercase tracking-wider shrink-0">New</span>
               )}
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[10px] font-medium text-[var(--text-muted)]">
                 {currentMember.isNew ? 'จะได้' : 'แต้ม'}
               </span>
-              <span className="text-xs font-black text-[var(--accent-emerald)]">
+              <span className="num text-xs font-medium text-[var(--accent-emerald)]">
                 {currentMember.isNew ? `+${Math.floor(netTotal / 10)}` : Number(currentMember.points || 0)}
               </span>
               {!currentMember.isNew && Number(currentMember.points || 0) >= REDEEM_POINTS_THRESHOLD && (
                 <button onClick={() => setUsePoints(!usePoints)}
-                  className={`ml-1 px-2 h-6 rounded-full text-[9px] font-black uppercase flex items-center gap-1 transition-all ${usePoints ? 'bg-[var(--accent-orange)] text-white' : 'bg-[var(--accent-orange-light)] text-[var(--accent-orange)]'}`}>
+                  className={`ml-1 px-2 h-6 rounded-[var(--radius-sm)] text-[9px] font-medium flex items-center gap-2 transition-all ${usePoints ? 'bg-[var(--accent-orange)] text-white' : 'bg-[var(--accent-orange-light)] text-[var(--accent-orange)]'}`}>
                   <Gift size={10} />{usePoints ? 'ยกเลิก' : `ใช้ ${REDEEM_POINTS_THRESHOLD}`}
                 </button>
               )}
@@ -896,23 +896,23 @@ export default function PosView() {
         )}
         <div className="flex items-end justify-between pt-1">
           <span className="text-sm font-bold text-[var(--text-primary)]">ยอดสุทธิ</span>
-          <span className="text-3xl font-black text-[var(--accent-emerald)] leading-none">฿{netTotal.toLocaleString()}</span>
+          <span className="num text-3xl font-bold text-[var(--accent-emerald)] leading-none">฿{netTotal.toLocaleString()}</span>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
         <button onClick={() => setIsPaid(false)}
-          className={`h-11 rounded-2xl text-[13px] font-black flex items-center justify-center gap-1.5 transition-all ${!isPaid ? 'bg-[var(--accent-orange)] text-white shadow-lg' : 'bg-[var(--accent-orange-light)] text-[var(--accent-orange)]'}`}>
+          className={`h-11 rounded-[var(--radius-sm)] text-[13px] font-semibold flex items-center justify-center gap-2 transition-all ${!isPaid ? 'bg-[var(--accent-orange)] text-white shadow-[var(--elev-2)]' : 'bg-[var(--accent-orange-light)] text-[var(--accent-orange)]'}`}>
           <Wallet size={14} strokeWidth={2.5} /> ยังไม่จ่าย
         </button>
         <button onClick={() => setIsPaid(true)}
-          className={`h-11 rounded-2xl text-[13px] font-black flex items-center justify-center gap-1.5 transition-all ${isPaid ? 'bg-[var(--accent-emerald)] text-white shadow-lg' : 'bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)]'}`}>
+          className={`h-11 rounded-[var(--radius-sm)] text-[13px] font-semibold flex items-center justify-center gap-2 transition-all ${isPaid ? 'bg-[var(--accent-emerald)] text-white shadow-[var(--elev-2)]' : 'bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)]'}`}>
           <CreditCard size={14} strokeWidth={2.5} /> จ่ายแล้ว
         </button>
       </div>
 
       <button onClick={onConfirm} disabled={cart.length === 0}
-        className="w-full h-14 rounded-2xl text-[15px] font-black flex items-center justify-center gap-2 bg-[var(--accent-emerald)] text-white active:scale-[0.98] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full h-14 rounded-[var(--radius-sm)] text-[15px] font-semibold flex items-center justify-center gap-2 bg-[var(--accent-emerald)] text-white active:scale-[0.98] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ boxShadow: cart.length === 0 ? 'none' : '0 8px 24px -8px var(--accent-emerald)' }}>
         <CheckCircle size={18} strokeWidth={2.5} />
         {editingOrderId ? 'บันทึกการแก้ไข' : 'ยืนยันการสั่งซื้อ'}
@@ -930,26 +930,26 @@ export default function PosView() {
           className="hidden md:flex w-[76px] lg:w-[200px] flex-shrink-0 flex-col p-4 gap-3 border-r z-10"
           style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
           <div className="flex items-center gap-2 px-1 pt-1 pb-1">
-            <div className="w-9 h-9 rounded-2xl flex items-center justify-center text-white font-black text-base shrink-0 shadow-lg"
+            <div className="w-9 h-9 rounded-[var(--radius)] flex items-center justify-center text-white font-semibold text-base shrink-0 shadow-[var(--elev-1)]"
               style={{ background: 'var(--accent-emerald)', boxShadow: '0 4px 12px -4px var(--accent-emerald)' }}>S</div>
             <div className="hidden lg:block min-w-0">
-              <div className="text-[14px] font-black leading-tight text-[var(--text-primary)]">Siwara</div>
+              <div className="text-[14px] font-bold leading-tight text-[var(--text-primary)]">Siwara</div>
               <div className="text-[10px] text-[var(--text-muted)] leading-tight">POS System</div>
             </div>
           </div>
-          <div className="hidden lg:block text-[10px] font-black uppercase tracking-widest px-2 mt-2 text-[var(--text-muted)]">หมวดหมู่</div>
-          <div className="flex flex-col gap-1.5 flex-1 overflow-y-auto scrollbar-hide">
+          <div className="hidden lg:block text-[10px] font-medium px-2 mt-2 text-[var(--text-muted)]">หมวดหมู่</div>
+          <div className="flex flex-col gap-2 flex-1 overflow-y-auto scrollbar-hide">
             {categories.map(cat => {
               const isActive = activeCategory === cat;
               return (
                 <button key={cat} onClick={() => { setActiveCategory(cat); setSearchTerm(''); }}
-                  className={`w-full flex items-center lg:gap-3 gap-1.5 rounded-2xl transition-all active:scale-95 lg:flex-row flex-col lg:py-3 lg:px-4 py-3 px-2`}
+                  className={`w-full flex items-center lg:gap-3 gap-2 rounded-[var(--radius)] min-h-[72px] transition-all active:scale-95 lg:flex-row flex-col lg:py-3 lg:px-4 py-3 px-2`}
                   style={{
                     background: isActive ? 'var(--accent-emerald)' : 'transparent',
                     color: isActive ? '#fff' : 'var(--text-secondary)'
                   }}>
                   {cat === 'แนะนำ' ? <Star size={18} strokeWidth={isActive ? 2.5 : 1.8} fill={isActive ? 'currentColor' : 'none'} /> : <Coffee size={18} strokeWidth={isActive ? 2.5 : 1.8} />}
-                  <span className="lg:text-sm text-[10px] font-black tracking-tight leading-tight text-center lg:text-left">{String(cat)}</span>
+                  <span className="lg:text-sm text-[10px] font-semibold tracking-tight leading-tight text-center lg:text-left">{String(cat)}</span>
                 </button>
               );
             })}
@@ -963,7 +963,7 @@ export default function PosView() {
             const isActive = activeCategory === cat;
             return (
               <button key={cat} onClick={() => { setActiveCategory(cat); setSearchTerm(''); }}
-                className="flex items-center gap-1.5 px-4 h-10 rounded-full flex-shrink-0 text-[12px] font-black active:scale-95 transition-all"
+                className="flex items-center gap-2 px-4 h-10 rounded-[var(--radius-sm)] flex-shrink-0 text-[12px] font-semibold active:scale-95 transition-all"
                 style={{
                   background: isActive ? 'var(--accent-emerald)' : 'var(--bg-secondary)',
                   color: isActive ? '#fff' : 'var(--text-secondary)',
@@ -982,24 +982,24 @@ export default function PosView() {
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={18} />
               <input type="text" placeholder="ค้นหาเมนู..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full h-14 pl-12 pr-4 rounded-2xl text-[15px] outline-none font-medium transition-all focus:ring-2 focus:ring-[var(--accent-emerald)]/20"
+                className="w-full h-14 pl-12 pr-4 rounded-[var(--radius-sm)] text-[15px] outline-none font-medium transition-all focus:ring-2 focus:ring-[var(--accent-emerald)]/20"
                 style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }} />
             </div>
 
-            <div className="hidden lg:flex items-center gap-1.5 px-2 h-14 rounded-2xl shrink-0"
+            <div className="hidden lg:flex items-center gap-2 px-2 h-14 rounded-[var(--radius-sm)] shrink-0"
               style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-              <span className="text-[11px] font-black uppercase tracking-wide px-2 text-[var(--text-muted)]">Show</span>
+              <span className="text-[11px] font-medium uppercase tracking-wider px-2 text-[var(--text-muted)]">Show</span>
               {MENU_PAGE_OPTIONS.map(n => {
                 const isActive = itemsPerPage === n;
                 return (
                   <button key={n} onClick={() => setItemsPerPage(n)}
-                    className="w-9 h-9 rounded-xl text-xs font-black transition-all active:scale-95"
+                    className="w-9 h-9 rounded-[var(--radius-sm)] text-xs font-medium transition-all active:scale-95"
                     style={{ background: isActive ? 'var(--accent-emerald)' : 'transparent', color: isActive ? '#fff' : 'var(--text-secondary)' }}>{n}</button>
                 );
               })}
             </div>
 
-            <div className="flex items-center gap-2 px-4 h-14 rounded-2xl font-black shrink-0"
+            <div className="flex items-center gap-2 px-4 h-14 rounded-[var(--radius-sm)] font-semibold shrink-0"
               style={{ background: 'var(--accent-emerald-light)', color: 'var(--accent-emerald)', border: '1px solid color-mix(in srgb, var(--accent-emerald) 20%, transparent)' }}>
               <Receipt size={16} strokeWidth={2.5} />
               <span className="text-sm hidden sm:inline">คิว</span>
@@ -1010,7 +1010,7 @@ export default function PosView() {
           {/* Section heading */}
           <div className="px-3 md:px-5 pb-2 flex items-center justify-between shrink-0">
             <div>
-              <div className="text-[18px] md:text-[22px] font-black tracking-tight text-[var(--text-primary)] leading-tight">
+              <div className="text-[18px] md:text-[22px] font-bold tracking-tight text-[var(--text-primary)] leading-tight">
                 {activeCategory}
               </div>
               <div className="text-[11px] md:text-xs text-[var(--text-muted)] font-medium">
@@ -1025,7 +1025,7 @@ export default function PosView() {
                 <button onClick={() => setActivePromotion(null)} className="text-[var(--text-muted)] hover:text-red-500"><X size={12} /></button>
               </div>
             ) : (
-              <div className="hidden sm:flex items-center gap-1.5 px-3 h-9 rounded-xl text-[11px] font-bold"
+              <div className="hidden sm:flex items-center gap-2 px-3 h-9 rounded-[var(--radius-sm)] text-[11px] font-bold"
                 style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
                 <Flame size={12} /> Rush Hour
               </div>
@@ -1045,18 +1045,18 @@ export default function PosView() {
                   const itemSale = getItemSalePrice(item, saleSettings);
                   return (
                   <div key={item.id} onClick={() => addToCart(item)}
-                    className="group relative rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.97] animate-in zoom-in-95"
+                    className="group relative rounded-[var(--radius)] min-h-[72px] overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.97] animate-in zoom-in-95"
                     style={{ background: 'var(--bg-secondary)', boxShadow: '0 1px 0 var(--border-color), 0 8px 24px -12px var(--shadow-color)' }}>
                     {(item.isFeatured || item.recommended) && (
-                      <div className="absolute top-3 left-3 z-10 flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black"
+                      <div className="absolute top-3 left-3 z-10 flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] text-[10px] font-medium"
                         style={{ background: 'var(--accent-orange)', color: '#fff', letterSpacing: '0.02em' }}>
                         <Star size={10} strokeWidth={2.5} fill="currentColor" />
                         <span>แนะนำ</span>
                       </div>
                     )}
                     {itemSale.onSale && (
-                      <div className="absolute top-3 right-3 z-10 flex items-center gap-0.5 px-2 py-1 rounded-full text-[10px] font-black bg-red-500 text-white shadow">
-                        Happy Hour -{itemSale.percent}%
+                      <div className="absolute top-3 right-3 z-10 flex items-center gap-1 px-2 py-1 rounded-[var(--radius-sm)] text-[10px] font-medium bg-red-500 text-white shadow-sm">
+                        Happy Hour -<span className="num">{itemSale.percent}%</span>
                       </div>
                     )}
                     <div className="aspect-[4/3] md:aspect-[4/3] bg-[var(--bg-tertiary)] overflow-hidden shrink-0">
@@ -1076,11 +1076,11 @@ export default function PosView() {
                         <div>
                           {itemSale.onSale ? (
                             <>
-                              <div className="text-xl font-black text-red-500">฿{itemSale.price.toLocaleString()}</div>
-                              <div className="text-[11px] font-bold text-[var(--text-muted)] line-through leading-none">฿{itemSale.originalPrice.toLocaleString()}</div>
+                              <div className="num text-xl font-bold text-red-500">฿{itemSale.price.toLocaleString()}</div>
+                              <div className="num text-[11px] font-bold text-[var(--text-muted)] line-through leading-none">฿{itemSale.originalPrice.toLocaleString()}</div>
                             </>
                           ) : (
-                            <div className="text-xl font-black text-[var(--accent-emerald)]">฿{Number(item.price).toLocaleString()}</div>
+                            <div className="num text-xl font-bold text-[var(--accent-emerald)]">฿{Number(item.price).toLocaleString()}</div>
                           )}
                         </div>
                         <div className="w-8 h-8 rounded-full flex items-center justify-center transition-all group-hover:scale-110"
@@ -1103,9 +1103,9 @@ export default function PosView() {
                   style={{ background: 'var(--accent-emerald-light)', color: 'var(--accent-emerald)' }}>
                   <ChevronLeft size={18} strokeWidth={2.5} />
                 </button>
-                <div className="flex items-center gap-1.5 px-1">
-                  <span className="text-sm font-black text-[var(--accent-emerald)]">{menuPage}</span>
-                  <span className="text-[11px] font-bold text-[var(--text-muted)]">/ {totalPages}</span>
+                <div className="flex items-center gap-2 px-1">
+                  <span className="num text-sm font-semibold text-[var(--accent-emerald)]">{menuPage}</span>
+                  <span className="num text-[11px] font-bold text-[var(--text-muted)]">/ {totalPages}</span>
                 </div>
                 <button disabled={menuPage === totalPages} onClick={() => setMenuPage(p => Math.min(totalPages, p + 1))} aria-label="ถัดไป"
                   className="w-9 h-9 rounded-full flex items-center justify-center transition-all disabled:opacity-30"
@@ -1132,7 +1132,7 @@ export default function PosView() {
                   <ShoppingBag size={16} strokeWidth={2.5} />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-sm font-black text-[var(--text-primary)] leading-tight">ตะกร้า</div>
+                  <div className="text-sm font-semibold text-[var(--text-primary)] leading-tight">ตะกร้า</div>
                   <div className="text-[11px] text-[var(--text-muted)] truncate">{cartCount} รายการ · คิว #{currentQueue}</div>
                 </div>
               </div>
@@ -1161,14 +1161,14 @@ export default function PosView() {
           style={{ background: 'var(--accent-emerald)', boxShadow: '0 20px 40px -16px var(--accent-emerald)' }}>
           <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 relative bg-white/20 text-white">
             <ShoppingBag size={18} strokeWidth={2.5} />
-            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white flex items-center justify-center text-[10px] font-black"
-              style={{ color: 'var(--accent-emerald)' }}>{cartCount}</div>
+            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white flex items-center justify-center text-[10px] font-medium"
+              style={{ color: 'var(--accent-emerald)' }}><span className="num">{cartCount}</span></div>
           </div>
           <div className="flex-1 text-left text-white">
             <div className="text-[10px] opacity-80 font-bold leading-none">ยอดสุทธิ</div>
-            <div className="text-[15px] font-black leading-none mt-0.5">฿{netTotal.toLocaleString()}</div>
+            <div className="num text-[15px] font-bold leading-none mt-0.5">฿{netTotal.toLocaleString()}</div>
           </div>
-          <div className="h-10 px-4 rounded-xl flex items-center gap-1.5 text-[12px] font-black bg-white"
+          <div className="h-10 px-4 rounded-[var(--radius-sm)] flex items-center gap-2 text-[12px] font-semibold bg-white"
             style={{ color: 'var(--accent-emerald)' }}>
             ยืนยันสั่ง <ArrowRight size={14} strokeWidth={2.5} />
           </div>
@@ -1178,7 +1178,7 @@ export default function PosView() {
       {/* Empty-cart FAB (mobile, to open drawer anyway) */}
       {cart.length === 0 && (
         <button data-pos="mobile-cart-btn" onClick={() => setIsMobileCartOpen(true)}
-          className={`md:hidden fixed right-4 rounded-full p-4 shadow-2xl active:scale-95 transition-transform z-[90] ${isNavExpanded ? 'bottom-24' : 'bottom-6'}`}
+          className={`md:hidden fixed right-4 rounded-full p-4 shadow-[var(--elev-2)] active:scale-95 transition-transform z-[90] ${isNavExpanded ? 'bottom-24' : 'bottom-6'}`}
           style={{ background: 'var(--accent-emerald)', color: '#fff' }}>
           <ShoppingBag size={22} strokeWidth={2.5} />
         </button>
@@ -1201,7 +1201,7 @@ export default function PosView() {
                       <ShoppingBag size={16} strokeWidth={2.5} />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-black text-[var(--text-primary)]">ตะกร้า</div>
+              <div className="text-sm font-semibold text-[var(--text-primary)]">ตะกร้า</div>
                       <div className="text-[11px] text-[var(--text-muted)] truncate">{cartCount} รายการ · คิว #{currentQueue}</div>
                     </div>
                   </div>
@@ -1257,7 +1257,7 @@ export default function PosView() {
               <p className="text-center font-medium -mt-2 text-[var(--text-secondary)]">{pendingBeanItem.name}</p>
               {groups.map(group => (
                 <div key={group.name} className="space-y-2">
-                  {multi && <p className="text-xs font-black uppercase tracking-widest text-[var(--text-muted)] ml-1">{group.name}</p>}
+                  {multi && <p className="text-xs font-medium text-[var(--text-muted)] ml-1">{group.name}</p>}
                   <div className="space-y-2">
                     {group.mods.map(({ mod, surcharge }) => {
                       const selected = pendingBeanSelections[group.name]?.id === mod.id;
@@ -1281,12 +1281,12 @@ export default function PosView() {
               ))}
               {showSweetness && (
                 <div className="space-y-2">
-                  <p className="text-xs font-black uppercase tracking-widest text-[var(--text-muted)] ml-1">ระดับความหวาน</p>
+                  <p className="text-xs font-medium text-[var(--text-muted)] ml-1">ระดับความหวาน</p>
                   <div className="grid grid-cols-5 gap-2">
                     {[0, 25, 50, 75, 100].map(level => (
                       <button key={level} type="button" onClick={() => setPendingSweetness(level)}
-                        className={`min-h-[44px] rounded-xl border-2 text-xs font-black transition-all ${pendingSweetness === level ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] ring-2 ring-emerald-200' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-emerald-300'}`}>
-                        {level}%
+                        className={`min-h-[44px] rounded-[var(--radius-sm)] border-2 text-xs font-medium transition-all ${pendingSweetness === level ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] ring-2 ring-emerald-200' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-emerald-300'}`}>
+                        <span className="num">{level}%</span>
                       </button>
                     ))}
                   </div>
@@ -1294,11 +1294,11 @@ export default function PosView() {
               )}
               {showMilkChoice && (
                 <div className="space-y-2">
-                  <p className="text-xs font-black uppercase tracking-widest text-[var(--text-muted)] ml-1">ชนิดนม</p>
+                  <p className="text-xs font-medium text-[var(--text-muted)] ml-1">ชนิดนม</p>
                   <div className="grid grid-cols-2 gap-2">
                     {MILK_OPTIONS.map(option => (
                       <button key={option.value} type="button" onClick={() => setPendingMilkType(option.value)}
-                        className={`min-h-[48px] rounded-xl border-2 text-sm font-black transition-all ${pendingMilkType === option.value ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] ring-2 ring-emerald-200' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-emerald-300'}`}>
+                        className={`min-h-[48px] rounded-[var(--radius-sm)] border-2 text-sm font-semibold transition-all ${pendingMilkType === option.value ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] ring-2 ring-emerald-200' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-emerald-300'}`}>
                         {option.label}
                       </button>
                     ))}
@@ -1309,7 +1309,7 @@ export default function PosView() {
                 <>
                   <div className="flex items-center justify-between px-1 pt-1 text-[var(--text-primary)]">
                     <span className="font-bold">รวม</span>
-                    <span className="font-black text-lg text-[var(--accent-emerald)]">฿{previewPrice.toLocaleString()}</span>
+                    <span className="num font-bold text-lg text-[var(--accent-emerald)]">฿{previewPrice.toLocaleString()}</span>
                   </div>
                   <Button variant="primary" fullWidth disabled={!allChosen}
                     onClick={() => addToCartWithBean(pendingBeanItem, chosenMods, showSweetness ? pendingSweetness : null, showMilkChoice ? pendingMilkType : null)}>
