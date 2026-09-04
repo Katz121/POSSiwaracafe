@@ -259,13 +259,13 @@ function LanguageToggle({ lang, onToggle }) {
   return (
     <button
       onClick={onToggle}
-      className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+        className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-[var(--radius-sm)] text-xs font-bold bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)] transition-colors min-h-[44px]"
       style={{ minHeight: 32 }}
       aria-label="Toggle language / สลับภาษา"
     >
-      <span className={lang === 'th' ? 'text-emerald-600' : 'text-gray-400'}>TH</span>
-      <span className="text-gray-300">|</span>
-      <span className={lang === 'en' ? 'text-emerald-600' : 'text-gray-400'}>EN</span>
+          <span className={lang === 'th' ? 'text-[var(--accent-emerald)]' : 'text-[var(--text-muted)]'}>TH</span>
+          <span className="text-[var(--text-muted)]">|</span>
+          <span className={lang === 'en' ? 'text-[var(--accent-emerald)]' : 'text-[var(--text-muted)]'}>EN</span>
     </button>
   );
 }
@@ -302,7 +302,7 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false, t, lang
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       whileTap={{ scale: 0.97 }}
-      className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col cursor-pointer active:shadow-inner"
+className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] overflow-hidden flex flex-col cursor-pointer active:shadow-inner"
       onClick={() => onAdd(item)}
     >
       {/* Image */}
@@ -338,14 +338,14 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false, t, lang
 
       {/* Info */}
       <div className="p-3 flex flex-col gap-1 flex-1">
-        <p className="font-semibold text-gray-900 text-sm leading-tight line-clamp-2">{dispField(item, lang)}</p>
+<p className="font-semibold text-[var(--text-primary)] text-sm leading-tight line-clamp-2">{dispField(item, lang)}</p>
         {dispField(item, lang, 'description') && (
-          <p className="text-gray-400 text-xs leading-tight line-clamp-2">{dispField(item, lang, 'description')}</p>
+<p className="text-[var(--text-muted)] text-xs leading-tight line-clamp-2">{dispField(item, lang, 'description')}</p>
         )}
         <div className="mt-auto pt-2 flex items-center justify-between">
           {sale.onSale ? (
             <div className="flex flex-col gap-0.5">
-              <span className="text-gray-400 text-xs line-through leading-none">
+<span className="text-[var(--text-muted)] text-xs line-through leading-none">
                 {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(sale.originalPrice))}
               </span>
               <span className="text-red-500 font-bold text-base leading-none">
@@ -357,7 +357,7 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false, t, lang
               {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(item.price))}
             </span>
           )}
-          <div className="w-9 h-9 bg-emerald-500 rounded-full flex items-center justify-center shadow-md">
+<div className="w-9 h-9 bg-[var(--accent-emerald)] rounded-full flex items-center justify-center shadow-[var(--elev-1)]">
             <Plus size={18} className="text-white" />
           </div>
         </div>
@@ -391,7 +391,7 @@ function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoS
   if (!autoScroll || items.length <= 2) {
     return (
       <section>
-        <h2 className="text-sm font-bold text-gray-700 mb-2 px-4">{title}</h2>
+<h2 className="text-sm font-bold text-[var(--text-primary)] mb-2 px-4">{title}</h2>
         <div className="flex gap-3 overflow-x-auto px-4 pb-1 scrollbar-hide">
           {items.map((item) => card(item, item.id))}
         </div>
@@ -403,7 +403,7 @@ function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoS
   // seamlessly; it pauses while the customer hovers/touches so they can tap.
   return (
     <section>
-      <h2 className="text-sm font-bold text-gray-700 mb-2 px-4">{title}</h2>
+<h2 className="text-sm font-bold text-[var(--text-primary)] mb-2 px-4">{title}</h2>
       <div className="overflow-hidden pb-1">
         <div
           className="flex w-max animate-marquee"
@@ -443,7 +443,7 @@ function WelcomePopup({ isOpen, items, settingsData, onClose, t, lang = 'th' }) 
     const p = priceOf(item);
     const badge = item.isPinnedBest ? { text: t('bestSellerBadge'), cls: 'bg-orange-500' } : { text: `⭐ ${t('featuredBadge')}`, cls: 'bg-emerald-500' };
     return (
-      <div key={key} className="w-36 flex-shrink-0 mr-3 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+<div key={key} className="w-36 flex-shrink-0 mr-3 bg-[var(--bg-secondary)] rounded-[var(--radius)] border border-[var(--border-color)] shadow-[var(--elev-1)] overflow-hidden">
         <div className="relative w-full aspect-[4/3] bg-emerald-50 flex items-center justify-center overflow-hidden">
           {item.image ? (
             <img src={item.image} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
@@ -455,11 +455,11 @@ function WelcomePopup({ isOpen, items, settingsData, onClose, t, lang = 'th' }) 
           </span>
         </div>
         <div className="p-2.5">
-          <p className="font-semibold text-gray-900 text-xs leading-tight line-clamp-2 min-h-[2rem]">{dispField(item, lang)}</p>
+<p className="font-semibold text-[var(--text-primary)] text-xs leading-tight line-clamp-2 min-h-[2rem]">{dispField(item, lang)}</p>
           <div className="mt-1">
             {p.onSale ? (
               <div className="flex items-baseline gap-1">
-                <span className="text-gray-400 text-[10px] line-through">{formatCurrency(p.original)}</span>
+<span className="text-[var(--text-muted)] text-[10px] line-through">{formatCurrency(p.original)}</span>
                 <span className="text-red-500 font-bold text-sm">{formatCurrency(p.display)}</span>
               </div>
             ) : (
@@ -489,19 +489,19 @@ function WelcomePopup({ isOpen, items, settingsData, onClose, t, lang = 'th' }) 
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 16 }}
             transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-            className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[61] mx-auto max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden"
+className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[61] mx-auto max-w-md bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-3)] overflow-hidden"
           >
             {/* Header */}
             <div className="relative px-5 pt-5 pb-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white">
               <button
                 onClick={onClose}
                 aria-label={t('close')}
-                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+            className="absolute top-3 right-3 w-8 h-8 rounded-[var(--radius-sm)] bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
               >
                 <X size={18} />
               </button>
               <p className="text-white/80 text-xs font-semibold">{t('welcomeGreeting')}</p>
-              <h2 className="font-black text-xl leading-tight">{t('welcomeTitle')}</h2>
+<h2 className="font-bold text-xl leading-tight">{t('welcomeTitle')}</h2>
               <p className="text-white/85 text-xs mt-0.5">{t('welcomeDesc')}</p>
             </div>
 
@@ -595,17 +595,17 @@ function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, on
         needsConfirmButton ? (
           <div className="w-full space-y-2">
             <div className="flex items-center justify-between px-1">
-              <span className="font-semibold text-gray-700">{t('total')}</span>
+<span className="font-semibold text-[var(--text-primary)]">{t('total')}</span>
               <span className="font-bold text-lg text-emerald-600">{formatCurrency(previewPrice)}</span>
             </div>
             <Button variant="primary" size="lg" fullWidth disabled={!allChosen} noUppercase
               onClick={() => onSelect(item, chosenMods, sweetness, showMilkChoice ? milkType : null)}>
               {allChosen ? t('addToCart') : t('chooseAllGroups')}
             </Button>
-            <Button variant="ghost" fullWidth onClick={onClose} className="text-gray-400">{t('cancel')}</Button>
+<Button variant="ghost" fullWidth onClick={onClose} className="text-[var(--text-muted)]">{t('cancel')}</Button>
           </div>
         ) : (
-          <Button variant="ghost" fullWidth onClick={onClose} className="text-gray-400">
+<Button variant="ghost" fullWidth onClick={onClose} className="text-[var(--text-muted)]">
             {t('cancel')}
           </Button>
         )
@@ -613,10 +613,10 @@ function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, on
     >
       {item && (
         <div className="space-y-4">
-          <p className="text-sm text-gray-500">{t('chooseOptionFor')} <strong>{dispField(item, lang)}</strong></p>
+<p className="text-sm text-[var(--text-secondary)]">{t('chooseOptionFor')} <strong>{dispField(item, lang)}</strong></p>
           {groups.map((group) => (
             <div key={group.name} className="space-y-2">
-              {multi && <p className="text-xs font-black uppercase tracking-widest text-gray-400 ml-1">{dispGroup(group.name, lang)}</p>}
+{multi && <p className="text-xs font-medium tracking-widest text-[var(--text-muted)] ml-1">{dispGroup(group.name, lang)}</p>}
               {group.mods.map(({ mod, surcharge }) => {
                 const selected = selections[group.name]?.id === mod.id;
                 // กลุ่มเดียว = แตะแล้วเพิ่มทันที (UX เดิม); หลายกลุ่ม = แตะเพื่อเลือกในกลุ่ม
@@ -628,9 +628,9 @@ function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, on
                     key={mod.id}
                     whileTap={{ scale: 0.97 }}
                     onClick={onClick}
-                    className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all text-left min-h-[56px] ${selected ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300' : 'border-gray-100 hover:border-emerald-400 hover:bg-emerald-50'}`}
+className={`w-full flex items-center justify-between p-4 rounded-[var(--radius)] border-2 transition-all text-left min-h-[56px] ${selected ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] ring-2 ring-[var(--accent-emerald-light)]' : 'border-[var(--border-color)] hover:border-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-light)]'}`}
                   >
-                    <span className="font-semibold text-gray-800">{dispField(mod, lang)}</span>
+<span className="font-semibold text-[var(--text-primary)]">{dispField(mod, lang)}</span>
                     <span className={`font-bold ${surcharge > 0 ? 'text-orange-500' : 'text-emerald-600'}`}>
                       {formatCurrency(computeModifierPrice(item, [mod]))}
                     </span>
@@ -641,11 +641,11 @@ function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, on
           ))}
           {showSweetness && (
             <div className="space-y-2">
-              <p className="text-xs font-black uppercase tracking-widest text-gray-400 ml-1">{t('sweetness')}</p>
+<p className="text-xs font-medium tracking-widest text-[var(--text-muted)] ml-1">{t('sweetness')}</p>
               <div className="grid grid-cols-5 gap-2">
                 {[0, 25, 50, 75, 100].map((level) => (
                   <button key={level} type="button" onClick={() => setSweetness(level)}
-                    className={`min-h-[44px] rounded-xl border-2 text-xs font-bold transition-all ${sweetness === level ? 'border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-200' : 'border-gray-100 text-gray-600 hover:border-emerald-300'}`}>
+                    className={`min-h-[44px] rounded-[var(--radius-sm)] border-2 text-xs font-bold transition-all ${sweetness === level ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] text-[var(--accent-emerald-dark)] ring-2 ring-[var(--accent-emerald-light)]' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-emerald)]'}`}>
                     {level}%
                   </button>
                 ))}
@@ -654,11 +654,11 @@ function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, on
           )}
           {showMilkChoice && (
             <div className="space-y-2">
-              <p className="text-xs font-black uppercase tracking-widest text-gray-400 ml-1">{t('milkType')}</p>
+<p className="text-xs font-medium tracking-widest text-[var(--text-muted)] ml-1">{t('milkType')}</p>
               <div className="grid grid-cols-2 gap-2">
                 {MILK_OPTIONS.map((option) => (
                   <button key={option.value} type="button" onClick={() => setMilkType(option.value)}
-                    className={`min-h-[48px] rounded-xl border-2 text-sm font-bold transition-all ${milkType === option.value ? 'border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-200' : 'border-gray-100 text-gray-600 hover:border-emerald-300'}`}>
+                    className={`min-h-[48px] rounded-[var(--radius-sm)] border-2 text-sm font-bold transition-all ${milkType === option.value ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] text-[var(--accent-emerald-dark)] ring-2 ring-[var(--accent-emerald-light)]' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-emerald)]'}`}>
                     {lang === 'en' ? option.labelEn : option.label}
                   </button>
                 ))}
@@ -707,19 +707,19 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl flex flex-col"
+            className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--bg-secondary)] rounded-t-[var(--radius)] shadow-[var(--elev-3)] flex flex-col"
             style={{ maxHeight: '85vh' }}
           >
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 bg-gray-200 rounded-full" />
+              <div className="w-10 h-1 bg-[var(--border-color)] rounded-full" />
             </div>
 
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-              <h2 className="font-bold text-lg text-gray-900">{t('cartTitle')}</h2>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)]">
+              <h2 className="font-bold text-lg text-[var(--text-primary)]">{t('cartTitle')}</h2>
               <button
                 onClick={onClose}
-                className="w-9 h-9 rounded-full flex items-center justify-center bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                className="w-9 h-9 rounded-[var(--radius-sm)] flex items-center justify-center bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)] transition-colors"
               >
                 <X size={18} />
               </button>
@@ -740,11 +740,11 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                   const sweetnessNote = cartItem.sweetness == null ? '' : `หวาน ${cartItem.sweetness}%`;
                   const defaultOptionNote = [cartItem.beanModifier, cartItem.milkLabel, sweetnessNote].filter(Boolean).join(' ');
                   return (
-                    <div key={id} className="bg-gray-50 rounded-2xl p-3 space-y-2">
+                    <div key={id} className="bg-[var(--bg-tertiary)] rounded-[var(--radius)] p-3 space-y-2">
                       <div className="flex items-start gap-3">
                         {/* Name & modifier */}
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm text-gray-900 leading-tight">{dispField(cartItem, lang)}</p>
+                          <p className="font-semibold text-sm text-[var(--text-primary)] leading-tight">{dispField(cartItem, lang)}</p>
                           {cartItem.beanModifier && cartItem.beanModifier !== '' && (
                             <p className="text-xs text-emerald-600 font-medium">{cartItem.beanModifier}</p>
                           )}
@@ -763,16 +763,16 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <button
                             onClick={() => onUpdateQty(id, cartItem.quantity - 1)}
-                            className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-700 hover:bg-red-100 hover:text-red-600 transition-colors"
+                            className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--border-color)] flex items-center justify-center text-[var(--text-primary)] hover:bg-red-100 hover:text-[var(--state-danger)] transition-colors"
                           >
                             <Minus size={14} />
                           </button>
-                          <span className="w-6 text-center font-bold text-gray-800 text-sm">
+                          <span className="w-6 text-center font-bold text-[var(--text-primary)] text-sm num">
                             {cartItem.quantity}
                           </span>
                           <button
                             onClick={() => onUpdateQty(id, cartItem.quantity + 1)}
-                            className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white hover:bg-emerald-600 transition-colors"
+                            className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--accent-emerald)] flex items-center justify-center text-white hover:bg-[var(--accent-emerald-dark)] transition-colors"
                           >
                             <Plus size={14} />
                           </button>
@@ -781,7 +781,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                         {/* Remove */}
                         <button
                           onClick={() => onRemove(id)}
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                          className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--state-danger)] hover:bg-red-50 transition-colors flex-shrink-0"
                         >
                           <X size={16} />
                         </button>
@@ -796,11 +796,11 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                             onChange={(e) => setNoteValue(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter') saveNote(id); }}
                             placeholder={t('notePlaceholder')}
-                            className="flex-1 text-xs border border-gray-200 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:border-emerald-400"
+                            className="flex-1 text-xs border border-[var(--border-color)] rounded-[var(--radius-sm)] px-3 py-1.5 bg-[var(--bg-secondary)] focus:outline-none focus:border-[var(--accent-emerald)]"
                           />
                           <button
                             onClick={() => saveNote(id)}
-                            className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white flex-shrink-0"
+                            className="w-8 h-8 bg-[var(--accent-emerald)] rounded-[var(--radius-sm)] flex items-center justify-center text-white flex-shrink-0"
                           >
                             <Check size={14} />
                           </button>
@@ -808,7 +808,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                       ) : (
                         <button
                           onClick={() => startEditNote(id, cartItem.note)}
-                          className="flex items-center gap-1 text-xs text-gray-400 hover:text-emerald-600 transition-colors"
+                          className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--accent-emerald)] transition-colors"
                         >
                           <FileText size={12} />
                           <span>{cartItem.note && cartItem.note !== defaultOptionNote ? cartItem.note : t('addNote')}</span>
@@ -822,10 +822,10 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
 
             {/* Footer: total + proceed (always visible, never overlaps items) */}
             {cart.length > 0 && (
-              <div className="flex-shrink-0 border-t border-gray-100 px-5 py-4 bg-white">
+              <div className="flex-shrink-0 border-t border-[var(--border-color)] px-4 py-4 bg-[var(--bg-secondary)] shadow-[var(--elev-3)]">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm text-gray-500 font-medium">{t('cartTotal')}</span>
-                  <span className="font-black text-lg text-emerald-600">{formatCurrency(total)}</span>
+                  <span className="text-sm text-[var(--text-secondary)] font-medium">{t('cartTotal')}</span>
+                  <span className="font-bold text-lg text-[var(--accent-emerald)] num">{formatCurrency(total)}</span>
                 </div>
                 <Button variant="primary" size="lg" fullWidth onClick={onProceed}>
                   {t('proceed')}
@@ -856,7 +856,7 @@ function StickyCartBar({ cart, total, onClick, t }) {
     >
       <button
         onClick={onClick}
-        className="w-full bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white rounded-2xl flex items-center justify-between px-5 py-4 shadow-xl transition-colors"
+        className="w-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-dark)] active:bg-[var(--accent-emerald-dark)] text-white rounded-[var(--radius-sm)] flex items-center justify-between px-4 py-4 shadow-[var(--elev-3)] transition-colors"
         style={{ minHeight: 56 }}
       >
         <span className="bg-white/20 rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
@@ -916,21 +916,21 @@ function CheckoutStep({
       className="flex flex-col min-h-screen bg-gray-50"
     >
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-4 py-4 flex items-center gap-3 sticky top-0 z-10">
+              <div className="bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-4 py-4 flex items-center gap-3 sticky top-0 z-10 backdrop-blur-sm">
         <button
           onClick={onBack}
-          className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors"
+                className="w-10 h-10 rounded-[var(--radius-sm)] bg-[var(--bg-tertiary)] flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--border-color)] transition-colors"
         >
           <ChevronDown size={20} className="rotate-90" />
         </button>
-        <h1 className="font-bold text-gray-900 text-lg">{t('confirmOrder')}</h1>
+              <h1 className="font-bold text-[var(--text-primary)] text-lg">{t('confirmOrder')}</h1>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4 pb-40">
         {/* Order items summary */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="font-bold text-gray-800">{t('orderedItems')}</h2>
+              <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] overflow-hidden">
+                <div className="px-4 py-3 border-b border-[var(--border-color)]">
+                  <h2 className="font-bold text-[var(--text-primary)]">{t('orderedItems')}</h2>
           </div>
           <div className="divide-y divide-gray-50">
             {cart.map((cartItem) => {
@@ -940,7 +940,7 @@ function CheckoutStep({
               return (
                 <div key={id} className="px-4 py-3 flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm text-gray-800 leading-tight">{dispField(cartItem, lang)}</p>
+                    <p className="font-medium text-sm text-[var(--text-primary)] leading-tight">{dispField(cartItem, lang)}</p>
                     {cartItem.beanModifier && cartItem.beanModifier !== '' && (
                       <p className="text-xs text-emerald-600">{cartItem.beanModifier}</p>
                     )}
@@ -951,11 +951,11 @@ function CheckoutStep({
                       <p className="text-xs text-sky-600">{t('milkType')}: {milkLabelForLanguage(cartItem.milkType, lang) || cartItem.milkLabel}</p>
                     )}
                     {cartItem.note && cartItem.note !== defaultOptionNote && (
-                      <p className="text-xs text-gray-400">{cartItem.note}</p>
+                    <p className="text-xs text-[var(--text-muted)]">{cartItem.note}</p>
                     )}
                   </div>
-                  <span className="text-sm text-gray-500 flex-shrink-0">x{cartItem.quantity}</span>
-                  <span className="font-semibold text-sm text-gray-900 flex-shrink-0">
+                    <span className="text-sm text-[var(--text-secondary)] flex-shrink-0 num">x{cartItem.quantity}</span>
+                    <span className="font-semibold text-sm text-[var(--text-primary)] flex-shrink-0 num">
                     {formatCurrency(Number(cartItem.price) * Number(cartItem.quantity))}
                   </span>
                 </div>
@@ -965,8 +965,8 @@ function CheckoutStep({
         </div>
 
         {/* Totals */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-4 space-y-2">
-          <div className="flex justify-between text-sm text-gray-600">
+              <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 space-y-2">
+                <div className="flex justify-between text-sm text-[var(--text-secondary)]">
             <span>{t('itemsPrice')}</span>
             <span>{formatCurrency(subtotal)}</span>
           </div>
@@ -989,19 +989,19 @@ function CheckoutStep({
             </div>
           )}
           {vatEnabled && (
-            <div className="flex justify-between text-sm text-gray-500">
+                <div className="flex justify-between text-sm text-[var(--text-secondary)]">
               <span>{t('vatLabel')}</span>
               <span>{formatCurrency(vat)}</span>
             </div>
           )}
-          <div className="flex justify-between font-bold text-base text-gray-900 pt-2 border-t border-gray-100">
+                <div className="flex justify-between font-bold text-base text-[var(--text-primary)] pt-2 border-t border-[var(--border-color)]">
             <span>{t('grandTotal')}</span>
             <span className="text-emerald-600">{formatCurrency(total)}</span>
           </div>
         </div>
 
         {/* Customer name input */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-4 space-y-4">
+              <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 space-y-4">
           <Input
             label={t('yourName')}
             placeholder={t('namePlaceholder')}
@@ -1010,7 +1010,7 @@ function CheckoutStep({
             maxLength={60}
             autoFocus
           />
-          <p className="text-xs text-gray-400 -mt-2">{t('nameHint')}</p>
+                <p className="text-xs text-[var(--text-muted)] -mt-2">{t('nameHint')}</p>
 
           {/* Phone input for membership */}
           <div>
@@ -1035,11 +1035,11 @@ function CheckoutStep({
                 </p>
               </div>
             ) : customerPhone.length >= MEMBER_MIN_PHONE_LENGTH ? (
-              <p className="text-xs text-gray-500 mt-1.5">
+              <p className="text-xs text-[var(--text-secondary)] mt-1.5">
                 {t('newPhoneHint')}
               </p>
             ) : (
-              <p className="text-xs text-gray-400 mt-1.5">
+              <p className="text-xs text-[var(--text-muted)] mt-1.5">
                 {t('noPhoneHint')}
               </p>
             )}
@@ -1052,23 +1052,23 @@ function CheckoutStep({
               animate={{ opacity: 1, y: 0 }}
               type="button"
               onClick={onTogglePoints}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border-2 transition-all ${
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-[var(--radius)] border-2 transition-all ${
                 usePoints
                   ? 'bg-emerald-50 border-emerald-400'
-                  : 'bg-gray-50 border-gray-200 hover:border-emerald-300'
+              : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] hover:border-[var(--accent-emerald)]'
               }`}
               style={{ minHeight: 44 }}
             >
-              <span className={`text-sm font-semibold ${usePoints ? 'text-emerald-700' : 'text-gray-700'}`}>
+            <span className={`text-sm font-semibold ${usePoints ? 'text-[var(--accent-emerald-dark)]' : 'text-[var(--text-primary)]'}`}>
                 {t('usePointsToggle', redeemPointsThreshold, redeemDiscountValue)}
               </span>
               <div
                 className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${
-                  usePoints ? 'bg-emerald-500' : 'bg-gray-300'
+              usePoints ? 'bg-[var(--accent-emerald)]' : 'bg-[var(--border-color)]'
                 }`}
               >
                 <div
-                  className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+              className={`absolute top-0.5 w-5 h-5 bg-[var(--bg-secondary)] rounded-full shadow-[var(--elev-1)] transition-transform ${
                     usePoints ? 'translate-x-5' : 'translate-x-0.5'
                   }`}
                 />
@@ -1084,7 +1084,7 @@ function CheckoutStep({
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-center gap-2 text-red-600"
+            className="bg-red-50 border border-[var(--state-danger)] rounded-[var(--radius)] px-4 py-3 flex items-center gap-2 text-[var(--state-danger)]"
             >
               <AlertCircle size={16} />
               <span className="text-sm font-medium">{submitError}</span>
@@ -1094,7 +1094,7 @@ function CheckoutStep({
       </div>
 
       {/* Submit button (fixed) */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-4">
+              <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] px-4 py-4 shadow-[var(--elev-3)]">
         <Button
           variant="primary"
           size="lg"
@@ -1161,7 +1161,7 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, t }) {
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
         transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.1 }}
-        className="w-24 h-24 bg-emerald-500 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-200"
+            className="w-24 h-24 bg-[var(--accent-emerald)] rounded-full flex items-center justify-center mb-6 shadow-[var(--elev-1)]"
       >
         <Check size={44} className="text-white" strokeWidth={3} />
       </motion.div>
@@ -1172,23 +1172,23 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, t }) {
         transition={{ delay: 0.25 }}
         className="space-y-3"
       >
-        <p className="text-gray-500 font-medium text-sm">{t('orderOf')}</p>
-        <h1 className="font-black text-3xl text-gray-900">{customerName}</h1>
+              <p className="text-[var(--text-secondary)] font-medium text-sm">{t('orderOf')}</p>
+              <h1 className="font-bold text-3xl text-[var(--text-primary)]">{customerName}</h1>
 
         {queueNumber > 1 ? (
-          <div className="bg-emerald-500 text-white rounded-3xl px-8 py-5 inline-block shadow-lg shadow-emerald-200 my-4">
+            <div className="bg-[var(--accent-emerald)] text-white rounded-[var(--radius)] px-4 py-4 inline-block shadow-[var(--elev-1)] my-4">
             <p className="text-sm font-medium opacity-80 mb-1">{t('queueBefore')}</p>
-            <p className="text-5xl font-black tracking-tight">#{queueNumber}</p>
+              <p className="text-5xl font-bold tracking-tight num">#{queueNumber}</p>
           </div>
         ) : (
-          <p className="text-emerald-600 font-black text-2xl leading-relaxed mt-4">
+              <p className="text-[var(--accent-emerald)] font-bold text-2xl leading-relaxed mt-4">
             {t('preparingDrink')}
           </p>
         )}
-        <p className="text-gray-600 font-semibold text-base leading-relaxed">
+              <p className="text-[var(--text-secondary)] font-semibold text-base leading-relaxed">
           {t('payAtCounter')}
         </p>
-        <p className="text-gray-400 text-sm">
+              <p className="text-[var(--text-muted)] text-sm">
           {t('staffWillCall')}
         </p>
       </motion.div>
@@ -1199,14 +1199,14 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, t }) {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.55 }}
-          className="mt-8 w-full max-w-xs bg-white rounded-2xl shadow-sm border border-emerald-100 px-5 py-4 text-center"
+              className="mt-8 w-full max-w-xs bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 text-center"
         >
           {reviewDone ? (
             <p className="font-bold text-emerald-600 text-base py-2">{t('reviewThanks')}</p>
           ) : (
             <>
-              <p className="font-bold text-gray-900 text-base mb-1">{t('reviewPrompt')}</p>
-              <p className="text-gray-500 text-sm mb-4 leading-relaxed">
+                <p className="font-bold text-[var(--text-primary)] text-base mb-1">{t('reviewPrompt')}</p>
+                <p className="text-[var(--text-secondary)] text-sm mb-4 leading-relaxed">
                 {t('reviewDesc')}
               </p>
               <Button
@@ -1794,9 +1794,9 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   if (loading || !authed) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-white gap-4">
+        <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-secondary)] gap-4">
         <Spinner size="xl" color="emerald" />
-        <p className="text-gray-400 font-medium text-sm">{t('appLoading')}</p>
+          <p className="text-[var(--text-muted)] font-medium text-sm">{t('appLoading')}</p>
       </div>
     );
   }
@@ -1863,10 +1863,10 @@ function CustomerOrderApp() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ---- Header ---- */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-20">
+        <header className="bg-[var(--bg-secondary)] border-b border-[var(--border-color)] sticky top-0 z-20 backdrop-blur-sm">
         <div className="px-4 py-4 flex items-center justify-between">
           <div>
-            <h1 className="font-black text-gray-900 text-xl leading-tight">{settings.shopName}</h1>
+            <h1 className="font-bold text-[var(--text-primary)] text-xl leading-tight">{settings.shopName}</h1>
             <p className="text-emerald-500 text-xs font-semibold mt-0.5">{t('orderViaQr')}</p>
           </div>
           <div className="flex items-center gap-2">
@@ -1874,7 +1874,7 @@ function CustomerOrderApp() {
             {itemCount > 0 && (
               <button
                 onClick={() => setCartDrawerOpen(true)}
-                className="relative w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 hover:bg-emerald-100 transition-colors"
+              className="relative w-12 h-12 bg-[var(--accent-emerald-light)] rounded-[var(--radius-sm)] flex items-center justify-center text-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-light)] transition-colors"
               >
                 <ShoppingCart size={22} />
                 <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
@@ -1888,13 +1888,13 @@ function CustomerOrderApp() {
         {/* Search */}
         <div className="px-4 pb-3">
           <div className="relative">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('searchPlaceholder')}
-              className="w-full bg-gray-100 rounded-xl py-2.5 pl-9 pr-4 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            className="w-full bg-[var(--bg-tertiary)] rounded-[var(--radius-sm)] py-2.5 pl-9 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-emerald)]"
             />
           </div>
         </div>
@@ -1908,7 +1908,7 @@ function CustomerOrderApp() {
               className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${
                 activeCategory === cat
                   ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)]'
               }`}
             >
               {cat === 'ทั้งหมด' ? t('categoryAll') : (lang === 'en' && categoryEnByName[cat] ? categoryEnByName[cat] : cat)}
@@ -1925,11 +1925,11 @@ function CustomerOrderApp() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="mx-4 mt-3 rounded-2xl px-4 py-3 bg-gradient-to-r from-amber-400 to-orange-500 shadow-lg flex items-center gap-3"
+            className="mx-4 mt-3 rounded-[var(--radius)] px-4 py-3 bg-gradient-to-r from-amber-400 to-orange-500 shadow-[var(--elev-1)] flex items-center gap-3"
           >
             <span className="text-2xl">🍰</span>
             <div className="leading-tight flex-1">
-              <p className="text-white font-black text-sm">{t('happyHourBanner', happyHourPercent, happyHourLeftText)}</p>
+            <p className="text-white font-bold text-sm">{t('happyHourBanner', happyHourPercent, happyHourLeftText)}</p>
               <p className="text-white/90 font-semibold text-xs">
                 {t('happyHourUntil', settingsData.cakeSaleEnd)}
               </p>
@@ -1946,7 +1946,7 @@ function CustomerOrderApp() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="mx-4 mt-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3 flex items-center gap-2"
+            className="mx-4 mt-3 bg-[var(--accent-emerald-light)] border border-[var(--border-color)] rounded-[var(--radius)] px-4 py-3 flex items-center gap-2"
           >
             <span className="text-emerald-700 font-semibold text-sm">
               {combo.hasCake
@@ -1961,7 +1961,7 @@ function CustomerOrderApp() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="mx-4 mt-3 bg-emerald-500 rounded-2xl px-4 py-3 flex items-center gap-2"
+            className="mx-4 mt-3 bg-[var(--accent-emerald)] rounded-[var(--radius)] px-4 py-3 flex items-center gap-2"
           >
             <span className="text-white font-semibold text-sm">
               {t('comboApplied', combo.percent)}
@@ -1974,7 +1974,7 @@ function CustomerOrderApp() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className={`mx-4 mt-3 rounded-2xl px-4 py-3 border ${subtotal >= spendThreshold ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}
+            className={`mx-4 mt-3 rounded-[var(--radius)] px-4 py-3 border border-[var(--border-color)] ${subtotal >= spendThreshold ? 'bg-[var(--accent-emerald-light)]' : 'bg-amber-50'}`}
           >
             <div className="flex items-center justify-between gap-2 mb-2">
               <span className={`font-bold text-sm ${subtotal >= spendThreshold ? 'text-emerald-600' : 'text-amber-700'}`}>
@@ -1986,7 +1986,7 @@ function CustomerOrderApp() {
                     ? t('spendStart', formatCurrency(spendThreshold), spendDiscountPercent)
                     : t('spendRemaining', formatCurrency(spendRemaining), spendDiscountPercent)}
               </span>
-              <span className="text-[11px] font-bold text-gray-400 shrink-0">
+            <span className="text-[11px] font-bold text-[var(--text-muted)] shrink-0 num">
                 {formatCurrency(Math.min(subtotal, spendThreshold))}/{formatCurrency(spendThreshold)}
               </span>
             </div>
@@ -2033,7 +2033,7 @@ function CustomerOrderApp() {
       {/* ---- Menu grid ---- */}
       <main className="px-4 py-4 pb-32">
         {showHighlights && (bestSellers.length > 0 || featuredItems.length > 0) && (
-          <h2 className="text-sm font-bold text-gray-700 mb-3 px-0.5">{t('allMenuHeading')}</h2>
+          <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3 px-0.5">{t('allMenuHeading')}</h2>
         )}
         {filteredMenu.length === 0 ? (
           <EmptyState
@@ -2064,7 +2064,7 @@ function CustomerOrderApp() {
             {!showAllItems && !searchQuery.trim() && filteredMenu.length > MENU_PREVIEW_COUNT && (
               <button
                 onClick={() => setShowAllItems(true)}
-                className="mt-4 w-full py-3 rounded-2xl border-2 border-emerald-200 text-emerald-600 font-bold text-sm bg-white hover:bg-emerald-50 transition-colors active:scale-[0.98]"
+            className="mt-4 w-full py-3 rounded-[var(--radius-sm)] border-2 border-[var(--border-color)] text-[var(--accent-emerald)] font-bold text-sm bg-[var(--bg-secondary)] hover:bg-[var(--accent-emerald-light)] transition-colors active:scale-[0.98] min-h-[44px]"
               >
                 {t('viewAllMenu', filteredMenu.length - MENU_PREVIEW_COUNT)}
               </button>

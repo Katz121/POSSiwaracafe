@@ -82,20 +82,20 @@ export default function MemberCardApp() {
   const progress = Math.min((points / threshold) * 100, 100);
 
   return (
-    <div className="min-h-screen bg-[#f4ead8] text-[#2b1a10] flex flex-col items-center px-5 py-10">
+    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] flex flex-col items-center px-4 py-8">
       <div className="w-full max-w-sm">
 
         <header className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-[#4a2f1c] text-[#d9b878] mx-auto flex items-center justify-center mb-4">
+          <div className="w-14 h-14 rounded-[var(--radius)] bg-[var(--text-primary)] text-[var(--accent-orange)] mx-auto flex items-center justify-center mb-4">
             <Coffee size={26} strokeWidth={1.8} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">บัตรสมาชิก</h1>
-          <p className="text-sm text-[#6b4226] mt-1">Siwara Cafe · ตะกั่วป่า</p>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">Siwara Cafe · ตะกั่วป่า</p>
         </header>
 
         {/* ช่องกรอกเบอร์ · inputMode numeric เพื่อให้มือถือเด้งแป้นตัวเลขขึ้นมาเลย */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#e0d2b8]">
-          <label htmlFor="member-phone" className="block text-xs font-semibold text-[#6b4226] mb-2">
+        <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-4 shadow-[var(--elev-1)] border border-[var(--border-color)]">
+          <label htmlFor="member-phone" className="block text-xs font-medium text-[var(--text-secondary)] mb-2">
             เบอร์โทรที่ใช้สะสมแต้ม
           </label>
           <div className="flex gap-2">
@@ -108,14 +108,14 @@ export default function MemberCardApp() {
               onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, '').slice(0, 10))}
               onKeyDown={(e) => { if (e.key === 'Enter') lookup(); }}
               placeholder="08x xxx xxxx"
-              className="flex-1 min-w-0 rounded-xl border border-[#e0d2b8] px-3 py-3 text-base tracking-wider
-                         focus:outline-none focus:border-[#c79a52] bg-[#fffdf8]"
+              className="flex-1 min-w-0 rounded-[var(--radius-sm)] border border-[var(--border-color)] px-3 py-3 text-base tracking-wider
+                         focus:outline-none focus:border-[var(--accent-emerald)] bg-[var(--bg-tertiary)]"
             />
             <button
               onClick={lookup}
               disabled={loading}
-              className="shrink-0 px-4 rounded-xl bg-[#4a2f1c] text-[#f4ead8] font-semibold text-sm
-                         flex items-center gap-1.5 active:scale-95 transition-transform disabled:opacity-60"
+              className="shrink-0 px-4 rounded-[var(--radius-sm)] bg-[var(--accent-emerald)] text-white font-semibold text-sm
+                         flex items-center gap-1.5 active:scale-95 transition-transform disabled:opacity-60 min-h-[44px]"
             >
               <Search size={16} />
               {loading ? 'กำลังดู' : 'เช็คแต้ม'}
@@ -125,32 +125,32 @@ export default function MemberCardApp() {
         </div>
 
         {checked && member && (
-          <div className="mt-5 bg-[#4a2f1c] text-[#f4ead8] rounded-3xl p-6 shadow-lg">
-            <p className="text-xs uppercase tracking-[.25em] text-[#c79a52] mb-2">สมาชิก</p>
+          <div className="mt-4 bg-[var(--text-primary)] text-[var(--bg-secondary)] rounded-[var(--radius)] p-4 shadow-[var(--elev-1)]">
+            <p className="text-xs tracking-[.25em] text-[var(--accent-orange)] mb-2">สมาชิก</p>
             <p className="text-xl font-bold mb-6">{member.name || 'ลูกค้าประจำ'}</p>
 
             <div className="flex items-end gap-2 mb-3">
               <span className="text-6xl font-bold leading-none">{points}</span>
-              <span className="text-lg mb-1.5 text-[#d9b878]">แต้ม</span>
+              <span className="text-lg mb-1.5 text-[var(--accent-orange)] num">แต้ม</span>
             </div>
 
-            <div className="h-2 rounded-full bg-[#2b1a10] overflow-hidden mb-3">
-              <div className="h-full bg-[#c79a52] rounded-full transition-all" style={{ width: `${progress}%` }} />
+            <div className="h-2 rounded-full bg-[var(--bg-primary)] overflow-hidden mb-3">
+              <div className="h-full bg-[var(--accent-orange)] rounded-full transition-all" style={{ width: `${progress}%` }} />
             </div>
 
             {ready ? (
-              <p className="text-sm font-semibold text-[#d9b878] flex items-center gap-1.5">
+              <p className="text-sm font-semibold text-[var(--accent-orange)] flex items-center gap-1.5">
                 <Star size={15} fill="currentColor" />
                 ครบแล้ว แลกส่วนลด ฿{discount} ได้เลย แจ้งพนักงานตอนสั่งได้เลยค่ะ
               </p>
             ) : (
-              <p className="text-sm text-[#e7d6ba]">
+              <p className="text-sm text-[var(--text-muted)]">
                 อีก {remaining} แต้ม แลกส่วนลด ฿{discount} ได้
               </p>
             )}
 
             {pending > 0 && (
-              <p className="text-xs text-[#c79a52] mt-3 pt-3 border-t border-[#2b1a10]">
+              <p className="text-xs text-[var(--accent-orange)] mt-3 pt-3 border-t border-[var(--border-color)]">
                 มีอีก {pending} แต้มจากบิลล่าสุด รอทางร้านยืนยัน เดี๋ยวเข้าบัตรให้ค่ะ
               </p>
             )}
@@ -158,9 +158,9 @@ export default function MemberCardApp() {
         )}
 
         {checked && !member && (
-          <div className="mt-5 bg-white rounded-3xl p-6 shadow-sm border border-[#e0d2b8] text-center">
+          <div className="mt-4 bg-[var(--bg-secondary)] rounded-[var(--radius)] p-4 shadow-[var(--elev-1)] border border-[var(--border-color)] text-center">
             <p className="font-semibold mb-2">ยังไม่มีแต้มของเบอร์นี้</p>
-            <p className="text-sm text-[#6b4226] leading-relaxed">
+            <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
               สั่งครั้งหน้าใส่เบอร์นี้ตอนสั่ง ระบบจะเปิดบัตรสมาชิกให้อัตโนมัติ
               แล้วเริ่มสะสมแต้มตั้งแต่บิลแรกเลยค่ะ
             </p>
@@ -169,14 +169,14 @@ export default function MemberCardApp() {
 
         <a
           href={ORDER_URL}
-          className="mt-5 w-full rounded-2xl bg-[#c79a52] text-[#2b1a10] font-semibold py-4
-                     flex items-center justify-center gap-2 active:scale-95 transition-transform"
+          className="mt-4 w-full rounded-[var(--radius-sm)] bg-[var(--accent-emerald)] text-white font-semibold py-4
+                     flex items-center justify-center gap-2 active:scale-95 transition-transform min-h-[44px]"
         >
           สั่งล่วงหน้า
           <ArrowRight size={18} />
         </a>
 
-        <p className="text-[11px] text-[#8a7b66] text-center mt-6 leading-relaxed">
+        <p className="text-[11px] text-[var(--text-muted)] text-center mt-6 leading-relaxed">
           แต้มผูกกับเบอร์โทร · สั่งครั้งไหนใส่เบอร์เดิม แต้มสะสมต่อให้เอง
         </p>
       </div>
