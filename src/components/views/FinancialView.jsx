@@ -181,21 +181,21 @@ const FinancialView = () => {
     };
 
     return (
-        <div className="h-full bg-gray-50 flex flex-col p-4 md:p-6 lg:p-8 overflow-y-auto">
+        <div className="h-full bg-[var(--bg-tertiary)] flex flex-col p-4 md:p-6 lg:p-6 overflow-y-auto">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-4">
                 <div>
-                    <h1 className="text-xl md:text-2xl lg:text-3xl font-black text-gray-800 uppercase tracking-tight flex items-center gap-2 md:gap-3">
+                    <h1 className="text-xl md:text-2xl lg:text-3xl font-semibold text-[var(--text-primary)] tracking-tight flex items-center gap-2 md:gap-3">
                         <Wallet className="text-violet-600" size={24} />
                         วางแผนการเงิน
                     </h1>
-                    <p className="text-gray-500 font-bold mt-1 ml-8 md:ml-11 text-sm md:text-base hidden md:block">วางแผนการเงินอัจฉริยะเพื่อความยั่งยืน</p>
+                    <p className="text-[var(--text-secondary)] font-bold mt-1 ml-8 md:ml-11 text-sm md:text-base hidden md:block">วางแผนการเงินอัจฉริยะเพื่อความยั่งยืน</p>
                 </div>
                 <div className="flex items-center gap-4">
-                    <div className="bg-white px-6 py-3 rounded-2xl shadow-sm border border-gray-100 hidden md:block">
-                        <p className="text-xs font-black text-gray-400 uppercase tracking-widest">รายรับ (เดือนนี้)</p>
-                        <p className="text-2xl font-black text-emerald-600">฿{currentFinancials.revenue.toLocaleString()}</p>
+                    <div className="bg-[var(--bg-secondary)] px-6 py-3 rounded-2xl shadow-sm border border-[var(--border-color)] hidden md:block">
+                        <p className="text-xs font-semibold text-[var(--text-muted)] tracking-widest">รายรับ (เดือนนี้)</p>
+                        <p className="num text-right text-2xl font-semibold text-emerald-600">฿{currentFinancials.revenue.toLocaleString()}</p>
                     </div>
-                    <div className="relative bg-white border-2 border-emerald-100 flex items-center gap-3 px-6 py-3 rounded-2xl shadow-sm text-emerald-600 font-black uppercase text-xs tracking-widest leading-none shrink-0 cursor-pointer hover:bg-emerald-50 transition-colors">
+                    <div className="relative bg-[var(--bg-secondary)] border-2 border-emerald-100 flex items-center gap-3 px-6 py-3 rounded-2xl shadow-sm text-emerald-600 font-semibold text-xs tracking-widest leading-none shrink-0 cursor-pointer hover:bg-emerald-50 transition-colors">
                         <Calendar size={18} />
                         {new Date(selectedMonth + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
                         <input
@@ -205,56 +205,56 @@ const FinancialView = () => {
                             onClick={(e) => {
                                 try { e.currentTarget.showPicker(); } catch { /* showPicker not supported */ }
                             }}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-[var(--z-nav)]"
                         />
                     </div>
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-7xl mx-auto w-full">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto w-full">
 
                 {/* Input Column */}
                 <div className="space-y-6">
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-                        <h2 className="font-black text-gray-700 mb-4 flex items-center gap-2">
+                    <div className="bg-[var(--bg-secondary)] p-6 rounded-[var(--radius)] shadow-sm border border-[var(--border-color)]">
+                        <h2 className="font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
                             <Building size={20} /> ต้นทุนคงที่ (Fixed Costs)
                         </h2>
                         <div className="space-y-4">
                             <div>
-                                <label className="text-xs font-bold text-gray-400 block mb-1">ค่าเช่าที่ / ค่าน้ำไฟ</label>
+                                <label className="text-xs font-bold text-[var(--text-muted)] block mb-1">ค่าเช่าที่ / ค่าน้ำไฟ</label>
                                 <input
                                     type="number"
                                     value={fixedCosts.rent}
                                     onChange={e => setFixedCosts({ ...fixedCosts, rent: Number(e.target.value) })}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl px-4 py-2 font-bold text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
                                 />
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-gray-400 block mb-1">เงินเดือนพนักงาน (ที่ยังไม่ลงระบบ)</label>
+                                <label className="text-xs font-bold text-[var(--text-muted)] block mb-1">เงินเดือนพนักงาน (ที่ยังไม่ลงระบบ)</label>
                                 <input
                                     type="number"
                                     value={fixedCosts.untrackedSalaries}
                                     onChange={e => setFixedCosts({ ...fixedCosts, untrackedSalaries: Number(e.target.value) })}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl px-4 py-2 font-bold text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
                                 />
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-gray-400 block mb-1">สำรองอื่นๆ</label>
+                                <label className="text-xs font-bold text-[var(--text-muted)] block mb-1">สำรองอื่นๆ</label>
                                 <input
                                     type="number"
                                     value={fixedCosts.otherFixed}
                                     onChange={e => setFixedCosts({ ...fixedCosts, otherFixed: Number(e.target.value) })}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl px-4 py-2 font-bold text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
                                 />
                             </div>
-                            <div className="pt-4 border-t border-gray-100">
-                                <div className="flex justify-between text-sm font-black text-gray-600">
+                            <div className="pt-4 border-t border-[var(--border-color)]">
+                                <div className="flex justify-between text-sm font-semibold text-[var(--text-secondary)]">
                                     <span>รายจ่ายผันแปร (เข้าระบบ)</span>
-                                    <span>฿{currentFinancials.recordedExpenses.toLocaleString()}</span>
+                                    <span className="num text-right">฿{currentFinancials.recordedExpenses.toLocaleString()}</span>
                                 </div>
-                                <div className="flex justify-between text-lg font-black text-violet-600 mt-2">
+                                <div className="flex justify-between text-lg font-semibold text-violet-600 mt-2">
                                     <span>กำไรสุทธิ (โดยประมาณ)</span>
-                                    <span>
+                                    <span className="num text-right">
                                         ฿{(
                                             currentFinancials.revenue -
                                             currentFinancials.recordedExpenses -
@@ -269,7 +269,7 @@ const FinancialView = () => {
                         <button
                             onClick={generatePlan}
                             disabled={isAnalyzing}
-                            className="w-full mt-6 bg-gradient-to-r from-violet-600 to-indigo-600 text-white py-4 rounded-xl font-black shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full mt-6 bg-gradient-to-r from-violet-600 to-indigo-600 text-white py-4 rounded-xl font-semibold shadow-[var(--elev-2)] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isAnalyzing ? (
                                 <>กำลังวิเคราะห์...</>
@@ -280,21 +280,21 @@ const FinancialView = () => {
                     </div>
 
                     {/* History List */}
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-                        <h2 className="font-black text-gray-700 mb-4 text-sm uppercase tracking-wider">ประวัติการวางแผน</h2>
+                    <div className="bg-[var(--bg-secondary)] p-6 rounded-[var(--radius)] shadow-sm border border-[var(--border-color)]">
+                        <h2 className="font-semibold text-[var(--text-primary)] mb-4 text-sm tracking-wider">ประวัติการวางแผน</h2>
                         <div className="space-y-3">
                             {history.length > 0 ? (
                                 history.map(plan => (
-                                    <div key={plan.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs text-gray-600">
+                                    <div key={plan.id} className="p-3 bg-[var(--bg-tertiary)] rounded-xl border border-[var(--border-color)] text-xs text-[var(--text-secondary)]">
                                         <div className="flex justify-between font-bold mb-1">
                                             <span>{new Date(plan.createdAt).toLocaleDateString()}</span>
-                                            <span className={plan.health_status === 'Excellent' ? 'text-emerald-500' : 'text-amber-500'}>{plan.health_status}</span>
+                                            <span className={plan.health_status === 'Excellent' ? 'text-[var(--state-ok)]' : 'text-[var(--state-warn)]'}>{plan.health_status}</span>
                                         </div>
-                                        <div className="truncate opacity-70">Rev: ฿{plan.financials?.revenue?.toLocaleString()}</div>
+                                        <div className="num text-right truncate opacity-70">Rev: ฿{plan.financials?.revenue?.toLocaleString()}</div>
                                     </div>
                                 ))
                             ) : (
-                                <p className="text-center text-gray-300 text-xs py-4">ยังไม่มีประวัติ</p>
+                                <p className="text-center text-[var(--text-muted)] text-xs py-4">ยังไม่มีประวัติ</p>
                             )}
                         </div>
                     </div>
@@ -303,18 +303,18 @@ const FinancialView = () => {
                 {/* Result Column */}
                 <div className="lg:col-span-2 space-y-6">
                     {aiPlan ? (
-                        <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-violet-100 space-y-8 animate-in slide-in-from-bottom-4">
+                        <div className="bg-[var(--bg-secondary)] p-6 rounded-[var(--radius)] shadow-[var(--elev-3)] border border-violet-100 space-y-8 animate-in slide-in-from-bottom-4">
 
                             {/* Health Header */}
                             <div className="flex items-start justify-between">
                                 <div>
-                                    <h2 className="text-2xl font-black text-gray-800">แผนการเงินแนะนำ</h2>
-                                    <p className={`text-sm font-bold mt-1 ${aiPlan.health_status === 'Critical' ? 'text-red-500' :
-                                        aiPlan.health_status === 'Warning' ? 'text-amber-500' : 'text-emerald-500'
+                                    <h2 className="text-2xl font-semibold text-[var(--text-primary)]">แผนการเงินแนะนำ</h2>
+                                    <p className={`text-sm font-bold mt-1 ${aiPlan.health_status === 'Critical' ? 'text-[var(--state-danger)]' :
+                                        aiPlan.health_status === 'Warning' ? 'text-[var(--state-warn)]' : 'text-[var(--state-ok)]'
                                         }`}>
                                         Health Status: {aiPlan.health_status}
                                     </p>
-                                    <p className="text-gray-500 text-sm mt-2 max-w-md">{aiPlan.health_reason}</p>
+                                    <p className="text-[var(--text-secondary)] text-sm mt-2 max-w-md">{aiPlan.health_reason}</p>
                                 </div>
                                 <div className="flex gap-2">
                                     {aiPlan.id && (
@@ -328,7 +328,7 @@ const FinancialView = () => {
                                     <button
                                         onClick={savePlan}
                                         disabled={saveStatus === 'success' || aiPlan.id}
-                                        className={`px-6 py-2 rounded-xl font-black text-sm flex items-center gap-2 transition-all ${saveStatus === 'success' || aiPlan.id ? 'bg-emerald-100 text-emerald-600 cursor-default' : 'bg-gray-900 text-white hover:bg-gray-800'
+                                        className={`px-6 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 transition-all ${saveStatus === 'success' || aiPlan.id ? 'bg-[var(--state-ok)]/10 text-[var(--state-ok)] cursor-default' : 'bg-[var(--text-primary)] text-white hover:bg-[var(--text-primary)]'
                                             }`}
                                     >
                                         <Save size={18} /> {saveStatus === 'success' || aiPlan.id ? 'บันทึกแล้ว' : 'บันทึกแผน'}
@@ -347,13 +347,13 @@ const FinancialView = () => {
                                         staff_incentive: '🎁 โบนัสพนักงาน (Staff Incentive)'
                                     };
                                     return (
-                                        <div key={key} className="p-5 rounded-2xl bg-gray-50 border border-gray-100">
+                                        <div key={key} className="p-4 rounded-2xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
                                             <div className="flex justify-between items-start mb-2">
-                                                <span className="text-xs font-black text-gray-400 uppercase tracking-widest">{labels[key] || key}</span>
-                                                <span className="bg-white px-2 py-1 rounded-lg text-xs font-black shadow-sm">{data?.percentage ?? 0}%</span>
+                                                <span className="text-xs font-semibold text-[var(--text-muted)] tracking-widest">{labels[key] || key}</span>
+                                            <span className="num text-right bg-[var(--bg-secondary)] px-2 py-1 rounded-lg text-xs font-semibold shadow-sm">{data?.percentage ?? 0}%</span>
                                             </div>
-                                            <p className="text-2xl font-black text-gray-800 mb-2">฿{Number(data?.amount || 0).toLocaleString()}</p>
-                                            <p className="text-xs text-gray-500 leading-relaxed">{data?.reason}</p>
+                                            <p className="num text-right text-2xl font-semibold text-[var(--text-primary)] mb-2">฿{Number(data?.amount || 0).toLocaleString()}</p>
+                                            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{data?.reason}</p>
                                         </div>
                                     );
                                 })}
@@ -361,16 +361,16 @@ const FinancialView = () => {
 
                             {/* Action Plan */}
                             <div className="bg-violet-50 rounded-2xl p-6 border border-violet-100">
-                                <h3 className="font-black text-violet-700 mb-4 flex items-center gap-2">
+                                <h3 className="font-semibold text-violet-700 mb-4 flex items-center gap-2">
                                     <TrendingUp size={20} /> แผนปฏิบัติการเชิงกลยุทธ์ (Action Plan)
                                 </h3>
                                 <div className="space-y-3">
                                     {(aiPlan.action_plan || []).map((step, idx) => (
                                         <div key={idx} className="flex gap-3 items-start">
-                                            <div className="w-6 h-6 rounded-full bg-violet-200 text-violet-700 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">
+                                            <div className="w-6 h-6 rounded-full bg-violet-200 text-violet-700 flex items-center justify-center font-semibold text-xs shrink-0 mt-0.5">
                                                 {idx + 1}
                                             </div>
-                                            <p className="text-gray-700 text-sm font-medium">{step}</p>
+                                            <p className="text-[var(--text-primary)] text-sm font-medium">{step}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -378,7 +378,7 @@ const FinancialView = () => {
 
                         </div>
                     ) : (
-                        <div className="h-full flex flex-col items-center justify-center p-12 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-[3rem]">
+                        <div className="h-full flex flex-col items-center justify-center p-12 text-center text-[var(--text-muted)] border-2 border-dashed border-[var(--border-color)] rounded-[var(--radius)]">
                             <Wallet size={64} className="mb-4 opacity-20" />
                             <p className="font-bold text-lg">เริ่มต้นวางแผนการเงิน</p>
                             <p className="text-sm">กรอกข้อมูลต้นทุนคงที่ด้านซ้าย แล้วกดปุ่ม "วิเคราะห์แผนการเงินด้วย AI"</p>

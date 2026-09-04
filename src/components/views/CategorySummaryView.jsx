@@ -129,75 +129,75 @@ export default function CategorySummaryView() {
   };
 
   const renderCategorySummary = (extraClassName = '') => (
-    <div className={`bg-gray-50 border border-gray-100 rounded-[2.5rem] p-6 space-y-5 ${extraClassName}`}>
+    <div className={`bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[var(--radius)] p-6 space-y-5 ${extraClassName}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em]">สรุปยอดขายตามหมวดหมู่</h3>
-          <p className="text-base font-black text-gray-800 mt-2">ดูหมวดที่ขายดีที่สุด</p>
+          <h3 className="text-xs font-semibold text-[var(--text-secondary)] tracking-[0.3em]">สรุปยอดขายตามหมวดหมู่</h3>
+          <p className="text-base font-semibold text-[var(--text-primary)] mt-2">ดูหมวดที่ขายดีที่สุด</p>
         </div>
         {bestCategory ? (
-          <div className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest">
+          <div className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-2xl text-xs font-semibold tracking-widest">
             ขายดีที่สุด: {String(bestCategory.category)}
           </div>
         ) : (
-          <div className="bg-gray-200 text-gray-500 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest">
+          <div className="bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-4 py-2 rounded-2xl text-xs font-semibold tracking-widest">
             ไม่มีข้อมูล
           </div>
         )}
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button onClick={() => setCategoryRangePreset('all')} className={`px-4 py-2 rounded-2xl text-xs font-black border transition-all ${categoryRangeMode === 'all' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:bg-emerald-50'}`}>ทั้งหมด</button>
-        <button onClick={() => setCategoryRangePreset('week')} className={`px-4 py-2 rounded-2xl text-xs font-black border transition-all ${categoryRangeMode === 'week' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:bg-emerald-50'}`}>7 วันล่าสุด</button>
-        <button onClick={() => setCategoryRangePreset('custom')} className={`px-4 py-2 rounded-2xl text-xs font-black border transition-all ${categoryRangeMode === 'custom' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-gray-500 border-gray-200 hover:bg-emerald-50'}`}>เลือกช่วงวันที่</button>
+        <button onClick={() => setCategoryRangePreset('all')} className={`px-4 py-2 rounded-2xl text-xs font-semibold border transition-all ${categoryRangeMode === 'all' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:bg-emerald-50'}`}>ทั้งหมด</button>
+        <button onClick={() => setCategoryRangePreset('week')} className={`px-4 py-2 rounded-2xl text-xs font-semibold border transition-all ${categoryRangeMode === 'week' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:bg-emerald-50'}`}>7 วันล่าสุด</button>
+        <button onClick={() => setCategoryRangePreset('custom')} className={`px-4 py-2 rounded-2xl text-xs font-semibold border transition-all ${categoryRangeMode === 'custom' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:bg-emerald-50'}`}>เลือกช่วงวันที่</button>
       </div>
 
       {categoryRangeMode === 'custom' && (
         <div className="grid grid-cols-2 gap-3">
-          <input type="date" value={categoryRangeStart} onChange={(e) => setCategoryRangeStart(e.target.value)} className="bg-white border border-gray-200 rounded-2xl px-4 py-2 text-sm font-black text-gray-700 outline-none" />
-          <input type="date" value={categoryRangeEnd} onChange={(e) => setCategoryRangeEnd(e.target.value)} className="bg-white border border-gray-200 rounded-2xl px-4 py-2 text-sm font-black text-gray-700 outline-none" />
+          <input type="date" value={categoryRangeStart} onChange={(e) => setCategoryRangeStart(e.target.value)} className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl px-4 py-2 text-sm font-semibold text-[var(--text-primary)] outline-none" />
+          <input type="date" value={categoryRangeEnd} onChange={(e) => setCategoryRangeEnd(e.target.value)} className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl px-4 py-2 text-sm font-semibold text-[var(--text-primary)] outline-none" />
         </div>
       )}
     </div>
   );
 
   return (
-    <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-gray-800">
-      <header className="h-24 bg-white border-b border-gray-100 px-12 flex items-center justify-between shadow-sm z-10">
-        <div className="flex items-center gap-4 text-emerald-600 cursor-pointer font-black" onClick={() => handleViewChange('bills')}>
+    <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-[var(--text-primary)]">
+      <header className="h-24 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-12 flex items-center justify-between shadow-sm z-[var(--z-nav)]">
+        <div className="flex items-center gap-4 text-emerald-600 cursor-pointer font-semibold" onClick={() => handleViewChange('bills')}>
           <ChevronLeft size={32} />
-          <h1 className="text-2xl font-black uppercase tracking-tight text-gray-800">สรุปยอดขายตามหมวดหมู่</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">สรุปยอดขายตามหมวดหมู่</h1>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={exportCategorySalesCsv} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg hover:bg-emerald-700 transition-all">
+          <button onClick={exportCategorySalesCsv} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-xs font-semibold tracking-widest shadow-[var(--elev-2)] hover:bg-emerald-700 transition-all">
             Export CSV
           </button>
         </div>
       </header>
-      <div className="flex-1 p-10 overflow-y-auto">
+      <div className="flex-1 p-6 overflow-y-auto">
         <div className="max-w-4xl mx-auto space-y-8">
-          {renderCategorySummary('bg-white')}
-          <div className="bg-white rounded-[3rem] shadow-sm border border-gray-100 p-10">
-            <h2 className="text-lg font-black text-gray-800 uppercase tracking-[0.2em] mb-8">รายละเอียดรายหมวด <span className="text-gray-400 font-bold text-sm normal-case">(คลิกเพื่อดูรายการ)</span></h2>
+          {renderCategorySummary('bg-[var(--bg-secondary)]')}
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-sm border border-[var(--border-color)] p-6">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] tracking-[0.2em] mb-8">รายละเอียดรายหมวด <span className="text-[var(--text-muted)] font-bold text-sm normal-case">(คลิกเพื่อดูรายการ)</span></h2>
             <div className="space-y-4">
               {categorySales.length > 0 ? (
                 categorySales.map((cat) => (
                   <div key={cat.category} className="space-y-2">
                     <button
                       onClick={() => setExpandedCategory(expandedCategory === cat.category ? null : cat.category)}
-                      className={`w-full flex items-center justify-between bg-gray-50 rounded-[2rem] px-6 py-5 border border-gray-100 hover:bg-emerald-50 hover:border-emerald-200 transition-all cursor-pointer ${expandedCategory === cat.category ? 'bg-emerald-50 border-emerald-200' : ''}`}
+                      className={`w-full flex items-center justify-between bg-[var(--bg-tertiary)] rounded-[var(--radius)] px-6 py-5 border border-[var(--border-color)] hover:bg-emerald-50 hover:border-emerald-200 transition-all cursor-pointer ${expandedCategory === cat.category ? 'bg-emerald-50 border-emerald-200' : ''}`}
                     >
                       <div className="flex items-center gap-4 min-w-0">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${expandedCategory === cat.category ? 'bg-emerald-500 text-white' : 'bg-white text-gray-400 border border-gray-200'}`}>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${expandedCategory === cat.category ? 'bg-emerald-500 text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border border-[var(--border-color)]'}`}>
                           {expandedCategory === cat.category ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                         </div>
                         <div className="text-left min-w-0">
-                          <p className="text-base font-black text-gray-800 truncate">{String(cat.category)}</p>
-                          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">{Number(cat.quantity).toLocaleString()} ชิ้น • {categoryItemsBreakdown[cat.category]?.items?.length || 0} รายการ</p>
+                          <p className="text-base font-semibold text-[var(--text-primary)] truncate">{String(cat.category)}</p>
+                          <p className="num text-right text-xs font-bold text-[var(--text-muted)] tracking-widest mt-1">{Number(cat.quantity).toLocaleString()} ชิ้น • {categoryItemsBreakdown[cat.category]?.items?.length || 0} รายการ</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-xl font-black text-emerald-600">฿{Number(cat.revenue).toLocaleString()}</p>
+                        <p className="num text-right text-xl font-semibold text-emerald-600">฿{Number(cat.revenue).toLocaleString()}</p>
                       </div>
                     </button>
 
@@ -207,18 +207,18 @@ export default function CategorySummaryView() {
                         {/* Bean Modifiers Summary */}
                         {categoryItemsBreakdown[cat.category].beans.length > 0 && (
                           <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100 space-y-3">
-                            <div className="flex items-center gap-2 text-xs font-black text-amber-600 uppercase tracking-wider">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-amber-600 tracking-wider">
                               <Coffee size={14} /> สรุปยอดเมล็ดกาแฟที่ใช้
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                               {categoryItemsBreakdown[cat.category].beans.map((bean, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-3 bg-white rounded-xl border border-amber-100 shadow-sm">
+                                <div key={idx} className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-xl border border-amber-100 shadow-sm">
                                   <div className="flex items-center gap-2 min-w-0">
-                                    <span className="text-amber-700 font-black text-sm truncate">{bean.tag}</span>
+                                    <span className="text-amber-700 font-semibold text-sm truncate">{bean.tag}</span>
                                   </div>
                                   <div className="text-right shrink-0">
-                                    <p className="text-xs font-black text-amber-600">x{bean.quantity}</p>
-                                    <p className="text-xs font-bold text-gray-400">฿{bean.revenue.toLocaleString()}</p>
+                                    <p className="num text-right text-xs font-semibold text-amber-600">x{bean.quantity}</p>
+                                    <p className="num text-right text-xs font-bold text-[var(--text-muted)]">฿{bean.revenue.toLocaleString()}</p>
                                   </div>
                                 </div>
                               ))}
@@ -229,17 +229,17 @@ export default function CategorySummaryView() {
                         {/* Regular Items */}
                         <div className="space-y-2">
                           {categoryItemsBreakdown[cat.category].items.map((item, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                            <div key={idx} className="flex items-center justify-between p-4 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] shadow-sm">
                               <div className="flex items-center gap-4 min-w-0">
-                                <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 font-black text-sm shrink-0">
-                                  x{item.quantity}
+                                <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 font-semibold text-sm shrink-0">
+                                  <span className="num text-right">x{item.quantity}</span>
                                 </div>
                                 <div className="min-w-0">
-                                  <p className="font-black text-gray-800 text-sm truncate">{item.name}</p>
-                                  <p className="text-xs font-bold text-gray-400">฿{item.price.toLocaleString()} / ชิ้น</p>
+                                  <p className="font-semibold text-[var(--text-primary)] text-sm truncate">{item.name}</p>
+                                  <p className="num text-right text-xs font-bold text-[var(--text-muted)]">฿{item.price.toLocaleString()} / ชิ้น</p>
                                 </div>
                               </div>
-                              <p className="font-black text-emerald-600 text-base">฿{item.revenue.toLocaleString()}</p>
+                              <p className="num text-right font-semibold text-emerald-600 text-base">฿{item.revenue.toLocaleString()}</p>
                             </div>
                           ))}
                         </div>
