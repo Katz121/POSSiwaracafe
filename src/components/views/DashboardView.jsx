@@ -444,20 +444,20 @@ const DashboardView = () => {
     ];
 
     return (
-        <div className="h-full bg-[var(--bg-primary)] flex flex-col overflow-hidden text-gray-800 relative">
+        <div className="h-full bg-[var(--bg-primary)] flex flex-col overflow-hidden text-[var(--text-primary)] relative">
 
             {/* AI Consultant Modal */}
             {showConsultantModal && (
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-[var(--bg-secondary)] w-full max-w-2xl rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] overflow-hidden border border-white/20 ring-4 ring-black/5">
-                        <div className="p-8 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shrink-0 relative overflow-hidden">
-                            <div className="relative z-10 flex justify-between items-start">
+                <div className="fixed inset-0 z-[var(--z-modal-bg)] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-[var(--bg-secondary)] w-full max-w-2xl rounded-[var(--radius)] shadow-[var(--elev-3)] flex flex-col max-h-[85vh] overflow-hidden border border-white/20 ring-4 ring-black/5">
+                        <div className="p-6 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shrink-0 relative overflow-hidden">
+                            <div className="relative z-[var(--z-nav)] flex justify-between items-start">
                                 <div className="flex items-center gap-4">
                                     <div className="bg-[var(--bg-secondary)]/20 p-3 rounded-2xl backdrop-blur-md">
                                         <Bot size={24} />
                                     </div>
                                     <div>
-                                        <h3 className="text-2xl font-black uppercase tracking-tight">AI ที่ปรึกษาธุรกิจ</h3>
+                                        <h3 className="text-2xl font-bold  tracking-tight">AI ที่ปรึกษาธุรกิจ</h3>
                                         <p className="text-white/80 text-sm font-medium">ผู้ช่วยวิเคราะห์ธุรกิจส่วนตัว 24/7</p>
                                     </div>
                                 </div>
@@ -478,43 +478,43 @@ const DashboardView = () => {
 
                         {/* Chat History Panel */}
                         {showChatHistory && (
-                            <div className="bg-violet-50 border-b border-violet-100 p-4 max-h-48 overflow-y-auto">
+                            <div className="bg-[var(--accent-ai-light)] border-b border-[var(--border-color)] p-4 max-h-48 overflow-y-auto">
                                 <div className="flex items-center justify-between mb-3">
-                                    <span className="text-xs font-black text-violet-600 uppercase tracking-widest flex items-center gap-2">
+                                    <span className="text-xs font-medium text-[var(--accent-ai)]  tracking-widest flex items-center gap-2">
                                         <Clock size={14} /> ประวัติการสนทนา ({chatHistory.length} รายการ)
                                     </span>
                                     <div className="flex gap-2">
                                         <button
                                             onClick={handleExportHistory}
                                             disabled={chatHistory.length === 0}
-                                            className="text-xs font-bold bg-violet-100 text-violet-600 px-3 py-1.5 rounded-lg hover:bg-violet-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                                            className="text-xs font-medium bg-[var(--accent-ai-light)] text-[var(--accent-ai)] px-3 py-1.5 rounded-lg hover:bg-violet-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                                         >
                                             <Download size={12} /> ส่งออก
                                         </button>
                                         <button
                                             onClick={handleClearHistory}
                                             disabled={chatHistory.length === 0}
-                                            className="text-xs font-bold bg-red-50 text-red-500 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                                            className="text-xs font-medium bg-[var(--bg-tertiary)] text-[var(--state-danger)] px-3 py-1.5 rounded-lg hover:bg-[var(--bg-tertiary)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                                         >
                                             <RotateCcw size={12} /> ล้าง
                                         </button>
                                     </div>
                                 </div>
                                 {chatHistory.length === 0 ? (
-                                    <p className="text-xs text-gray-400 text-center py-4">ยังไม่มีประวัติการสนทนา</p>
+                                    <p className="text-xs text-[var(--text-muted)] text-center py-4">ยังไม่มีประวัติการสนทนา</p>
                                 ) : (
                                     <div className="space-y-2">
                                         {chatHistory.slice(-10).reverse().map((msg, idx) => (
                                             <div
                                                 key={msg.id || idx}
                                                 className={`text-xs p-2 rounded-lg ${msg.role === 'user'
-                                                        ? 'bg-[var(--bg-secondary)] border border-violet-100 text-gray-700'
-                                                        : 'bg-violet-100/50 text-violet-700'
+                                                        ? 'bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)]'
+                                                        : 'bg-[var(--accent-ai-light)]/50 text-[var(--accent-ai-dark)]'
                                                     }`}
                                             >
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="font-bold">{msg.role === 'user' ? '👤 คุณ' : '🤖 AI'}</span>
-                                                    <span className="text-xs text-gray-400">
+                                                    <span className="text-xs text-[var(--text-muted)]">
                                                         {new Date(msg.timestamp).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
                                                     </span>
                                                 </div>
@@ -526,63 +526,63 @@ const DashboardView = () => {
                             </div>
                         )}
 
-                        <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-gray-50/50">
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[var(--bg-tertiary)]/50">
                             {consultantResponse ? (
-                                <div className="bg-[var(--bg-secondary)] p-6 rounded-[2rem] shadow-sm border border-[var(--border-light)]">
-                                    <div className="flex items-center gap-3 mb-4 text-violet-600 font-black uppercase text-xs tracking-widest">
+                                <div className="bg-[var(--bg-secondary)] p-6 rounded-[var(--radius)] shadow-sm border border-[var(--border-light)]">
+                                    <div className="flex items-center gap-3 mb-4 text-[var(--accent-ai)] font-bold  text-xs tracking-widest">
                                         <Bot size={16} /> AI วิเคราะห์
                                     </div>
-                                    <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed whitespace-pre-line">
+                                    <div className="prose prose-sm max-w-none text-[var(--text-primary)] leading-relaxed whitespace-pre-line">
                                         {consultantResponse}
                                     </div>
 
                                     {/* ดำเนินการ based on context */}
                                     <div className="mt-6 pt-4 border-t border-[var(--border-light)]">
-                                        <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">ดำเนินการ</p>
+                                        <p className="text-xs font-medium text-[var(--text-muted)]  tracking-widest mb-3">ดำเนินการ</p>
                                         <div className="flex flex-wrap gap-2">
                                             {dashboardStats.lowStockCount > 0 && (
                                                 <button
                                                     onClick={() => { setShowConsultantModal(false); handleViewChange('stock'); }}
-                                                    className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-black hover:bg-red-100 transition-all border border-red-100"
+                                                    className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-tertiary)] text-[var(--state-danger)] rounded-xl text-xs font-medium hover:bg-[var(--bg-tertiary)] transition-all border border-[var(--border-color)]"
                                                 >
                                                     <Package size={14} /> ดูสต็อกใกล้หมด ({dashboardStats.lowStockCount})
                                                 </button>
                                             )}
                                             <button
                                                 onClick={() => { setShowConsultantModal(false); handleViewChange('menu_manage'); }}
-                                                className="flex items-center gap-2 px-4 py-2 bg-violet-50 text-violet-600 rounded-xl text-xs font-black hover:bg-violet-100 transition-all border border-violet-100"
+                                                className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-ai-light)] text-[var(--accent-ai)] rounded-xl text-xs font-medium hover:bg-[var(--accent-ai-light)] transition-all border border-[var(--border-color)]"
                                             >
                                                 <Tag size={14} /> จัดการโปรโมชั่น
                                             </button>
                                             <button
                                                 onClick={() => { setShowConsultantModal(false); handleViewChange('expenses'); }}
-                                                className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 rounded-xl text-xs font-black hover:bg-amber-100 transition-all border border-amber-100"
+                                                className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-[var(--state-warn)] rounded-xl text-xs font-medium hover:bg-amber-100 transition-all border border-amber-100"
                                             >
                                                 <Banknote size={14} /> บันทึกรายจ่าย
                                             </button>
                                             <button
                                                 onClick={() => { setShowConsultantModal(false); handleViewChange('members_manage'); }}
-                                                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-black hover:bg-emerald-100 transition-all border border-emerald-100"
+                                                className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] rounded-xl text-xs font-medium hover:bg-emerald-100 transition-all border border-[var(--border-color)]"
                                             >
                                                 <Users size={14} /> ดูสมาชิก ({members.length})
                                             </button>
                                             <button
                                                 onClick={() => { setShowConsultantModal(false); handleViewChange('admin'); }}
-                                                className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-black hover:bg-gray-200 transition-all border border-gray-200"
+                                                className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] rounded-xl text-xs font-medium hover:bg-[var(--bg-tertiary)] transition-all border border-[var(--border-color)]"
                                             >
                                                 <Settings size={14} /> ตั้งค่าร้าน
                                             </button>
                                         </div>
                                     </div>
 
-                                    <button onClick={() => setConsultantResponse('')} className="mt-6 text-xs font-bold text-gray-400 hover:text-violet-600 transition-colors">
+                                    <button onClick={() => setConsultantResponse('')} className="mt-6 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--accent-ai)] transition-colors">
                                         ถามคำถามใหม่
                                     </button>
                                 </div>
                             ) : (
                                 <div className="flex flex-col items-center justify-center h-full text-center py-10 opacity-60">
-                                    <Bot size={64} className="mb-4 text-gray-400" />
-                                    <p className="font-bold text-gray-500">พร้อมวิเคราะห์ข้อมูลร้านของคุณ</p>
+                                    <Bot size={64} className="mb-4 text-[var(--text-muted)]" />
+                                    <p className="font-bold text-[var(--text-secondary)]">พร้อมวิเคราะห์ข้อมูลร้านของคุณ</p>
                                     <p className="text-sm">พิมพ์คำถามด้านล่างได้เลยครับ</p>
                                 </div>
                             )}
@@ -592,7 +592,7 @@ const DashboardView = () => {
                             {!consultantResponse && (
                                 <div className="flex flex-wrap gap-2">
                                     {suggestions.map((s, i) => (
-                                        <button key={i} onClick={() => setConsultantQuery(s)} className="text-xs font-bold bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-violet-50 hover:text-violet-600 transition-all border border-transparent hover:border-violet-100">
+                                        <button key={i} onClick={() => setConsultantQuery(s)} className="text-xs font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-3 py-1.5 rounded-lg hover:bg-[var(--accent-ai-light)] hover:text-[var(--accent-ai)] transition-all border border-transparent hover:border-[var(--border-color)]">
                                             {s}
                                         </button>
                                     ))}
@@ -605,13 +605,13 @@ const DashboardView = () => {
                                     onChange={(e) => setConsultantQuery(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleConsultantQuery()}
                                     placeholder="ถามเกี่ยวกับยอดขาย, กำไร, หรือขอคำแนะนำ..."
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 pl-6 pr-14 font-medium text-gray-700 focus:outline-none focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 transition-all"
+                                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl py-4 pl-6 pr-14 font-medium text-[var(--text-primary)] focus:outline-none focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 transition-all"
                                     disabled={isConsulting}
                                 />
                                 <button
                                     onClick={handleConsultantQuery}
                                     disabled={!consultantQuery.trim() || isConsulting}
-                                    className="absolute right-2 top-2 bottom-2 aspect-square bg-violet-600 text-white rounded-xl flex items-center justify-center hover:bg-violet-700 disabled:bg-gray-200 disabled:text-gray-400 transition-all shadow-lg shadow-violet-500/20"
+                                    className="absolute right-2 top-2 bottom-2 aspect-square bg-violet-600 text-white rounded-xl flex items-center justify-center hover:bg-violet-700 disabled:bg-[var(--bg-tertiary)] disabled:text-[var(--text-muted)] transition-all shadow-[var(--elev-1)] shadow-violet-500/20"
                                 >
                                     {isConsulting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send size={20} />}
                                 </button>
@@ -621,22 +621,22 @@ const DashboardView = () => {
                 </div>
             )}
 
-            <header className="h-16 md:h-20 lg:h-24 bg-[var(--bg-secondary)] border-b border-[var(--border-light)] px-4 md:px-8 lg:px-12 flex items-center justify-between shadow-sm z-10 shrink-0">
+            <header className="h-16 md:h-20 lg:h-24 bg-[var(--bg-secondary)] border-b border-[var(--border-light)] px-4 md:px-8 lg:px-12 flex items-center justify-between shadow-sm z-[var(--z-nav)] shrink-0">
                 <div className="flex items-center gap-2 md:gap-4">
-                    <div className="p-2 md:p-3 bg-emerald-500 text-white rounded-xl md:rounded-2xl shadow-lg ring-4 ring-emerald-500/10">
+                    <div className="p-2 md:p-3 bg-[var(--accent-emerald-light)]0 text-white rounded-xl md:rounded-2xl shadow-[var(--elev-1)] ring-4 ring-emerald-500/10">
                         <BarChart3 size={20} className="md:w-6 md:h-6 lg:w-7 lg:h-7" />
                     </div>
                     <div>
-                        <h1 className="text-lg md:text-xl lg:text-2xl font-black uppercase tracking-tight text-gray-800">ภาพรวมธุรกิจ</h1>
-                        <p className="text-xs md:text-xs font-black text-gray-400 uppercase tracking-[0.2em] mt-0.5 md:mt-1 hidden md:block">สรุปข้อมูลเชิงลึกของร้านคุณ</p>
+                        <h1 className="text-lg md:text-xl lg:text-2xl font-bold  tracking-tight text-[var(--text-primary)]">ภาพรวมธุรกิจ</h1>
+                        <p className="text-xs md:text-xs font-medium text-[var(--text-muted)]  tracking-[0.2em] mt-0.5 md:mt-1 hidden md:block">สรุปข้อมูลเชิงลึกของร้านคุณ</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2 md:gap-4">
                     <SmartAlerts data={alertsData} onAction={handleAlertAction} compact={true} />
-                    <button onClick={() => setShowConsultantModal(true)} className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg hover:scale-105 transition-all active:scale-95 border-b-4 border-violet-700">
+                    <button onClick={() => setShowConsultantModal(true)} className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white px-6 py-3 rounded-2xl font-bold text-xs  tracking-widest flex items-center gap-2 shadow-[var(--elev-1)] hover:scale-105 transition-all active:scale-95 border-b-4 border-violet-700">
                         <Zap size={18} fill="currentColor" /> ถาม AI ที่ปรึกษา
                     </button>
-                    <div className="relative bg-[var(--bg-secondary)] border-2 border-emerald-100 flex items-center gap-3 px-6 py-3 rounded-2xl shadow-sm text-emerald-600 font-black uppercase text-xs tracking-widest leading-none shrink-0 cursor-pointer hover:bg-emerald-50 transition-colors">
+                    <div className="relative bg-[var(--bg-secondary)] border-2 border-[var(--border-color)] flex items-center gap-3 px-6 py-3 rounded-2xl shadow-sm text-[var(--accent-emerald)] font-bold  text-xs tracking-widest leading-none shrink-0 cursor-pointer hover:bg-[var(--accent-emerald-light)] transition-colors">
                         <Calendar size={18} />
                         {new Date(selectedMonth + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
                         <input
@@ -650,176 +650,176 @@ const DashboardView = () => {
                                     // ignore
                                 }
                             }}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-[var(--z-nav)]"
                         />
                     </div>
-                    <button onClick={() => window.print()} className="bg-gray-800 text-white p-3.5 rounded-2xl hover:bg-gray-700 transition-all shadow-lg active:scale-95"><FileText size={20} /></button>
+                    <button onClick={() => window.print()} className="bg-[var(--text-primary)] text-white p-3.5 rounded-2xl hover:bg-[var(--text-secondary)] transition-all shadow-[var(--elev-1)] active:scale-95"><FileText size={20} /></button>
                 </div>
             </header>
 
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-10 space-y-6 md:space-y-8 lg:space-y-10 scrollbar-hide pb-24 md:pb-32">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-6 space-y-6 md:space-y-8 lg:space-y-10 scrollbar-hide pb-24 md:pb-32">
                 {/* Starting Cash Reminder - Always Visible */}
                 {Number(startingCash) > 0 && (
-                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-[2rem] p-6 border-2 border-amber-200 flex items-center justify-between shadow-lg">
+                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-[var(--radius)] p-6 border-2 border-amber-200 flex items-center justify-between shadow-[var(--elev-1)]">
                         <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-lg">
+                            <div className="w-14 h-14 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-[var(--elev-1)]">
                                 <Banknote size={24} />
                             </div>
                             <div>
-                                <p className="text-xs font-black text-amber-600 uppercase tracking-[0.2em] mb-1">เงินตั้งต้นร้าน (เงินทอน)</p>
-                                <p className="text-xs text-amber-500 font-bold">เงินสำรองไว้ทอนลูกค้า - ไม่นับรวมกับยอดขาย</p>
+                                <p className="text-xs font-medium text-[var(--state-warn)]  tracking-[0.2em] mb-1">เงินตั้งต้นร้าน (เงินทอน)</p>
+                                <p className="text-xs text-[var(--state-warn)] font-bold">เงินสำรองไว้ทอนลูกค้า - ไม่นับรวมกับยอดขาย</p>
                             </div>
                         </div>
                         <div className="text-right">
-                            <p className="text-3xl font-black text-amber-600 tracking-tighter">฿{Number(startingCash).toLocaleString()}</p>
-                            <p className="text-xs font-bold text-amber-400 uppercase tracking-widest mt-1">แยกจากกำไร/ขาดทุน</p>
+                            <p className="text-3xl font-bold text-[var(--state-warn)] tracking-tighter num">฿{Number(startingCash).toLocaleString()}</p>
+                            <p className="text-xs font-medium text-[var(--state-warn)]  tracking-widest mt-1">แยกจากกำไร/ขาดทุน</p>
                         </div>
                     </div>
                 )}
 
                 {/* Top Summaries */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
-                    <div className="bg-[var(--bg-secondary)] rounded-[3rem] p-8 shadow-sm border border-[var(--border-light)] flex flex-col justify-between hover:shadow-xl hover:scale-[1.02] transition-all duration-300">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                    <Card padding="lg" hoverable className="flex flex-col justify-between">
                         <div className="flex justify-between items-start mb-6">
-                            <div className="w-14 h-14 bg-violet-50 text-violet-500 rounded-2xl flex items-center justify-center shadow-inner"><Users size={24} /></div>
-                            <span className="text-xs font-black text-violet-500 bg-violet-50 px-3 py-1.5 rounded-xl border border-violet-100 uppercase tracking-widest">สมาชิกใหม่</span>
+                            <div className="w-14 h-14 bg-[var(--accent-ai-light)] text-[var(--accent-ai)] rounded-2xl flex items-center justify-center shadow-inner"><Users size={24} /></div>
+                            <span className="text-xs font-medium text-[var(--accent-ai)] bg-[var(--accent-ai-light)] px-3 py-1.5 rounded-xl border border-[var(--border-color)]  tracking-widest">สมาชิกใหม่</span>
                         </div>
                         <div>
-                            <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">สมาชิกใหม่ (เดือนนี้)</p>
-                            <p className="text-4xl font-black text-gray-800 tracking-tighter">+{memberStats.newMembersMonth}</p>
+                            <p className="text-xs font-medium text-[var(--text-muted)]  tracking-widest mb-2">สมาชิกใหม่ (เดือนนี้)</p>
+                            <p className="text-4xl font-bold text-[var(--text-primary)] tracking-tighter num">+{memberStats.newMembersMonth}</p>
                             {memberStats.newMembersToday > 0 && (
-                                <p className="text-xs font-black text-emerald-500 uppercase tracking-wider mt-2 bg-emerald-50 inline-block px-2 py-1 rounded-lg border border-emerald-100 animate-pulse">
+                                <p className="text-xs font-medium text-[var(--accent-emerald)]  tracking-wider mt-2 bg-[var(--accent-emerald-light)] inline-block px-2 py-1 rounded-lg border border-[var(--border-color)] animate-pulse">
                                     วันนี้ +{memberStats.newMembersToday} คน
                                 </p>
                             )}
                         </div>
-                    </div>
+                    </Card>
 
-                    <div className="bg-[var(--bg-secondary)] rounded-[3rem] p-8 shadow-sm border border-[var(--border-light)] flex flex-col justify-between hover:shadow-xl hover:scale-[1.02] transition-all duration-300">
+                    <Card padding="lg" hoverable className="flex flex-col justify-between">
                         <div className="flex justify-between items-start mb-6">
-                            <div className="w-14 h-14 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center shadow-inner"><TrendingUp size={24} /></div>
-                            <span className="text-xs font-black text-emerald-500 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100 uppercase tracking-widest">รายรับ</span>
+                            <div className="w-14 h-14 bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] rounded-2xl flex items-center justify-center shadow-inner"><TrendingUp size={24} /></div>
+                            <span className="text-xs font-medium text-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] px-3 py-1.5 rounded-xl border border-[var(--border-color)]  tracking-widest">รายรับ</span>
                         </div>
                         <div>
-                            <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">รายรับเดือนนี้</p>
-                            <p className="text-4xl font-black text-gray-800 tracking-tighter">฿{monthlyStats.revenue.toLocaleString()}</p>
+                            <p className="text-xs font-medium text-[var(--text-muted)]  tracking-widest mb-2">รายรับเดือนนี้</p>
+                            <p className="text-4xl font-bold text-[var(--text-primary)] tracking-tighter num">฿{monthlyStats.revenue.toLocaleString()}</p>
                         </div>
-                    </div>
+                    </Card>
 
-                    <div className="bg-[var(--bg-secondary)] rounded-[3rem] p-8 shadow-sm border border-[var(--border-light)] flex flex-col justify-between hover:shadow-xl hover:scale-[1.02] transition-all duration-300">
+                    <Card padding="lg" hoverable className="flex flex-col justify-between">
                         <div className="flex justify-between items-start mb-6">
-                            <div className="w-14 h-14 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center shadow-inner"><Target size={24} /></div>
-                            <span className="text-xs font-black text-blue-500 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 uppercase tracking-widest">{monthlyStats.count} ออเดอร์</span>
+                            <div className="w-14 h-14 bg-blue-50 text-[var(--accent-ai)] rounded-2xl flex items-center justify-center shadow-inner"><Target size={24} /></div>
+                            <span className="text-xs font-medium text-[var(--accent-ai)] bg-blue-50 px-3 py-1.5 rounded-xl border border-[var(--border-color)]  tracking-widest num">{monthlyStats.count} ออเดอร์</span>
                         </div>
                         <div>
-                            <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">ออเดอร์สำเร็จ</p>
-                            <p className="text-4xl font-black text-gray-800 tracking-tighter">{(monthlyStats.count).toLocaleString()}</p>
+                            <p className="text-xs font-medium text-[var(--text-muted)]  tracking-widest mb-2">ออเดอร์สำเร็จ</p>
+                            <p className="text-4xl font-bold text-[var(--text-primary)] tracking-tighter num">{(monthlyStats.count).toLocaleString()}</p>
                         </div>
-                    </div>
+                    </Card>
 
-                    <div className="bg-[var(--bg-secondary)] rounded-[3rem] p-8 shadow-sm border border-[var(--border-light)] flex flex-col justify-between hover:shadow-xl hover:scale-[1.02] transition-all duration-300">
+                    <Card padding="lg" hoverable className="flex flex-col justify-between">
                         <div className="flex justify-between items-start mb-6">
-                            <div className="w-14 h-14 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center shadow-inner"><Trash2 size={24} /></div>
-                            <span className={`text-xs font-black px-3 py-1.5 rounded-xl border uppercase tracking-widest ${dashboardStats.totalWasteCost > 500 ? 'bg-red-100 text-red-600 border-red-200' : 'bg-gray-50 text-gray-400'}`}>ของเสีย</span>
+                            <div className="w-14 h-14 bg-[var(--bg-tertiary)] text-[var(--state-danger)] rounded-2xl flex items-center justify-center shadow-inner"><Trash2 size={24} /></div>
+                            <span className={`text-xs font-medium px-3 py-1.5 rounded-xl border  tracking-widest ${dashboardStats.totalWasteCost > 500 ? 'bg-[var(--bg-tertiary)] text-[var(--state-danger)] border-[var(--border-color)]' : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]'}`}>ของเสีย</span>
                         </div>
                         <div>
-                            <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">มูลค่าของเสีย (เดือนนี้)</p>
-                            <p className="text-4xl font-black text-red-600 tracking-tighter">฿{dashboardStats.totalWasteCost.toLocaleString()}</p>
+                            <p className="text-xs font-medium text-[var(--text-muted)]  tracking-widest mb-2">มูลค่าของเสีย (เดือนนี้)</p>
+                            <p className="text-4xl font-bold text-[var(--state-danger)] tracking-tighter num">฿{dashboardStats.totalWasteCost.toLocaleString()}</p>
                         </div>
-                    </div>
+                    </Card>
 
-                    <div className="bg-[var(--bg-secondary)] rounded-[3rem] p-8 shadow-sm border border-[var(--border-light)] flex flex-col justify-between hover:shadow-xl hover:scale-[1.02] transition-all duration-300">
+                    <Card padding="lg" hoverable className="flex flex-col justify-between">
                         <div className="flex justify-between items-start mb-6">
-                            <div className="w-14 h-14 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center shadow-inner"><Flame size={24} /></div>
-                            <span className={`text-xs font-black px-3 py-1.5 rounded-xl border uppercase tracking-widest ${dashboardStats.lowStockCount > 0 ? 'bg-red-100 text-red-600 border-red-200 animate-pulse' : 'bg-green-50 text-green-600 border-green-100'}`}>{dashboardStats.lowStockCount} รายการใกล้หมด</span>
+                            <div className="w-14 h-14 bg-[var(--bg-tertiary)] text-[var(--state-danger)] rounded-2xl flex items-center justify-center shadow-inner"><Flame size={24} /></div>
+                            <span className={`text-xs font-medium px-3 py-1.5 rounded-xl border  tracking-widest ${dashboardStats.lowStockCount > 0 ? 'bg-[var(--bg-tertiary)] text-[var(--state-danger)] border-[var(--border-color)] animate-pulse' : 'bg-green-50 text-green-600 border-green-100'}`}>{dashboardStats.lowStockCount} รายการใกล้หมด</span>
                         </div>
                         <div>
-                            <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">วัตถุดิบใกล้หมด</p>
-                            <p className="text-4xl font-black text-gray-800 tracking-tighter">{dashboardStats.lowStockCount}</p>
+                            <p className="text-xs font-medium text-[var(--text-muted)]  tracking-widest mb-2">วัตถุดิบใกล้หมด</p>
+                            <p className="text-4xl font-bold text-[var(--text-primary)] tracking-tighter num">{dashboardStats.lowStockCount}</p>
                         </div>
-                    </div>
+                    </Card>
                 </div>
 
                 {/* Month Comparison Section */}
-                <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-[3rem] p-8 shadow-2xl border border-slate-700">
+                <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-[var(--radius)] p-6 shadow-[var(--elev-3)] border border-slate-700">
                     <div className="flex items-center justify-between mb-8">
-                        <h2 className="text-lg font-black text-white uppercase tracking-tight flex items-center gap-3">
-                            <TrendingUp className="text-emerald-400" /> เปรียบเทียบเดือนนี้ vs เดือนก่อน
+                        <h2 className="text-lg font-bold text-white  tracking-tight flex items-center gap-3">
+                            <TrendingUp className="text-[var(--accent-emerald)]" /> เปรียบเทียบเดือนนี้ vs เดือนก่อน
                         </h2>
-                        <span className="text-xs font-bold text-slate-400">
+                        <span className="text-xs font-medium text-slate-400">
                             {new Date(lastMonthStats.month + '-01').toLocaleDateString('th-TH', { month: 'short' })} → {new Date(currentMonth + '-01').toLocaleDateString('th-TH', { month: 'short' })}
                         </span>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                         {/* Revenue Comparison */}
-                        <div className="bg-slate-800/50 rounded-2xl p-5 border border-slate-700">
+                        <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700">
                             <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-black text-slate-400 uppercase tracking-wider">รายได้</span>
-                                <div className={`flex items-center gap-1 text-xs font-black ${growthStats.revenueGrowth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                <span className="text-xs font-medium text-slate-400  tracking-wider">รายได้</span>
+                                <div className={`flex items-center gap-1 text-xs font-medium ${growthStats.revenueGrowth >= 0 ? 'text-[var(--accent-emerald)]' : 'text-[var(--state-danger)]'}`}>
                                     {growthStats.revenueGrowth >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                                     {Math.abs(growthStats.revenueGrowth)}%
                                 </div>
                             </div>
-                            <p className="text-2xl font-black text-white">฿{monthlyStats.revenue.toLocaleString()}</p>
-                            <p className="text-xs text-slate-500 mt-1">เดือนก่อน: ฿{lastMonthStats.revenue.toLocaleString()}</p>
+                            <p className="text-2xl font-bold text-white num">฿{monthlyStats.revenue.toLocaleString()}</p>
+                            <p className="text-xs text-slate-500 mt-1 num">เดือนก่อน: ฿{lastMonthStats.revenue.toLocaleString()}</p>
                         </div>
 
                         {/* Profit Comparison */}
-                        <div className="bg-slate-800/50 rounded-2xl p-5 border border-slate-700">
+                        <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700">
                             <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-black text-slate-400 uppercase tracking-wider">กำไร</span>
-                                <div className={`flex items-center gap-1 text-xs font-black ${growthStats.profitGrowth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                <span className="text-xs font-medium text-slate-400  tracking-wider">กำไร</span>
+                                <div className={`flex items-center gap-1 text-xs font-medium ${growthStats.profitGrowth >= 0 ? 'text-[var(--accent-emerald)]' : 'text-[var(--state-danger)]'}`}>
                                     {growthStats.profitGrowth >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                                     {Math.abs(growthStats.profitGrowth)}%
                                 </div>
                             </div>
-                            <p className="text-2xl font-black text-emerald-400">฿{monthlyStats.profit.toLocaleString()}</p>
-                            <p className="text-xs text-slate-500 mt-1">เดือนก่อน: ฿{lastMonthStats.profit.toLocaleString()}</p>
+                            <p className="text-2xl font-bold text-[var(--accent-emerald)] num">฿{monthlyStats.profit.toLocaleString()}</p>
+                            <p className="text-xs text-slate-500 mt-1 num">เดือนก่อน: ฿{lastMonthStats.profit.toLocaleString()}</p>
                         </div>
 
                         {/* Orders Comparison */}
-                        <div className="bg-slate-800/50 rounded-2xl p-5 border border-slate-700">
+                        <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700">
                             <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-black text-slate-400 uppercase tracking-wider">ออเดอร์</span>
-                                <div className={`flex items-center gap-1 text-xs font-black ${growthStats.orderGrowth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                <span className="text-xs font-medium text-slate-400  tracking-wider">ออเดอร์</span>
+                                <div className={`flex items-center gap-1 text-xs font-medium ${growthStats.orderGrowth >= 0 ? 'text-[var(--accent-emerald)]' : 'text-[var(--state-danger)]'}`}>
                                     {growthStats.orderGrowth >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                                     {Math.abs(growthStats.orderGrowth)}%
                                 </div>
                             </div>
-                            <p className="text-2xl font-black text-white">{monthlyStats.count}</p>
+                            <p className="text-2xl font-bold text-white num">{monthlyStats.count}</p>
                             <p className="text-xs text-slate-500 mt-1">เดือนก่อน: {lastMonthStats.count}</p>
                         </div>
 
                         {/* Cost Comparison */}
-                        <div className="bg-slate-800/50 rounded-2xl p-5 border border-slate-700">
+                        <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700">
                             <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-black text-slate-400 uppercase tracking-wider">ค่าใช้จ่าย</span>
-                                <div className={`flex items-center gap-1 text-xs font-black ${growthStats.costGrowth <= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                <span className="text-xs font-medium text-slate-400  tracking-wider">ค่าใช้จ่าย</span>
+                                <div className={`flex items-center gap-1 text-xs font-medium ${growthStats.costGrowth <= 0 ? 'text-[var(--accent-emerald)]' : 'text-[var(--state-danger)]'}`}>
                                     {growthStats.costGrowth <= 0 ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />}
                                     {Math.abs(growthStats.costGrowth)}%
                                 </div>
                             </div>
-                            <p className="text-2xl font-black text-orange-400">฿{monthlyStats.cost.toLocaleString()}</p>
-                            <p className="text-xs text-slate-500 mt-1">เดือนก่อน: ฿{lastMonthStats.cost.toLocaleString()}</p>
+                            <p className="text-2xl font-bold text-orange-400 num">฿{monthlyStats.cost.toLocaleString()}</p>
+                            <p className="text-xs text-slate-500 mt-1 num">เดือนก่อน: ฿{lastMonthStats.cost.toLocaleString()}</p>
                         </div>
                     </div>
 
                     {/* Summary Message */}
-                    <div className={`mt-6 p-4 rounded-xl flex items-center gap-3 ${growthStats.profitGrowth >= 0 ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+                    <div className={`mt-6 p-4 rounded-xl flex items-center gap-3 ${growthStats.profitGrowth >= 0 ? 'bg-[var(--accent-emerald-light)] border border-[var(--accent-emerald)]/30' : 'bg-[var(--bg-tertiary)] border border-[var(--state-danger)]/30'}`}>
                         {growthStats.profitGrowth >= 0 ? (
                             <>
-                                <TrendingUp className="text-emerald-400" size={24} />
+                                <TrendingUp className="text-[var(--accent-emerald)]" size={24} />
                                 <div>
-                                    <p className="text-sm font-black text-emerald-400">ยอดเยี่ยม! กำไรเพิ่มขึ้น {growthStats.profitGrowth}%</p>
-                                    <p className="text-xs text-slate-400">เพิ่มขึ้น ฿{(monthlyStats.profit - lastMonthStats.profit).toLocaleString()} จากเดือนก่อน</p>
+                                    <p className="text-sm font-bold text-[var(--accent-emerald)] num">ยอดเยี่ยม! กำไรเพิ่มขึ้น {growthStats.profitGrowth}%</p>
+                                    <p className="text-xs text-slate-400 num">เพิ่มขึ้น ฿{(monthlyStats.profit - lastMonthStats.profit).toLocaleString()} จากเดือนก่อน</p>
                                 </div>
                             </>
                         ) : (
                             <>
-                                <TrendingDown className="text-red-400" size={24} />
+                                <TrendingDown className="text-[var(--state-danger)]" size={24} />
                                 <div>
-                                    <p className="text-sm font-black text-red-400">ต้องปรับปรุง กำไรลดลง {Math.abs(growthStats.profitGrowth)}%</p>
-                                    <p className="text-xs text-slate-400">ลดลง ฿{Math.abs(monthlyStats.profit - lastMonthStats.profit).toLocaleString()} จากเดือนก่อน</p>
+                                    <p className="text-sm font-bold text-[var(--state-danger)] num">ต้องปรับปรุง กำไรลดลง {Math.abs(growthStats.profitGrowth)}%</p>
+                                    <p className="text-xs text-slate-400 num">ลดลง ฿{Math.abs(monthlyStats.profit - lastMonthStats.profit).toLocaleString()} จากเดือนก่อน</p>
                                 </div>
                             </>
                         )}
@@ -827,11 +827,11 @@ const DashboardView = () => {
                 </div>
 
                 {/* Middle Charts Content */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Product Popularity */}
-                    <div className="lg:col-span-2 bg-[var(--bg-secondary)] rounded-[3.5rem] p-10 shadow-sm border border-[var(--border-light)] flex flex-col">
+                    <div className="lg:col-span-2 bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 shadow-sm border border-[var(--border-light)] flex flex-col">
                         <div className="flex justify-between items-center mb-10">
-                            <h2 className="text-lg font-black text-gray-800 uppercase tracking-tight flex items-center gap-3"><Crown className="text-amber-500" /> สินค้าขายดีที่สุด (เดือนปัจจุบัน)</h2>
+                            <h2 className="text-lg font-bold text-[var(--text-primary)]  tracking-tight flex items-center gap-3"><Crown className="text-[var(--state-warn)]" /> สินค้าขายดีที่สุด (เดือนปัจจุบัน)</h2>
                         </div>
                         <div className="space-y-8 flex-1">
                             {dashboardStats.topProducts.map((p) => {
@@ -840,15 +840,15 @@ const DashboardView = () => {
                                 return (
                                     <div key={p.name} className="space-y-3">
                                         <div className="flex justify-between items-end">
-                                            <span className="text-base font-black text-gray-700">{p.name}</span>
-                                            <span className="text-sm font-black text-emerald-600">{p.count} ชิ้น</span>
+                                            <span className="text-base font-bold text-[var(--text-primary)]">{p.name}</span>
+                                            <span className="text-sm font-bold text-[var(--accent-emerald)]">{p.count} ชิ้น</span>
                                         </div>
-                                        <div className="h-4 bg-gray-50 rounded-full overflow-hidden border border-[var(--border-light)] p-0.5">
+                                        <div className="h-4 bg-[var(--bg-tertiary)] rounded-full overflow-hidden border border-[var(--border-light)] p-0.5">
                                             <div
                                                 className="h-full rounded-full transition-all duration-1000 ease-out"
                                                 style={{
                                                     width: `${percent}%`,
-                                                    background: `linear-gradient(90deg, #10b981 ${percent}%, #34d399 100%)`
+                                                    background: `linear-gradient(90deg, var(--accent-emerald) ${percent}%, var(--accent-emerald-dark) 100%)`
                                                 }}
                                             ></div>
                                         </div>
@@ -858,16 +858,16 @@ const DashboardView = () => {
                             {dashboardStats.topProducts.length === 0 && (
                                 <div className="h-full flex flex-col items-center justify-center opacity-20 grayscale">
                                     <ShoppingBag size={80} />
-                                    <p className="font-black uppercase tracking-widest mt-4">ยังไม่มีข้อมูลการขาย</p>
+                                    <p className="font-bold  tracking-widest mt-4">ยังไม่มีข้อมูลการขาย</p>
                                 </div>
                             )}
                         </div>
                     </div>
 
                     {/* Peak Hours (Visual Matrix) */}
-                    <div className="bg-gray-900 rounded-[3.5rem] p-10 text-white shadow-2xl relative overflow-hidden border-b-8 border-emerald-500">
-                        <div className="relative z-10 flex flex-col h-full">
-                            <h2 className="text-lg font-black uppercase tracking-widest mb-8 flex items-center gap-3 text-emerald-400"><Activity /> ช่วงเวลาขายดี</h2>
+                    <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-[var(--radius)] p-6 text-white shadow-[var(--elev-3)] relative overflow-hidden border-b-8 border-[var(--accent-emerald)]">
+                        <div className="relative z-[var(--z-nav)] flex flex-col h-full">
+                            <h2 className="text-lg font-bold  tracking-widest mb-8 flex items-center gap-3 text-[var(--accent-emerald)]"><Activity /> ช่วงเวลาขายดี</h2>
                             <div className="flex-1 grid grid-cols-4 gap-4 content-start">
                                 {dashboardStats.hourlySales.map((revenue, hour) => {
                                     const max = Math.max(...dashboardStats.hourlySales, 1);
@@ -879,116 +879,116 @@ const DashboardView = () => {
                                                 className="w-full rounded-xl transition-all duration-700 border border-white/10 flex items-center justify-center"
                                                 style={{
                                                     height: '60px',
-                                                    background: intensity > 0 ? `rgba(16, 185, 129, ${0.1 + intensity * 0.9})` : 'rgba(255,255,255,0.03)',
-                                                    boxShadow: intensity > 0.8 ? '0 0 20px rgba(16, 185, 129, 0.4)' : 'none'
+                                                    background: intensity > 0 ? `color-mix(in srgb, var(--accent-emerald) ${(0.1 + intensity * 0.9) * 100}%, transparent)` : 'color-mix(in srgb, var(--text-primary) 3%, transparent)',
+                                                    boxShadow: intensity > 0.8 ? '0 0 20px color-mix(in srgb, var(--accent-emerald) 40%, transparent)' : 'none'
                                                 }}
                                             >
                                                 {intensity > 0.5 && <Flame size={16} className="text-white animate-pulse" />}
                                             </div>
-                                            <span className="text-xs font-black text-gray-500">{hour}:00</span>
+                                            <span className="text-xs font-medium text-[var(--text-secondary)]">{hour}:00</span>
                                         </div>
                                     );
                                 })}
                             </div>
                             <div className="mt-8 pt-8 border-t border-white/10">
-                                <p className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-1">ช่วงเวลาที่ลูกค้าแน่นที่สุด:</p>
+                                <p className="text-xs font-medium text-[var(--accent-emerald)]  tracking-widest mb-1">ช่วงเวลาที่ลูกค้าแน่นที่สุด:</p>
                                 {dashboardStats.peakHour !== null ? (
                                     <>
-                                        <p className="text-3xl font-black text-white tracking-tighter">{dashboardStats.peakHour}:00 - {dashboardStats.peakHour + 1}:00 น.</p>
-                                        <p className="text-xs text-gray-500 font-bold mt-2">วิเคราะห์จากยอดขายรวมรายชั่วโมงในเดือนนี้</p>
+                                        <p className="text-3xl font-bold text-white tracking-tighter num">{dashboardStats.peakHour}:00 - {dashboardStats.peakHour + 1}:00 น.</p>
+                                        <p className="text-xs text-[var(--text-secondary)] font-bold mt-2">วิเคราะห์จากยอดขายรวมรายชั่วโมงในเดือนนี้</p>
                                     </>
                                 ) : (
-                                    <p className="text-xl font-black text-gray-400 tracking-tight animate-pulse">รอข้อมูลการขาย...</p>
+                                    <p className="text-xl font-bold text-[var(--text-muted)] tracking-tight animate-pulse">รอข้อมูลการขาย...</p>
                                 )}
                             </div>
                         </div>
-                        <div className="absolute -bottom-10 -right-10 opacity-10 text-emerald-500">
+                        <div className="absolute -bottom-10 -right-10 opacity-10 text-[var(--accent-emerald)]">
                             <Activity size={240} />
                         </div>
                     </div>
                 </div>
 
                 {/* Bottom Row - Profit Margin & Profitable Items */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="bg-[var(--bg-secondary)] rounded-[3rem] p-10 shadow-sm border border-[var(--border-light)] flex items-center gap-10">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 shadow-sm border border-[var(--border-light)] flex items-center gap-6">
                         <div className="relative flex-shrink-0">
-                            <div className="w-32 h-32 rounded-full border-[16px] border-emerald-500 flex items-center justify-center shadow-lg">
-                                <span className="text-2xl font-black text-gray-800">{Math.round((monthlyStats.profit / (monthlyStats.revenue || 1)) * 100)}%</span>
+                            <div className="w-32 h-32 rounded-full border-[16px] border-[var(--accent-emerald)] flex items-center justify-center shadow-[var(--elev-1)]">
+                                <span className="text-2xl font-bold text-[var(--text-primary)]">{Math.round((monthlyStats.profit / (monthlyStats.revenue || 1)) * 100)}%</span>
                             </div>
                         </div>
                         <div>
-                            <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight mb-2">อัตรากำไร</h3>
-                            <p className="text-3xl font-black text-emerald-600 mb-2">฿{monthlyStats.profit.toLocaleString()}</p>
-                            <p className="text-xs text-gray-400 font-bold leading-relaxed">คำนวณจากยอดขายหักลบรายจ่ายทั้งหมดในระบบ เรียลไทม์</p>
+                            <h3 className="text-lg font-bold text-[var(--text-primary)]  tracking-tight mb-2">อัตรากำไร</h3>
+                            <p className="text-3xl font-bold text-[var(--accent-emerald)] mb-2 num">฿{monthlyStats.profit.toLocaleString()}</p>
+                            <p className="text-xs text-[var(--text-muted)] font-bold leading-relaxed">คำนวณจากยอดขายหักลบรายจ่ายทั้งหมดในระบบ เรียลไทม์</p>
                             {Number(startingCash) > 0 && (
                                 <div className="mt-3 pt-3 border-t border-[var(--border-light)] flex items-center gap-2">
-                                    <Banknote size={14} className="text-amber-500" />
-                                    <span className="text-xs font-black text-amber-600 uppercase">เงินทอน: ฿{Number(startingCash).toLocaleString()}</span>
-                                    <span className="text-xs font-bold text-gray-400">| รวม: <span className="text-emerald-600 font-black">฿{(monthlyStats.profit + Number(startingCash)).toLocaleString()}</span></span>
+                                    <Banknote size={14} className="text-[var(--state-warn)]" />
+                                    <span className="text-xs font-medium text-[var(--state-warn)]  num">เงินทอน: ฿{Number(startingCash).toLocaleString()}</span>
+                                    <span className="text-xs font-medium text-[var(--text-muted)] num">| รวม: <span className="text-[var(--accent-emerald)] font-bold num">฿{(monthlyStats.profit + Number(startingCash)).toLocaleString()}</span></span>
                                 </div>
                             )}
                         </div>
                     </div>
 
-                    <div className="bg-[var(--bg-secondary)] rounded-[3rem] p-10 shadow-sm border border-[var(--border-light)] flex items-center gap-10">
-                        <div className="w-32 h-32 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500 shrink-0">
+                    <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 shadow-sm border border-[var(--border-light)] flex items-center gap-6">
+                        <div className="w-32 h-32 bg-[var(--accent-emerald-light)] rounded-full flex items-center justify-center text-[var(--accent-emerald)] shrink-0">
                             <TrendingUp size={64} />
                         </div>
                         <div className="flex-1 overflow-hidden">
-                            <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight mb-4">สินค้าทำกำไรสูงสุด 5 อันดับ</h3>
+                            <h3 className="text-lg font-bold text-[var(--text-primary)]  tracking-tight mb-4">สินค้าทำกำไรสูงสุด 5 อันดับ</h3>
                             <div className="space-y-3">
                                 {dashboardStats.topProfitable.map((p, idx) => (
                                     <div key={p.name} className="flex justify-between items-center text-xs">
-                                        <span className="font-bold text-gray-600 truncate">{idx + 1}. {p.name}</span>
-                                        <span className="font-black text-emerald-600 shrink-0 ml-4">฿{Math.round(p.totalProfit).toLocaleString()}</span>
+                                        <span className="font-bold text-[var(--text-secondary)] truncate">{idx + 1}. {p.name}</span>
+                                        <span className="font-bold text-[var(--accent-emerald)] shrink-0 ml-4 num">฿{Math.round(p.totalProfit).toLocaleString()}</span>
                                     </div>
                                 ))}
-                                {dashboardStats.topProfitable.length === 0 && <p className="text-xs text-gray-400 italic">ต้องการข้อมูลยอดขายเพิ่มเติม...</p>}
+                                {dashboardStats.topProfitable.length === 0 && <p className="text-xs text-[var(--text-muted)] italic">ต้องการข้อมูลยอดขายเพิ่มเติม...</p>}
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Menu Performance Analysis */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Best Performers */}
-                    <div className="bg-[var(--bg-secondary)] rounded-[3rem] p-8 shadow-sm border border-[var(--border-light)]">
+                    <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 shadow-sm border border-[var(--border-light)]">
                         <div className="flex items-center gap-3 mb-6">
-                            <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
+                            <div className="w-12 h-12 bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] rounded-2xl flex items-center justify-center">
                                 <Award size={24} />
                             </div>
                             <div>
-                                <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight">เมนูทำกำไรดีที่สุด</h3>
-                                <p className="text-xs text-gray-400 font-bold">สินค้าทำกำไรสูงสุด 5 อันดับ</p>
+                                <h3 className="text-lg font-bold text-[var(--text-primary)]  tracking-tight">เมนูทำกำไรดีที่สุด</h3>
+                                <p className="text-xs text-[var(--text-muted)] font-bold">สินค้าทำกำไรสูงสุด 5 อันดับ</p>
                             </div>
                         </div>
                         <div className="space-y-3">
                             {menuPerformance.bestPerformers.map((item, idx) => (
-                                <div key={item.name} className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-[var(--border-light)] hover:border-emerald-200 transition-all">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${idx === 0 ? 'bg-yellow-500 text-white' : idx === 1 ? 'bg-gray-400 text-white' : idx === 2 ? 'bg-amber-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                <div key={item.name} className="flex items-center gap-4 p-4 bg-[var(--bg-tertiary)] rounded-2xl border border-[var(--border-light)] hover:border-[var(--border-color)] transition-all">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${idx === 0 ? 'bg-yellow-500 text-white' : idx === 1 ? 'bg-[var(--bg-tertiary)] text-white' : idx === 2 ? 'bg-amber-600 text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'}`}>
                                         {idx + 1}
                                     </div>
                                     <div className="w-10 h-10 bg-[var(--bg-secondary)] rounded-xl overflow-hidden border border-[var(--border-light)] shrink-0">
                                         {item.image ? (
                                             <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
                                         ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                            <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
                                                 <ShoppingBag size={16} />
                                             </div>
                                         )}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="font-black text-gray-800 text-sm truncate">{item.name}</p>
-                                        <p className="text-xs text-gray-400">ขาย {item.totalSold} ชิ้น | กำไร {item.profitMargin}%</p>
+                                        <p className="font-bold text-[var(--text-primary)] text-sm truncate">{item.name}</p>
+                                        <p className="text-xs text-[var(--text-muted)] num">ขาย {item.totalSold} ชิ้น | กำไร {item.profitMargin}%</p>
                                     </div>
                                     <div className="text-right shrink-0">
-                                        <p className="font-black text-emerald-600 text-lg">฿{item.totalProfit.toLocaleString()}</p>
-                                        <p className="text-xs text-gray-400 uppercase">กำไรรวม</p>
+                                        <p className="font-bold text-[var(--accent-emerald)] text-lg num">฿{item.totalProfit.toLocaleString()}</p>
+                                        <p className="text-xs text-[var(--text-muted)] ">กำไรรวม</p>
                                     </div>
                                 </div>
                             ))}
                             {menuPerformance.bestPerformers.length === 0 && (
-                                <div className="text-center py-8 text-gray-400 text-sm">
+                                <div className="text-center py-8 text-[var(--text-muted)] text-sm">
                                     ยังไม่มีข้อมูลเพียงพอ (ต้องขายอย่างน้อย 3 ชิ้น)
                                 </div>
                             )}
@@ -996,43 +996,43 @@ const DashboardView = () => {
                     </div>
 
                     {/* Needs Review */}
-                    <div className="bg-[var(--bg-secondary)] rounded-[3rem] p-8 shadow-sm border border-[var(--border-light)]">
+                    <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 shadow-sm border border-[var(--border-light)]">
                         <div className="flex items-center gap-3 mb-6">
-                            <div className="w-12 h-12 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center">
+                            <div className="w-12 h-12 bg-[var(--bg-tertiary)] text-[var(--state-danger)] rounded-2xl flex items-center justify-center">
                                 <AlertCircle size={24} />
                             </div>
                             <div>
-                                <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight">เมนูที่ควรทบทวน</h3>
-                                <p className="text-xs text-gray-400 font-bold">กำไรน้อย / ขายได้น้อย / ขายไม่ได้</p>
+                                <h3 className="text-lg font-bold text-[var(--text-primary)]  tracking-tight">เมนูที่ควรทบทวน</h3>
+                                <p className="text-xs text-[var(--text-muted)] font-bold">กำไรน้อย / ขายได้น้อย / ขายไม่ได้</p>
                             </div>
                         </div>
                         <div className="space-y-3 max-h-[400px] overflow-y-auto scrollbar-hide">
                             {menuPerformance.needsReview.slice(0, 8).map((item) => (
-                                <div key={item.name} className={`flex items-center gap-4 p-4 rounded-2xl border ${item.totalSold === 0 ? 'bg-gray-50 border-gray-200' : 'bg-red-50/50 border-red-100'}`}>
+                                <div key={item.name} className={`flex items-center gap-4 p-4 rounded-2xl border ${item.totalSold === 0 ? 'bg-[var(--bg-tertiary)] border-[var(--border-color)]' : 'bg-[var(--bg-tertiary)]/50 border-[var(--border-color)]'}`}>
                                     <div className="w-10 h-10 bg-[var(--bg-secondary)] rounded-xl overflow-hidden border border-[var(--border-light)] shrink-0">
                                         {item.image ? (
                                             <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
                                         ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                            <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
                                                 <ShoppingBag size={16} />
                                             </div>
                                         )}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="font-black text-gray-800 text-sm truncate">{item.name}</p>
+                                        <p className="font-bold text-[var(--text-primary)] text-sm truncate">{item.name}</p>
                                         <div className="flex items-center gap-2 mt-1 flex-wrap">
                                             {item.totalSold === 0 && (
-                                                <span className="text-xs font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-lg">
+                                                <span className="text-xs font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-2 py-0.5 rounded-lg">
                                                     ขายไม่ได้เลย
                                                 </span>
                                             )}
                                             {item.profitMargin < 30 && item.totalSold > 0 && (
-                                                <span className="text-xs font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-lg">
+                                                <span className="text-xs font-medium bg-[var(--bg-tertiary)] text-[var(--state-danger)] px-2 py-0.5 rounded-lg">
                                                     กำไรต่ำ {item.profitMargin}%
                                                 </span>
                                             )}
                                             {item.totalSold > 0 && item.totalSold < 3 && (
-                                                <span className="text-xs font-bold bg-amber-100 text-amber-600 px-2 py-0.5 rounded-lg">
+                                                <span className="text-xs font-medium bg-amber-100 text-[var(--state-warn)] px-2 py-0.5 rounded-lg">
                                                     ขายน้อย {item.totalSold} ชิ้น
                                                 </span>
                                             )}
@@ -1041,15 +1041,15 @@ const DashboardView = () => {
                                     <div className="text-right shrink-0">
                                         {item.totalSold === 0 ? (
                                             <>
-                                                <p className="font-black text-lg text-gray-400">฿{item.price.toLocaleString()}</p>
-                                                <p className="text-xs text-gray-400 uppercase">ราคาขาย</p>
+                                                <p className="font-bold text-lg text-[var(--text-muted)] num">฿{item.price.toLocaleString()}</p>
+                                                <p className="text-xs text-[var(--text-muted)] ">ราคาขาย</p>
                                             </>
                                         ) : (
                                             <>
-                                                <p className={`font-black text-lg ${item.totalProfit >= 0 ? 'text-gray-600' : 'text-red-600'}`}>
+                                                <p className={`font-bold text-lg ${item.totalProfit >= 0 ? 'text-[var(--text-secondary)]' : 'text-[var(--state-danger)]'}`}>
                                                     ฿{item.totalProfit.toLocaleString()}
                                                 </p>
-                                                <p className="text-xs text-gray-400 uppercase">กำไรรวม</p>
+                                                <p className="text-xs text-[var(--text-muted)] ">กำไรรวม</p>
                                             </>
                                         )}
                                     </div>
@@ -1057,7 +1057,7 @@ const DashboardView = () => {
                                         <button
                                             onClick={() => setMenuToDelete(item)}
                                             aria-label={`ลบเมนู ${item.name}`}
-                                            className="p-2 rounded-xl text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all shrink-0"
+                                            className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--state-danger)] hover:bg-[var(--bg-tertiary)] transition-all shrink-0"
                                         >
                                             <Trash2 size={16} />
                                         </button>
@@ -1065,7 +1065,7 @@ const DashboardView = () => {
                                 </div>
                             ))}
                             {menuPerformance.needsReview.length === 0 && (
-                                <div className="text-center py-8 text-emerald-500">
+                                <div className="text-center py-8 text-[var(--accent-emerald)]">
                                     <Award size={48} className="mx-auto mb-3 opacity-50" />
                                     <p className="text-sm font-bold">ยอดเยี่ยม! ทุกเมนูทำกำไรได้ดี</p>
                                 </div>
@@ -1075,23 +1075,23 @@ const DashboardView = () => {
                         {/* Recommendations */}
                         {menuPerformance.needsReview.length > 0 && (
                             <div className="mt-6 pt-4 border-t border-[var(--border-light)]">
-                                <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">คำแนะนำ</p>
-                                <div className="space-y-2 text-xs text-gray-600">
+                                <p className="text-xs font-medium text-[var(--text-muted)]  tracking-widest mb-3">คำแนะนำ</p>
+                                <div className="space-y-2 text-xs text-[var(--text-secondary)]">
                                     {menuPerformance.needsReview.some(m => m.profitMargin < 30) && (
                                         <p className="flex items-start gap-2">
-                                            <ThumbsDown size={14} className="text-red-400 shrink-0 mt-0.5" />
+                                            <ThumbsDown size={14} className="text-[var(--state-danger)] shrink-0 mt-0.5" />
                                             <span>พิจารณาปรับราคาหรือลดต้นทุนเมนูที่กำไรต่ำกว่า 30%</span>
                                         </p>
                                     )}
                                     {menuPerformance.needsReview.some(m => m.totalSold > 0 && m.totalSold < 3) && (
                                         <p className="flex items-start gap-2">
-                                            <AlertCircle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                                            <AlertCircle size={14} className="text-[var(--state-warn)] shrink-0 mt-0.5" />
                                             <span>เมนูที่ขายน้อยอาจต้องการโปรโมทหรือพิจารณาตัดออก</span>
                                         </p>
                                     )}
                                     {menuPerformance.needsReview.some(m => m.totalSold === 0) && (
                                         <p className="flex items-start gap-2">
-                                            <AlertCircle size={14} className="text-gray-400 shrink-0 mt-0.5" />
+                                            <AlertCircle size={14} className="text-[var(--text-muted)] shrink-0 mt-0.5" />
                                             <span>มีเมนูที่ขายไม่ได้เลยในเดือนนี้ ควรพิจารณาโปรโมทหรือปิดเมนู</span>
                                         </p>
                                     )}
