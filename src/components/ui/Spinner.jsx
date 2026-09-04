@@ -11,7 +11,7 @@ const sizes = {
 const colors = {
   emerald: 'text-emerald-500',
   white: 'text-white',
-  gray: 'text-gray-400',
+  gray: 'text-[var(--text-muted)]',
   current: 'text-current',
 };
 

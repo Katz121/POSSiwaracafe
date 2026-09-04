@@ -3,9 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Check, AlertCircle } from 'lucide-react';
 
 const sizes = {
-  sm: 'px-3 py-1.5 text-sm rounded-lg',
-  md: 'px-4 py-2.5 text-base rounded-xl',
-  lg: 'px-5 py-3.5 text-lg rounded-xl',
+  sm: 'px-3 py-1.5 text-sm rounded-[var(--radius-sm)]',
+  md: 'px-4 py-2.5 text-base rounded-[var(--radius-sm)]',
+  lg: 'px-5 py-3.5 text-lg rounded-[var(--radius-sm)]',
 };
 
 const Select = forwardRef(({
@@ -82,7 +82,7 @@ const Select = forwardRef(({
     >
       {/* Label */}
       {label && (
-        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+        <label className="block text-sm font-semibold text-[var(--text-primary)] mb-1.5">
           {label}
           {required && <span className="text-red-500 ml-1">*</span>}
         </label>
@@ -99,27 +99,27 @@ const Select = forwardRef(({
         aria-expanded={isOpen}
         className={`
           w-full flex items-center justify-between gap-2
-          bg-gray-50 dark:bg-gray-900
+          bg-[var(--bg-tertiary)]
           border-2
           ${error
-            ? 'border-red-400 dark:border-red-500'
+            ? 'border-[var(--state-danger)]'
             : isOpen
-              ? 'border-emerald-500 dark:border-emerald-400'
-              : 'border-gray-200 dark:border-gray-700'
+              ? 'border-[var(--accent-emerald)]'
+              : 'border-[var(--border-color)]'
           }
           text-left
           transition-all duration-200
           focus:outline-none focus:ring-4 focus:ring-emerald-500/20
-          disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-gray-800
+          disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-[var(--bg-tertiary)]
           ${sizes[size]}
         `}
       >
-        <span className={selectedOption ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}>
+        <span className={selectedOption ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}>
           {selectedOption ? selectedOption.label : placeholder}
         </span>
         <ChevronDown
           size={18}
-          className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+          className={`text-[var(--text-muted)] transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
         />
       </button>
 
@@ -131,18 +131,18 @@ const Select = forwardRef(({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.15 }}
-            className="absolute z-50 w-full mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden"
+            className="absolute z-[var(--z-dropdown)] w-full mt-2 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-[var(--radius-sm)] shadow-[var(--elev-2)] overflow-hidden"
           >
             {/* Search Input */}
             {searchable && (
-              <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+              <div className="p-2 border-b border-[var(--border-color)]">
                 <input
                   ref={inputRef}
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="ค้นหา..."
-                  className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 text-sm bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[var(--radius-sm)] focus:outline-none focus:border-[var(--accent-emerald)]"
                 />
               </div>
             )}
@@ -150,7 +150,7 @@ const Select = forwardRef(({
             {/* Options */}
             <div className="max-h-60 overflow-y-auto">
               {filteredOptions.length === 0 ? (
-                <div className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 text-center">
+                <div className="px-4 py-3 text-sm text-[var(--text-secondary)] text-center">
                   ไม่พบตัวเลือก
                 </div>
               ) : (
@@ -163,8 +163,8 @@ const Select = forwardRef(({
                       w-full flex items-center justify-between gap-2 px-4 py-3 text-left
                       transition-colors duration-150
                       ${option.value === value
-                        ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                        : 'hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200'
+                        ? 'bg-[var(--bg-tertiary)] text-[var(--accent-emerald)]'
+                        : 'hover:bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
                       }
                     `}
                   >
@@ -173,7 +173,7 @@ const Select = forwardRef(({
                       <div>
                         <div className="font-medium">{option.label}</div>
                         {option.description && (
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          <div className="text-xs text-[var(--text-secondary)] mt-0.5">
                             {option.description}
                           </div>
                         )}
@@ -198,7 +198,7 @@ const Select = forwardRef(({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -5 }}
             className={`mt-1.5 text-sm flex items-center gap-1 ${
-              error ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'
+              error ? 'text-[var(--state-danger)]' : 'text-[var(--text-secondary)]'
             }`}
           >
             {error && <AlertCircle size={14} />}

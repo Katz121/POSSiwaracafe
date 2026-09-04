@@ -117,10 +117,10 @@ const Table = ({
       )}
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+      <div className="overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border-color)]">
         <table className="w-full">
           {/* Header */}
-          <thead className="bg-gray-50 dark:bg-gray-800">
+          <thead className="bg-[var(--bg-tertiary)]">
             <tr>
               {columns.map((column) => (
                 <th
@@ -130,8 +130,8 @@ const Table = ({
                   className={`
                     ${cellPadding}
                     text-left text-xs font-semibold uppercase tracking-wider
-                    text-gray-500 dark:text-gray-400
-                    ${column.sortable !== false && sortable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700' : ''}
+                    text-[var(--text-secondary)]
+                    ${column.sortable !== false && sortable ? 'cursor-pointer hover:bg-[var(--border-light)]' : ''}
                     ${column.align === 'right' ? 'text-right' : ''}
                     ${column.align === 'center' ? 'text-center' : ''}
                   `}
@@ -155,7 +155,7 @@ const Table = ({
           </thead>
 
           {/* Body */}
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className="divide-y divide-[var(--border-color)]">
             {loading ? (
               // Loading skeleton
               Array.from({ length: pageSize }).map((_, i) => (
@@ -172,7 +172,7 @@ const Table = ({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-4 py-12 text-center text-gray-500 dark:text-gray-400"
+                  className="px-4 py-12 text-center text-[var(--text-secondary)]"
                 >
                   {emptyMessage}
                 </td>
@@ -188,9 +188,9 @@ const Table = ({
                     exit={{ opacity: 0 }}
                     onClick={() => onRowClick?.(row)}
                     className={`
-                      bg-white dark:bg-gray-900
-                      ${striped && index % 2 === 1 ? 'bg-gray-50 dark:bg-gray-800/50' : ''}
-                      ${hoverable ? 'hover:bg-gray-50 dark:hover:bg-gray-800' : ''}
+                      bg-[var(--bg-secondary)]
+                      ${striped && index % 2 === 1 ? 'bg-[var(--bg-tertiary)]' : ''}
+                      ${hoverable ? 'hover:bg-[var(--bg-tertiary)]' : ''}
                       ${onRowClick ? 'cursor-pointer' : ''}
                       ${typeof rowClassName === 'function' ? rowClassName(row) : rowClassName || ''}
                     `}
@@ -200,7 +200,7 @@ const Table = ({
                         key={column.key}
                         className={`
                           ${cellPadding}
-                          text-sm text-gray-700 dark:text-gray-300
+                          text-sm text-[var(--text-primary)]
                           ${column.align === 'right' ? 'text-right' : ''}
                           ${column.align === 'center' ? 'text-center' : ''}
                         `}
@@ -221,7 +221,7 @@ const Table = ({
       {/* Pagination */}
       {pagination && totalPages > 1 && (
         <div className="flex items-center justify-between mt-4 px-2">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-[var(--text-secondary)] num">
             แสดง {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, sortedData.length)} จาก {sortedData.length} รายการ
           </p>
           <div className="flex items-center gap-2">
@@ -253,10 +253,10 @@ const Table = ({
                     key={pageNum}
                     onClick={() => setCurrentPage(pageNum)}
                     className={`
-                      w-8 h-8 rounded-lg text-sm font-medium transition-colors
+                      w-8 h-8 rounded-[var(--radius-sm)] text-sm font-medium transition-colors num
                       ${pageNum === currentPage
                         ? 'bg-emerald-500 text-white'
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
                       }
                     `}
                   >

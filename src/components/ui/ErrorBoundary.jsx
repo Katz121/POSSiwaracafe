@@ -23,10 +23,10 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <div className="h-full flex flex-col items-center justify-center bg-[var(--bg-primary)] p-8">
-          <div className="w-20 h-20 bg-red-50 dark:bg-red-900/30 rounded-full flex items-center justify-center text-red-500 mb-6">
+          <div className="w-20 h-20 bg-[var(--bg-tertiary)] rounded-[var(--radius-sm)] flex items-center justify-center text-[var(--state-danger)] mb-6">
             <AlertTriangle size={40} />
           </div>
-          <h2 className="text-xl font-black text-[var(--text-primary)] mb-2">
+          <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">
             เกิดข้อผิดพลาด
           </h2>
           <p className="text-sm text-[var(--text-muted)] mb-6 text-center max-w-md">
@@ -34,7 +34,7 @@ class ErrorBoundary extends React.Component {
           </p>
           <button
             onClick={this.handleReset}
-            className="flex items-center gap-2 px-6 py-3 bg-emerald-500 text-white rounded-xl font-bold text-sm hover:bg-emerald-600 transition-colors"
+            className="flex items-center gap-2 px-6 py-3 bg-[var(--accent-emerald)] text-white rounded-[var(--radius-sm)] font-bold text-sm hover:bg-[var(--accent-emerald-dark)] transition-colors"
           >
             <RefreshCcw size={16} />
             ลองใหม่

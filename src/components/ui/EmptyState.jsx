@@ -61,20 +61,20 @@ const EmptyState = forwardRef(({
       `}
       {...props}
     >
-      <div className="mb-4 p-4 rounded-full bg-gray-100 dark:bg-gray-800">
+      <div className="mb-4 p-4 rounded-[var(--radius-sm)] bg-[var(--bg-tertiary)]">
         <Icon
           size={s.icon}
-          className="text-gray-400 dark:text-gray-500"
+          className="text-[var(--text-muted)]"
           strokeWidth={1.5}
         />
       </div>
 
-      <h3 className={`font-semibold text-gray-700 dark:text-gray-300 ${s.title}`}>
+      <h3 className={`font-semibold text-[var(--text-primary)] ${s.title}`}>
         {title}
       </h3>
 
       {description && (
-        <p className={`mt-1 text-gray-500 dark:text-gray-400 max-w-sm ${s.desc}`}>
+        <p className={`mt-1 text-[var(--text-secondary)] max-w-sm ${s.desc}`}>
           {description}
         </p>
       )}

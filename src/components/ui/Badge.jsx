@@ -2,12 +2,12 @@ import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
 
 const variants = {
-  success: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400',
-  warning: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400',
-  danger: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400',
-  info: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400',
-  neutral: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
-  primary: 'bg-emerald-500 dark:bg-emerald-600 text-white',
+  success: 'bg-[var(--bg-tertiary)] text-[var(--state-ok)]',
+  warning: 'bg-[var(--bg-tertiary)] text-[var(--state-warn)]',
+  danger: 'bg-[var(--bg-tertiary)] text-[var(--state-danger)]',
+  info: 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
+  neutral: 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]',
+  primary: 'bg-[var(--accent-emerald)] text-white',
 };
 
 const sizes = {
@@ -22,10 +22,10 @@ const roundedClasses = {
   none: 'rounded-none',
   sm: 'rounded-sm',
   md: 'rounded-md',
-  lg: 'rounded-lg',
-  xl: 'rounded-xl',
-  '2xl': 'rounded-2xl',
-  '3xl': 'rounded-3xl',
+  lg: 'rounded-[var(--radius-sm)]',
+  xl: 'rounded-[var(--radius-sm)]',
+  '2xl': 'rounded-[var(--radius-sm)]',
+  '3xl': 'rounded-[var(--radius-sm)]',
   full: 'rounded-full',
 };
 
@@ -71,7 +71,7 @@ const Badge = forwardRef(({
           ${variant === 'warning' ? 'bg-amber-500' : ''}
           ${variant === 'danger' ? 'bg-red-500' : ''}
           ${variant === 'info' ? 'bg-blue-500' : ''}
-          ${variant === 'neutral' ? 'bg-gray-500' : ''}
+          ${variant === 'neutral' ? 'bg-[var(--text-secondary)]' : ''}
           ${variant === 'primary' ? 'bg-white' : ''}
           ${pulse ? 'animate-pulse' : ''}
         `} />
@@ -88,7 +88,7 @@ const Badge = forwardRef(({
         <button
           type="button"
           onClick={onRemove}
-          className="ml-0.5 -mr-1 hover:bg-black/10 rounded-full p-0.5 transition-colors"
+          className="ml-0.5 -mr-1 hover:bg-black/10 rounded-[var(--radius-sm)] p-0.5 transition-colors"
           aria-label="ลบ"
         >
           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">

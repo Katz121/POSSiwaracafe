@@ -2,13 +2,13 @@ import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
 
 const variants = {
-  default: 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700',
-  elevated: 'bg-white dark:bg-gray-800 shadow-lg dark:shadow-gray-900/50',
-  bordered: 'bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600',
-  ghost: 'bg-gray-50 dark:bg-gray-800/50',
-  success: 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800',
-  warning: 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800',
-  danger: 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800',
+  default: 'bg-[var(--bg-secondary)] border border-[var(--border-color)]',
+  elevated: 'bg-[var(--bg-secondary)] shadow-[var(--elev-1)]',
+  bordered: 'bg-[var(--bg-secondary)] border-2 border-[var(--border-color)]',
+  ghost: 'bg-[var(--bg-tertiary)]',
+  success: 'bg-[var(--accent-emerald-light)] border border-[var(--state-ok)]',
+  warning: 'bg-[var(--accent-orange-light)] border border-[var(--state-warn)]',
+  danger: 'bg-[var(--bg-secondary)] border border-[var(--state-danger)]',
 };
 
 const paddings = {
@@ -29,13 +29,16 @@ const roundedClasses = {
   '2xl': 'rounded-2xl',
   '3xl': 'rounded-3xl',
   full: 'rounded-full',
+  // Design-token defaults — use these instead of the fixed Tailwind steps above
+  card: 'rounded-[var(--radius)]',
+  control: 'rounded-[var(--radius-sm)]',
 };
 
 const Card = forwardRef(({
   children,
   variant = 'default',
   padding = 'md',
-  rounded = '2xl',
+  rounded = 'card',
   hoverable = false,
   clickable = false,
   className = '',
@@ -55,10 +58,10 @@ const Card = forwardRef(({
       ref={ref}
       onClick={onClick}
       className={`
-        ${roundedClasses[rounded] ?? 'rounded-2xl'}
+        ${roundedClasses[rounded] ?? roundedClasses.card}
         ${variants[variant]}
         ${paddings[padding]}
-        ${hoverable ? 'transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5' : ''}
+        ${hoverable ? 'transition-all duration-200 hover:shadow-[var(--elev-2)] hover:-translate-y-0.5' : ''}
         ${clickable ? 'cursor-pointer active:scale-[0.98]' : ''}
         ${className}
       `}
@@ -82,7 +85,7 @@ const CardHeader = forwardRef(({
   <div
     ref={ref}
     className={`
-      ${border ? 'border-b border-gray-200 dark:border-gray-700 pb-4 mb-4' : 'mb-4'}
+      ${border ? 'border-b border-[var(--border-color)] pb-4 mb-4' : 'mb-4'}
       ${className}
     `}
     {...props}
@@ -112,7 +115,7 @@ const CardFooter = forwardRef(({
   <div
     ref={ref}
     className={`
-      ${border ? 'border-t border-gray-200 dark:border-gray-700 pt-4 mt-4' : 'mt-4'}
+      ${border ? 'border-t border-[var(--border-color)] pt-4 mt-4' : 'mt-4'}
       flex items-center gap-3
       ${className}
     `}

@@ -5,11 +5,11 @@ const roundedClasses = {
   none: 'rounded-none',
   sm: 'rounded-sm',
   md: 'rounded-md',
-  lg: 'rounded-lg',
-  xl: 'rounded-xl',
-  '2xl': 'rounded-2xl',
+  lg: 'rounded-[var(--radius-sm)]',
+  xl: 'rounded-[var(--radius-sm)]',
+  '2xl': 'rounded-[var(--radius-sm)]',
   '3xl': 'rounded-3xl',
-  full: 'rounded-full',
+  full: 'rounded-[var(--radius-sm)]',
 };
 
 const shimmer = {
@@ -34,8 +34,8 @@ const Skeleton = ({
     <div
       className={`
         relative overflow-hidden
-        bg-gray-200 dark:bg-gray-700
-        ${roundedClasses[rounded] ?? 'rounded-lg'}
+        bg-[var(--bg-tertiary)]
+        ${roundedClasses[rounded] ?? 'rounded-[var(--radius-sm)]'}
         ${className}
       `}
       style={{ width, height }}
@@ -87,7 +87,7 @@ Skeleton.Avatar.displayName = 'Skeleton.Avatar';
 // Card Skeleton
 Skeleton.Card = ({ className = '' }) => {
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-2xl p-4 space-y-4 ${className}`}>
+    <div className={`bg-[var(--bg-secondary)] rounded-[var(--radius)] p-4 space-y-4 ${className}`}>
       <div className="flex items-center gap-3">
         <Skeleton.Avatar />
         <div className="flex-1 space-y-2">
@@ -111,7 +111,7 @@ Skeleton.Table = ({ rows = 5, cols = 4, className = '' }) => {
   return (
     <div className={`space-y-3 ${className}`}>
       {/* Header */}
-      <div className="flex gap-4 pb-3 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex gap-4 pb-3 border-b border-[var(--border-color)]">
         {Array.from({ length: cols }).map((_, i) => (
           <Skeleton key={i} height="1rem" className="flex-1" rounded="md" />
         ))}
@@ -138,7 +138,7 @@ Skeleton.Table.displayName = 'Skeleton.Table';
 // Menu Item Skeleton (for POS)
 Skeleton.MenuItem = ({ className = '' }) => {
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-2xl p-3 space-y-3 ${className}`}>
+    <div className={`bg-[var(--bg-secondary)] rounded-[var(--radius)] p-3 space-y-3 ${className}`}>
       <Skeleton height="120px" rounded="xl" />
       <Skeleton height="1rem" className="w-2/3" rounded="md" />
       <Skeleton height="1.25rem" className="w-1/3" rounded="md" />
@@ -164,7 +164,7 @@ Skeleton.MenuGrid.displayName = 'Skeleton.MenuGrid';
 // Stats Card Skeleton
 Skeleton.Stats = ({ className = '' }) => {
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-2xl p-4 space-y-3 ${className}`}>
+    <div className={`bg-[var(--bg-secondary)] rounded-[var(--radius)] p-4 space-y-3 ${className}`}>
       <Skeleton height="0.75rem" className="w-1/3" rounded="md" />
       <Skeleton height="2rem" className="w-2/3" rounded="md" />
       <Skeleton height="0.625rem" className="w-1/2" rounded="md" />
@@ -177,7 +177,7 @@ Skeleton.Stats.displayName = 'Skeleton.Stats';
 // Order Card Skeleton
 Skeleton.OrderCard = ({ className = '' }) => {
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-2xl p-4 space-y-3 ${className}`}>
+    <div className={`bg-[var(--bg-secondary)] rounded-[var(--radius)] p-4 space-y-3 ${className}`}>
       <div className="flex justify-between items-center">
         <Skeleton height="1.5rem" className="w-16" rounded="lg" />
         <Skeleton height="1.25rem" className="w-20" rounded="full" />

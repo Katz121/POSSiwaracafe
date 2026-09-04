@@ -6,10 +6,10 @@ const roundedClasses = {
   none: 'rounded-none',
   sm: 'rounded-sm',
   md: 'rounded-md',
-  lg: 'rounded-lg',
-  xl: 'rounded-xl',
-  '2xl': 'rounded-2xl',
-  '3xl': 'rounded-3xl',
+  lg: 'rounded-[var(--radius-sm)]',
+  xl: 'rounded-[var(--radius-sm)]',
+  '2xl': 'rounded-[var(--radius-sm)]',
+  '3xl': 'rounded-[var(--radius-sm)]',
   full: 'rounded-full',
 };
 
@@ -47,7 +47,7 @@ const Avatar = forwardRef(({
 
   // Generate color from name
   const getColorFromName = (name) => {
-    if (!name) return 'bg-gray-200 dark:bg-gray-700';
+    if (!name) return 'bg-[var(--bg-tertiary)]';
 
     const colors = [
       'bg-red-500',
@@ -89,7 +89,7 @@ const Avatar = forwardRef(({
         ${roundedClasses[rounded] ?? 'rounded-full'}
         ${sizes[size]}
         ${onClick ? 'cursor-pointer' : ''}
-        ${showImage ? 'bg-gray-200 dark:bg-gray-700' : bgColor}
+        ${showImage ? 'bg-[var(--bg-tertiary)]' : bgColor}
         ${className}
       `}
       {...props}
@@ -108,7 +108,7 @@ const Avatar = forwardRef(({
       ) : fallback ? (
         fallback
       ) : (
-        <User className="w-1/2 h-1/2 text-gray-400 dark:text-gray-500" />
+        <User className="w-1/2 h-1/2 text-[var(--text-muted)]" />
       )}
     </div>
   );
@@ -133,7 +133,7 @@ export const AvatarGroup = forwardRef(({
       {childArray.slice(0, visibleCount).map((child, index) => (
         <div
           key={index}
-          className="relative ring-2 ring-white dark:ring-gray-900 rounded-full"
+          className="relative ring-2 ring-[var(--bg-secondary)] rounded-full"
           style={{ zIndex: visibleCount - index }}
         >
           {child}
@@ -145,10 +145,10 @@ export const AvatarGroup = forwardRef(({
             relative inline-flex items-center justify-center
             ${sizes[size]}
             rounded-full
-            bg-gray-200 dark:bg-gray-700
-            text-gray-600 dark:text-gray-300
+            bg-[var(--bg-tertiary)]
+            text-[var(--text-secondary)]
             font-medium
-            ring-2 ring-white dark:ring-gray-900
+            ring-2 ring-[var(--bg-secondary)]
           `}
         >
           +{remainingCount}

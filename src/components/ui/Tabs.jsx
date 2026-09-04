@@ -49,9 +49,9 @@ const TabsList = ({ children, className = '' }) => {
   const { variant, fullWidth } = useTabsContext('Tabs.List');
 
   const variants = {
-    default: 'bg-gray-100 dark:bg-gray-800 p-1 rounded-xl',
+    default: 'bg-[var(--bg-tertiary)] p-1 rounded-[var(--radius-sm)]',
     pills: 'gap-2',
-    underline: 'border-b border-gray-200 dark:border-gray-700',
+    underline: 'border-b border-[var(--border-color)]',
   };
 
   return (
@@ -83,24 +83,24 @@ const Tab = ({
 
   const variantStyles = {
     default: `
-      px-4 py-2 rounded-lg text-sm
+      px-4 py-2 rounded-[var(--radius-sm)] text-sm
       ${isActive
-        ? 'text-emerald-700 dark:text-emerald-400'
-        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+        ? 'text-[var(--accent-emerald)]'
+        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
       }
     `,
     pills: `
-      px-4 py-2 rounded-xl text-sm
+      px-4 py-2 rounded-[var(--radius-sm)] text-sm
       ${isActive
-        ? 'bg-emerald-500 text-white shadow-md'
-        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+        ? 'bg-[var(--accent-emerald)] text-white shadow-[var(--elev-1)]'
+        : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-light)]'
       }
     `,
     underline: `
       px-4 py-3 text-sm border-b-2 -mb-px
       ${isActive
-        ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
-        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
+        ? 'border-[var(--accent-emerald)] text-[var(--accent-emerald)]'
+        : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-color)]'
       }
     `,
   };
@@ -124,12 +124,12 @@ const Tab = ({
       {variant === 'default' && isActive && (
         <motion.div
           layoutId={`${tabsId}-activeTabBg`}
-          className="absolute inset-0 bg-white dark:bg-gray-700 rounded-lg shadow-sm"
+          className="absolute inset-0 bg-[var(--bg-secondary)] rounded-[var(--radius-sm)] shadow-[var(--elev-1)]"
           transition={{ type: 'spring', stiffness: 400, damping: 30 }}
         />
       )}
 
-      <span className="relative z-10 flex items-center gap-2">
+      <span className="relative z-[var(--z-dropdown)] flex items-center gap-2">
         {icon && <span className="w-4 h-4">{icon}</span>}
         {children}
       </span>

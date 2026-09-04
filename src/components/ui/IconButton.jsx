@@ -2,12 +2,12 @@ import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
 
 const variants = {
-  primary: 'bg-emerald-500 hover:bg-emerald-600 text-white',
-  secondary: 'bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200',
-  danger: 'bg-red-500 hover:bg-red-600 text-white',
-  warning: 'bg-amber-500 hover:bg-amber-600 text-white',
-  ghost: 'bg-transparent hover:bg-gray-100 text-gray-600 dark:text-gray-400 dark:hover:bg-gray-800',
-  outline: 'bg-transparent border-2 border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800',
+  primary: 'bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-dark)] text-white',
+  secondary: 'bg-[var(--bg-tertiary)] hover:bg-[var(--border-light)] text-[var(--text-primary)]',
+  danger: 'bg-[var(--state-danger)] text-white',
+  warning: 'bg-[var(--state-warn)] text-white',
+  ghost: 'bg-transparent hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
+  outline: 'bg-transparent border-2 border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]',
 };
 
 const sizes = {
@@ -23,11 +23,11 @@ const roundedClasses = {
   none: 'rounded-none',
   sm: 'rounded-sm',
   md: 'rounded-md',
-  lg: 'rounded-lg',
-  xl: 'rounded-xl',
-  '2xl': 'rounded-2xl',
-  '3xl': 'rounded-3xl',
-  full: 'rounded-full',
+  lg: 'rounded-[var(--radius-sm)]',
+  xl: 'rounded-[var(--radius-sm)]',
+  '2xl': 'rounded-[var(--radius-sm)]',
+  '3xl': 'rounded-[var(--radius-sm)]',
+  full: 'rounded-[var(--radius-sm)]',
 };
 
 const IconButton = forwardRef(({

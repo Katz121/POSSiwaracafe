@@ -44,7 +44,7 @@ const ToastItem = ({ id, type, message, onDismiss }) => {
       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
       className={`
         flex items-center gap-3 px-4 py-3
-        rounded-xl shadow-lg
+        rounded-[var(--radius-sm)] shadow-[var(--elev-3)]
         min-w-[280px] max-w-[400px]
         ${config.className}
       `}
@@ -68,7 +68,7 @@ ToastItem.displayName = 'ToastItem';
 const ToastContainer = ({ toasts, removeToast }) => {
   return (
     <div
-      className="fixed top-4 right-4 z-[400] flex flex-col gap-2"
+      className="fixed top-4 right-4 z-[var(--z-toast)] flex flex-col gap-2"
       role="status"
       aria-live="polite"
     >

@@ -66,7 +66,7 @@ const Modal = forwardRef(({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4"
           onClick={handleBackdropClick}
           role="dialog"
           aria-modal="true"
@@ -77,7 +77,7 @@ const Modal = forwardRef(({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 z-[var(--z-modal-bg)] bg-black/60 backdrop-blur-sm"
           />
 
           {/* Modal Content */}
@@ -87,9 +87,9 @@ const Modal = forwardRef(({
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className={`
-              relative w-full ${sizes[size]}
-              bg-white dark:bg-gray-800
-              rounded-3xl shadow-2xl
+              relative z-[var(--z-modal)] w-full ${sizes[size]}
+              bg-[var(--bg-secondary)]
+              rounded-[var(--radius)] shadow-[var(--elev-3)]
               max-h-[90vh] overflow-hidden
               flex flex-col
               ${className}
@@ -97,11 +97,11 @@ const Modal = forwardRef(({
           >
             {/* Header */}
             {(title || showClose) && (
-              <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-[var(--border-color)]">
                 {title && (
                   <h2
                     id={titleId}
-                    className="text-xl font-bold text-gray-900 dark:text-white"
+                    className="text-xl font-bold text-[var(--text-primary)]"
                   >
                     {title}
                   </h2>
@@ -126,7 +126,7 @@ const Modal = forwardRef(({
 
             {/* Footer */}
             {footer && (
-              <div className="flex items-center justify-end gap-2 md:gap-3 px-4 md:px-6 py-3 md:py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+              <div className="flex items-center justify-end gap-2 md:gap-3 px-4 md:px-6 py-3 md:py-4 border-t border-[var(--border-color)] bg-[var(--bg-tertiary)]">
                 {footer}
               </div>
             )}
@@ -166,10 +166,10 @@ export const ConfirmModal = ({
   const buttonVariant = variant === 'info' ? 'primary' : variant;
 
   const iconBgColors = {
-    danger: 'bg-red-50 dark:bg-red-900/30 text-red-500',
-    warning: 'bg-orange-50 dark:bg-orange-900/30 text-orange-500',
-    primary: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500',
-    info: 'bg-blue-50 dark:bg-blue-900/30 text-blue-500',
+    danger: 'bg-[var(--bg-tertiary)] text-[var(--state-danger)]',
+    warning: 'bg-[var(--bg-tertiary)] text-[var(--state-warn)]',
+    primary: 'bg-[var(--bg-tertiary)] text-[var(--accent-emerald)]',
+    info: 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
   };
 
   return (
@@ -182,11 +182,11 @@ export const ConfirmModal = ({
       className={className}
     >
       <div className="text-center py-4">
-        <div className={`w-20 h-20 rounded-full mx-auto flex items-center justify-center mb-6 shadow-inner ${iconBgColors[variant]}`}>
+        <div className={`w-20 h-20 rounded-[var(--radius-sm)] mx-auto flex items-center justify-center mb-6 shadow-inner ${iconBgColors[variant]}`}>
           <IconComponent size={40} />
         </div>
-        <h3 className="font-black text-2xl mb-3 tracking-tight uppercase text-gray-800 dark:text-white">{title}</h3>
-        <p className="text-gray-500 dark:text-gray-400 font-medium mb-8 text-sm px-4">
+        <h3 className="font-bold text-2xl mb-3 tracking-tight text-[var(--text-primary)]">{title}</h3>
+        <p className="text-[var(--text-secondary)] font-medium mb-8 text-sm px-4">
           {message}
         </p>
         <div className="grid grid-cols-2 gap-4">
@@ -247,10 +247,10 @@ export const InputModal = ({
   };
 
   const iconBgColors = {
-    danger: 'bg-red-50 dark:bg-red-900/30 text-red-500',
-    warning: 'bg-orange-50 dark:bg-orange-900/30 text-orange-500',
-    primary: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500',
-    secondary: 'bg-blue-50 dark:bg-blue-900/30 text-blue-500',
+    danger: 'bg-[var(--bg-tertiary)] text-[var(--state-danger)]',
+    warning: 'bg-[var(--bg-tertiary)] text-[var(--state-warn)]',
+    primary: 'bg-[var(--bg-tertiary)] text-[var(--accent-emerald)]',
+    secondary: 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
   };
 
   return (
@@ -264,12 +264,12 @@ export const InputModal = ({
     >
       <form onSubmit={handleSubmit} className="py-2">
         <div className="text-center mb-6">
-          <div className={`w-16 h-16 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg ${iconBgColors[variant]}`}>
+          <div className={`w-16 h-16 rounded-[var(--radius-sm)] mx-auto flex items-center justify-center mb-4 shadow-[var(--elev-1)] ${iconBgColors[variant]}`}>
             <IconComponent size={32} />
           </div>
-          <h3 className="font-black text-xl mb-1 tracking-tight uppercase text-gray-800 dark:text-white">{title}</h3>
+          <h3 className="font-bold text-xl mb-1 tracking-tight text-[var(--text-primary)]">{title}</h3>
           {description && (
-            <p className="text-gray-400 font-medium text-sm">{description}</p>
+            <p className="text-[var(--text-muted)] font-medium text-sm">{description}</p>
           )}
         </div>
 
