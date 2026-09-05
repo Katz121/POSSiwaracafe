@@ -86,7 +86,7 @@ export default function MemberCardApp() {
       <div className="w-full max-w-sm">
 
         <header className="text-center mb-8">
-          <div className="w-14 h-14 rounded-[var(--radius)] bg-[var(--text-primary)] text-[var(--accent-orange)] mx-auto flex items-center justify-center mb-4">
+          <div className="w-14 h-14 rounded-[var(--radius)] bg-[var(--surface-inverse)] text-[var(--accent-orange)] mx-auto flex items-center justify-center mb-4">
             <Coffee size={26} strokeWidth={1.8} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">บัตรสมาชิก</h1>
@@ -125,7 +125,7 @@ export default function MemberCardApp() {
         </div>
 
         {checked && member && (
-          <div className="mt-4 bg-[var(--text-primary)] text-[var(--bg-secondary)] rounded-[var(--radius)] p-4 shadow-[var(--elev-1)]">
+          <div className="mt-4 bg-[var(--surface-inverse)] text-[var(--text-on-inverse)] rounded-[var(--radius)] p-4 shadow-[var(--elev-1)]">
             <p className="text-xs tracking-[.25em] text-[var(--accent-orange)] mb-2">สมาชิก</p>
             <p className="text-xl font-bold mb-6">{member.name || 'ลูกค้าประจำ'}</p>
 

@@ -1359,7 +1359,7 @@ Return [] if no stock items match.`;
 
             {/* Profit Prediction */}
             {newItem.price && (
-              <div className="bg-[var(--text-primary)] rounded-[var(--radius)] p-6 text-white border-b-4 border-emerald-500 shadow-[var(--elev-2)]">
+              <div className="bg-[var(--surface-inverse)] rounded-[var(--radius)] p-6 text-white border-b-4 border-emerald-500 shadow-[var(--elev-2)]">
                 <div className="flex justify-between items-center mb-4">
                   <span className="text-xs font-medium  tracking-[0.2em] opacity-50">ประมาณการกำไร</span>
                   <TrendingUp size={18} className="text-emerald-500" />

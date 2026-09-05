@@ -328,7 +328,7 @@ const FinancialView = () => {
                                     <button
                                         onClick={savePlan}
                                         disabled={saveStatus === 'success' || aiPlan.id}
-                                        className={`px-6 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 transition-all ${saveStatus === 'success' || aiPlan.id ? 'bg-[var(--state-ok)]/10 text-[var(--state-ok)] cursor-default' : 'bg-[var(--text-primary)] text-white hover:bg-[var(--text-primary)]'
+                                        className={`px-6 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 transition-all ${saveStatus === 'success' || aiPlan.id ? 'bg-[var(--state-ok)]/10 text-[var(--state-ok)] cursor-default' : 'bg-[var(--surface-inverse)] text-white hover:bg-[var(--surface-inverse-hover)]'
                                             }`}
                                     >
                                         <Save size={18} /> {saveStatus === 'success' || aiPlan.id ? 'บันทึกแล้ว' : 'บันทึกแผน'}

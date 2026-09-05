@@ -110,7 +110,7 @@ export function KeyboardShortcutsHelp({ isOpen, onClose }) {
   return (
     <div className="fixed inset-0 z-[var(--z-modal-bg)] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
       <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-3)] max-w-2xl w-full max-h-[80vh] overflow-hidden">
-        <div className="p-6 bg-[var(--text-primary)] text-white">
+        <div className="p-6 bg-[var(--surface-inverse)] text-white">
           <h2 className="text-xl font-bold tracking-wider">Keyboard Shortcuts</h2>
           <p className="text-[var(--text-muted)] text-sm mt-1">กด ? เพื่อเปิด/ปิดหน้านี้</p>
         </div>
@@ -122,7 +122,7 @@ export function KeyboardShortcutsHelp({ isOpen, onClose }) {
             <div className="grid grid-cols-2 gap-2">
               {navigationShortcuts.map(s => (
                 <div key={s.key} className="flex items-center gap-3 bg-[var(--bg-tertiary)] rounded-[var(--radius-sm)] p-3">
-                  <kbd className="px-3 py-1.5 bg-[var(--text-primary)] text-white rounded-[var(--radius-sm)] text-xs font-mono font-medium shadow-[var(--elev-2)]">{s.key}</kbd>
+                  <kbd className="px-3 py-1.5 bg-[var(--surface-inverse)] text-white rounded-[var(--radius-sm)] text-xs font-mono font-medium shadow-[var(--elev-2)]">{s.key}</kbd>
                   <span className="text-sm font-semibold text-[var(--text-secondary)]">{s.label}</span>
                 </div>
               ))}
@@ -161,7 +161,7 @@ export function KeyboardShortcutsHelp({ isOpen, onClose }) {
         <div className="p-4 bg-[var(--bg-tertiary)] border-t border-[var(--border-color)]">
           <button
             onClick={onClose}
-            className="w-full py-3 bg-[var(--text-primary)] text-white rounded-[var(--radius-sm)] font-medium text-sm tracking-wider hover:bg-[var(--text-secondary)] transition-colors"
+            className="w-full py-3 bg-[var(--surface-inverse)] text-white rounded-[var(--radius-sm)] font-medium text-sm tracking-wider hover:bg-[var(--surface-inverse-hover)] transition-colors"
           >
             ปิด (Esc)
           </button>

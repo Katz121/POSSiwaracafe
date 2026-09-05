@@ -292,7 +292,7 @@ export default function BillsView() {
                       ))}
                     </div>
                   </div>
-                  <div className="bg-[var(--text-primary)] rounded-2xl lg:rounded-[var(--radius)] p-6 lg:p-12 text-white shadow-[var(--elev-3)] relative overflow-hidden border-b-4 lg:border-b-8 border-emerald-500/20">
+                  <div className="bg-[var(--surface-inverse)] rounded-2xl lg:rounded-[var(--radius)] p-6 lg:p-12 text-white shadow-[var(--elev-3)] relative overflow-hidden border-b-4 lg:border-b-8 border-emerald-500/20">
                     <div className="relative space-y-4 lg:space-y-5">
                       <div className="flex justify-between text-xs lg:text-base opacity-50 font-bold tracking-wider lg:tracking-widest">
                         <span>ยอดรวมก่อนส่วนลด</span>
@@ -318,7 +318,7 @@ export default function BillsView() {
                       <div className="flex justify-between items-end border-t border-white/10 pt-6 lg:pt-10">
                         <div className="flex flex-col">
                           <span className="text-xs lg:text-xs font-semibold tracking-wider lg:tracking-[0.4em] opacity-40 mb-1.5 lg:mb-2">ยอดรวมสุทธิ</span>
-                          <span className={`text-xs lg:text-xs font-semibold px-3 lg:px-4 py-1 lg:py-1.5 rounded-lg lg:rounded-xl w-fit ${selectedBill.isPaid ? 'bg-[var(--state-ok)]/20 text-[var(--state-ok)] border border-[var(--state-ok)]/20' : 'bg-[var(--state-warn)] text-white'}`}>{selectedBill.isPaid ? 'จ่ายเรียบร้อย' : 'ค้างชำระ'}</span>
+                          <span className={`text-xs lg:text-xs font-semibold px-3 lg:px-4 py-1 lg:py-1.5 rounded-lg lg:rounded-xl w-fit ${selectedBill.isPaid ? 'bg-[var(--state-ok)]/20 text-[var(--state-ok)] border border-[var(--state-ok)]/20' : 'bg-[var(--state-warn)]/20 text-[var(--state-warn)] border border-[var(--state-warn)]/20'}`}>{selectedBill.isPaid ? 'จ่ายเรียบร้อย' : 'ค้างชำระ'}</span>
                         </div>
                         <span className="num text-right text-3xl lg:text-6xl font-semibold tracking-tighter text-white drop-shadow-[var(--elev-2)]">฿{Number(selectedBill.total || 0).toLocaleString()}</span>
                       </div>
@@ -414,7 +414,7 @@ export default function BillsView() {
                 </div>
 
                 {/* Summary */}
-                <div className="bg-[var(--text-primary)] rounded-2xl p-4 text-white space-y-3">
+                <div className="bg-[var(--surface-inverse)] rounded-2xl p-4 text-white space-y-3">
                   <div className="flex justify-between text-xs opacity-50 font-bold">
                     <span>ยอดรวม</span>
                       <span className="num text-right">฿{Number(selectedBill.subtotal || 0).toLocaleString()}</span>
@@ -434,7 +434,7 @@ export default function BillsView() {
                   <div className="flex justify-between items-end border-t border-white/10 pt-4">
                     <div>
                       <span className="text-xs font-semibold tracking-wider opacity-40 block mb-1">ยอดสุทธิ</span>
-                    <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${selectedBill.isPaid ? 'bg-[var(--state-ok)]/20 text-[var(--state-ok)]' : 'bg-[var(--state-warn)] text-white'}`}>{selectedBill.isPaid ? 'จ่ายแล้ว' : 'ค้างชำระ'}</span>
+                    <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${selectedBill.isPaid ? 'bg-[var(--state-ok)]/20 text-[var(--state-ok)]' : 'bg-[var(--state-warn)]/20 text-[var(--state-warn)] border border-[var(--state-warn)]/20'}`}>{selectedBill.isPaid ? 'จ่ายแล้ว' : 'ค้างชำระ'}</span>
                     </div>
                       <span className="num text-right text-3xl font-semibold">฿{Number(selectedBill.total || 0).toLocaleString()}</span>
                   </div>

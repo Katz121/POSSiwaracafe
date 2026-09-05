@@ -669,7 +669,7 @@ const DashboardView = () => {
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-[var(--z-nav)]"
                         />
                     </div>
-                    <button onClick={() => window.print()} className="bg-[var(--text-primary)] text-white p-3.5 rounded-2xl hover:bg-[var(--text-secondary)] transition-all shadow-[var(--elev-1)] active:scale-95"><FileText size={20} /></button>
+                    <button onClick={() => window.print()} className="bg-[var(--surface-inverse)] text-white p-3.5 rounded-2xl hover:bg-[var(--surface-inverse-hover)] transition-all shadow-[var(--elev-1)] active:scale-95"><FileText size={20} /></button>
                 </div>
             </header>
 

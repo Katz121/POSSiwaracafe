@@ -562,7 +562,7 @@ export default function AdminView() {
           {/* ==================== TAB: สรุปยอด ==================== */}
           {activeAdminTab === 'stats' && <>
           {/* Daily Stats Card */}
-          <div className="bg-[var(--text-primary)] rounded-2xl md:rounded-[2.5rem] lg:rounded-[var(--radius)] p-6 md:p-6 lg:p-6 text-white shadow-[var(--elev-3)] relative overflow-hidden border-b-8 border-emerald-500/20">
+          <div className="bg-[var(--surface-inverse)] rounded-2xl md:rounded-[2.5rem] lg:rounded-[var(--radius)] p-6 md:p-6 lg:p-6 text-white shadow-[var(--elev-3)] relative overflow-hidden border-b-8 border-emerald-500/20">
             <TrendingUp size={160} className="absolute -right-12 -bottom-12 opacity-10" />
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -825,7 +825,7 @@ export default function AdminView() {
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={handlePrintQR}
-                    className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-[var(--text-primary)] text-white font-semibold text-xs  tracking-widest shadow-[var(--elev-2)] hover:bg-[var(--text-primary)] active:scale-95 transition-all"
+                    className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-[var(--surface-inverse)] text-white font-semibold text-xs  tracking-widest shadow-[var(--elev-2)] hover:bg-[var(--surface-inverse-hover)] active:scale-95 transition-all"
                   >
                     <Printer size={16} /> พิมพ์ QR
                   </button>
@@ -1528,7 +1528,7 @@ export default function AdminView() {
                 <form onSubmit={addExpense} className="space-y-5 text-[var(--text-primary)]">
                   <input type="text" placeholder="บันทึกรายจ่ายวันนี้..." required value={newExpense.title} onChange={e => setNewExpense({ ...newExpense, title: e.target.value })} className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[1.5rem] p-4 text-sm font-semibold outline-none shadow-inner focus:bg-[var(--bg-secondary)] transition-all" />
                   <div className="grid grid-cols-2 gap-4 num"><input type="number" placeholder="จำนวนเงิน..." required value={newExpense.amount} onChange={e => setNewExpense({ ...newExpense, amount: e.target.value })} className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[1.5rem] p-4 text-sm font-semibold outline-none shadow-inner" /><select value={newExpense.category} onChange={e => setNewExpense({ ...newExpense, category: e.target.value })} className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[1.5rem] p-4 text-xs font-medium outline-none shadow-inner cursor-pointer text-[var(--text-primary)]">{EXPENSE_CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}</select></div>
-                  <button type="submit" className="w-full bg-[var(--text-primary)] text-white py-6 rounded-[2rem] font-semibold text-xs  shadow-[var(--elev-2)] active:scale-95 tracking-[0.2em] border-b-4 border-[var(--border-color)]">บันทึกรายจ่าย</button>
+                  <button type="submit" className="w-full bg-[var(--surface-inverse)] text-white py-6 rounded-[2rem] font-semibold text-xs  shadow-[var(--elev-2)] active:scale-95 tracking-[0.2em] border-b-4 border-[var(--border-color)]">บันทึกรายจ่าย</button>
                 </form>
                 <div className="space-y-3 max-h-56 overflow-y-auto scrollbar-hide border-t border-[var(--border-color)] pt-6 text-[var(--text-primary)]">
                   {expenses.filter(e => e.date === selectedHistoryDate).length === 0 && (

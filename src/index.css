@@ -45,6 +45,11 @@
   --text-secondary: #475569;
   --text-muted: #94a3b8;
 
+  /* === INVERSE SURFACE (การ์ดสรุป/ปุ่มหลักพื้นทึบ) === */
+  --surface-inverse: #0f172a;
+  --surface-inverse-hover: #1e293b;
+  --text-on-inverse: #ffffff;
+
   /* === BORDER === */
   --border-color: rgba(226, 232, 240, 0.80);
   --border-light: rgba(241, 245, 249, 0.90);
@@ -118,6 +123,11 @@ html.dark {
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
+
+  /* === INVERSE SURFACE === */
+  --surface-inverse: #2B3A54;
+  --surface-inverse-hover: #364766;
+  --text-on-inverse: #f1f5f9;
 
   /* === BORDER === */
   --border-color: rgba(51, 65, 85, 0.65);
