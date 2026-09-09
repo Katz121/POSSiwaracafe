@@ -50,6 +50,7 @@ export default function MenuManageView() {
     stockLinks: []
   });
   const [editingItem, setEditingItem] = useState(null);
+  const candidates = menu.filter(m => m.id !== editingItem?.id && m.stockLinks?.length > 0 && m.category === newItem.category);
   const [isUploading, setIsUploading] = useState(false);
   const [isSuggestingStock, setIsSuggestingStock] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
@@ -1178,21 +1179,23 @@ ${withDescription
               <div className="flex items-center justify-between px-2 text-[var(--text-primary)] flex-wrap gap-2">
                 <div className="flex items-center gap-3 text-xs font-medium text-emerald-600  tracking-[0.1em] leading-none"><Link2 size={20} /> ผูกสต็อกพัสดุ</div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <select
-                    className="text-xs font-bold bg-[var(--bg-secondary)] border border-blue-100 px-3 py-2 rounded-xl outline-none text-blue-600 cursor-pointer"
-                    value=""
-                    onChange={(e) => {
-                      const sourceItem = menu.find(m => m.id === e.target.value);
-                      if (sourceItem && sourceItem.stockLinks) {
-                        setNewItem({ ...newItem, stockLinks: [...sourceItem.stockLinks] });
-                      }
-                    }}
-                  >
-                    <option value="">📋 คัดลอกจากเมนูอื่น...</option>
-                    {menu.filter(m => m.id !== editingItem?.id && m.stockLinks?.length > 0 && m.category === newItem.category).map(m => (
-                      <option key={m.id} value={m.id}>{m.name} ({m.stockLinks.length} รายการ)</option>
-                    ))}
-                  </select>
+                  {candidates.length > 0 && (
+                    <SearchSelect
+                      className="text-xs font-bold bg-[var(--bg-secondary)] border border-blue-100 px-3 py-2 rounded-xl outline-none text-blue-600 placeholder:text-blue-600 cursor-pointer"
+                      // ช่องนี้สั่งคัดลอกสูตร จึงไม่เก็บเมนูที่เลือกไว้ให้เข้าใจว่าเป็นการผูกกับต้นทาง
+                      value=""
+                      onChange={id => {
+                        const sourceItem = menu.find(m => m.id === id);
+                        if (sourceItem && sourceItem.stockLinks) {
+                          setNewItem({ ...newItem, stockLinks: [...sourceItem.stockLinks] });
+                        }
+                      }}
+                      groups={[[ 'เมนูในหมวดเดียวกัน', candidates ]]}
+                      getOptionLabel={m => `${m.name} (${m.stockLinks.length} รายการ)`}
+                      getOptionValue={m => m.id}
+                      placeholder="📋 คัดลอกจากเมนูอื่น..."
+                    />
+                  )}
                   <button type="button" onClick={addStockLink} className="flex items-center gap-2 text-emerald-600 font-semibold text-xs bg-[var(--bg-secondary)] border border-emerald-100 px-5 py-2.5 rounded-2xl shadow-sm hover:bg-emerald-50 active:scale-95 leading-none"><Plus size={16} /> เพิ่มพัสดุ</button>
                   <button
                     type="button"

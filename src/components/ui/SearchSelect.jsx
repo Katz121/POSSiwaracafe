@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-export default function SearchSelect({ value, onChange, groups, getOptionValue, getOptionLabel, placeholder = 'พิมพ์ค้นหาวัตถุดิบ...' }) {
+export default function SearchSelect({ value, onChange, groups, getOptionValue, getOptionLabel, placeholder = 'พิมพ์ค้นหาวัตถุดิบ...', className = 'w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl px-5 h-14 text-base font-semibold outline-none focus:ring-2 focus:ring-emerald-500 text-[var(--text-primary)]' }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -82,7 +82,7 @@ export default function SearchSelect({ value, onChange, groups, getOptionValue, 
             setOpen(false);
           }
         }}
-        className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl px-5 h-14 text-base font-semibold outline-none focus:ring-2 focus:ring-emerald-500 text-[var(--text-primary)]"
+        className={className}
       />
       {open && createPortal(
         <div ref={list} id={id} role="listbox" aria-label={placeholder} style={position} className="overflow-y-auto overscroll-contain rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-xl">

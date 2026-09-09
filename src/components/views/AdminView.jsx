@@ -14,7 +14,7 @@ import { getISODate, getOrderDate } from '../../utils/calculations';
 import { seedDatabase } from '../../utils/seedData';
 import { recomputeAllSoldCounts } from '../../utils/menuSales';
 import { getUpsellStats, clearUpsellStats, exportUpsellStats } from '../../services/upsellTracker';
-import { Button, Modal, Input, Tabs, Card, Badge, Spinner, ConfirmModal, useToast } from '../ui';
+import { Button, Modal, Input, Tabs, Card, Badge, Spinner, ConfirmModal, SearchSelect, useToast } from '../ui';
 import {
   DEFAULT_ADMIN_PIN,
   DEFAULT_REDEEM_POINTS_THRESHOLD,
@@ -1196,18 +1196,14 @@ export default function AdminView() {
                         <div key={idx} className="bg-[var(--bg-secondary)]/80 p-4 rounded-[2rem] border border-amber-50 shadow-sm space-y-4 text-[var(--text-primary)]">
                           <div className="flex flex-col gap-2">
                             <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest ml-1">เลือกเมล็ด/วัตถุดิบ</label>
-                            <select
+                            <SearchSelect
                               value={link.stockId}
-                              onChange={(e) => updateBeanStockLink(idx, 'stockId', e.target.value)}
-                              className="w-full bg-amber-50/20 border border-amber-100 rounded-xl px-4 h-14 text-sm font-semibold outline-none text-[var(--text-primary)]"
-                            >
-                              <option value="">เลือกพัสดุ...</option>
-                              {stockLinkGroups.map(([category, items]) => (
-                                <optgroup key={category} label={category}>
-                                  {items.map(s => <option key={s.id} value={s.id}>{String(s.name)}</option>)}
-                                </optgroup>
-                              ))}
-                            </select>
+                              onChange={id => updateBeanStockLink(idx, 'stockId', id)}
+                              groups={stockLinkGroups}
+                              getOptionValue={s => s.id}
+                              getOptionLabel={s => String(s.name)}
+                              placeholder="พิมพ์ค้นหาวัตถุดิบ..."
+                            />
                           </div>
 
                           <div className="flex items-end gap-3">
