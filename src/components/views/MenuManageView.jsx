@@ -1,10 +1,12 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-  ClipboardList, RefreshCcw, Zap, CheckCircle2, Trash2,
+  PackageX, ClipboardList, RefreshCcw, Zap, CheckCircle2, Trash2,
   ChevronDown, ChevronUp, Star, Eye, EyeOff, Edit, PackagePlus,
   Coffee, Link2, Plus, Upload, TrendingUp, Store, AlertTriangle, FolderCog, Clock, Languages
 } from 'lucide-react';
-import { doc, collection, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, collection, addDoc, updateDoc, deleteDoc, writeBatch, increment, serverTimestamp } from 'firebase/firestore';
+import { computeMenuWaste, buildWasteExpenseTitle } from '../../utils/wastage';
+import { StockUsageInput } from '../ui';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate, compressImage } from '../../utils/calculations';
@@ -85,6 +87,12 @@ export default function MenuManageView() {
   const [showPromoInputModal, setShowPromoInputModal] = useState(false);
   const [selectedPromo, setSelectedPromo] = useState(null);
 
+  const [highlightFilter, setHighlightFilter] = useState('all');
+  const [wasteMenuId, setWasteMenuId] = useState(null);
+  const [wasteQuantity, setWasteQuantity] = useState('');
+  const [savingWaste, setSavingWaste] = useState(false);
+  const wasteLock = useRef(false);
+  const editorRef = useRef(null);
   const [stockFilter, setStockFilter] = useState('all');
   const stockById = useMemo(() => new Map(stock.map(item => [item.id, item])), [stock]);
   // แยกสถานะจากยอดต้นทุน เพราะลิงก์ที่ถูกลบหรือยังไม่ผูกต้องไม่ดูเหมือนกำไรสูง
@@ -101,7 +109,43 @@ export default function MenuManageView() {
     const linked = menu.filter(item => menuCostStatus.get(item.id).linked).length;
     return { linked, unlinked: menu.length - linked };
   }, [menu, menuCostStatus]);
-  const filteredMenu = useMemo(() => menu.filter(item => stockFilter === 'all' || menuCostStatus.get(item.id).linked === (stockFilter === 'linked')), [menu, menuCostStatus, stockFilter]);
+  const stockFilteredMenu = useMemo(() => menu.filter(item => stockFilter === 'all' || menuCostStatus.get(item.id).linked === (stockFilter === 'linked')), [menu, menuCostStatus, stockFilter]);
+
+  const filteredMenu = useMemo(() => stockFilteredMenu.filter(item => highlightFilter === 'all' || (highlightFilter === 'featured' ? item.isFeatured === true || item.recommended === true : item.isPinnedBest === true)), [stockFilteredMenu, highlightFilter]);
+  const wasteMenu = menu.find(item => item.id === wasteMenuId);
+  const waste = computeMenuWaste({ menuItem: wasteMenu, quantity: Number(wasteQuantity), stockById });
+  const unitWaste = computeMenuWaste({ menuItem: wasteMenu, quantity: 1, stockById });
+  const validWasteQuantity = Number.isFinite(Number(wasteQuantity)) && Number(wasteQuantity) > 0;
+  const editMenu = item => {
+    setEditingItem(item);
+    setNewItem({ ...item, nameEn: item.nameEn || '', descriptionEn: item.descriptionEn || '' });
+    editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const confirmWaste = async () => {
+    if (wasteLock.current || !wasteMenu || !validWasteQuantity || !waste.costed) return;
+    wasteLock.current = true;
+    setSavingWaste(true);
+    try {
+      await runDbAction(async () => {
+        // เขียนพร้อมกันเพื่อไม่ให้ยอดสต็อกกับบัญชีเหลื่อมกันเมื่อรายการใดล้มเหลว
+        const batch = writeBatch(db);
+        Object.entries(waste.usageByStock).forEach(([stockId, used]) => {
+          batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), { quantity: increment(-used) });
+        });
+        const expenseRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'));
+        batch.set(expenseRef, { title: buildWasteExpenseTitle(wasteMenu.name, Number(wasteQuantity)), amount: waste.cost, category: 'ของเสีย (Waste)', date: getISODate(), createdAt: serverTimestamp() });
+        await batch.commit();
+        toast.success('บันทึกของเสียสำเร็จ');
+        setWasteMenuId(null);
+      }, 'บันทึกของเสียไม่สำเร็จ');
+    } finally { wasteLock.current = false; setSavingWaste(false); }
+  };
+  const toggleHighlight = async (item, field) => {
+    // แก้เฉพาะธงที่กด เพราะ recommended เป็นข้อมูลเก่าที่ต้องเก็บไว้
+    await runDbAction(async () => {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menu', item.id), { [field]: !item[field] });
+    }, 'อัปเดตเมนูไม่สำเร็จ');
+  };
 
   // Memoized groupedMenu
   const groupedMenu = useMemo(() => {
@@ -898,6 +942,9 @@ ${withDescription
               {[['all', 'ทั้งหมด'], ['linked', 'ผูกแล้ว'], ['unlinked', 'ยังไม่ผูก']].map(([value, label]) => <Button key={value} type="button" className="min-h-11" variant={stockFilter === value ? 'primary' : 'secondary'} aria-pressed={stockFilter === value} onClick={() => setStockFilter(value)}>{label}</Button>)}
             </div>
           </div>
+          <div className="px-6 py-3 flex flex-wrap gap-2" role="group" aria-label="กรองเมนูไฮไลต์">
+            {[['all', 'ทุกไฮไลต์', stockFilteredMenu.length], ['featured', 'แนะนำ', stockFilteredMenu.filter(item => item.isFeatured === true || item.recommended === true).length], ['pinned', 'ปักหมุดขายดี', stockFilteredMenu.filter(item => item.isPinnedBest === true).length]].map(([value, label, count]) => <Button key={value} type="button" className="min-h-11" variant={highlightFilter === value ? 'primary' : 'secondary'} aria-pressed={highlightFilter === value} onClick={() => setHighlightFilter(value)}>{label} {count}</Button>)}
+          </div>
           <div className="flex-1 overflow-y-auto divide-y divide-gray-50 scrollbar-hide px-6">
             {!isSyncing && menu.length > 0 && filteredMenu.length === 0 && <EmptyState icon={ClipboardList} title="ไม่มีเมนูที่ตรงกับตัวกรอง" />}
             {isSyncing && (
@@ -927,8 +974,8 @@ ${withDescription
                     <div className="flex-1 font-semibold text-[var(--text-primary)] text-xl leading-tight">
                       <div className="flex items-center gap-2 mb-2">
                         <p className="leading-none">{String(i.name)}</p>
-                        {(i.isFeatured || i.recommended) && <Star size={18} className="text-yellow-500 fill-yellow-500" />}
-                        {i.isPinnedBest && <TrendingUp size={18} className="text-orange-500" title="ปักหมุดขายดี" />}
+                        <button type="button" aria-pressed={i.isFeatured === true} title={i.isFeatured ? 'ปิดเมนูแนะนำ' : 'เปิดเมนูแนะนำ'} aria-label={i.isFeatured ? 'ปิดเมนูแนะนำ' : 'เปิดเมนูแนะนำ'} onClick={e => { e.stopPropagation(); toggleHighlight(i, 'isFeatured'); }} className={i.isFeatured ? 'min-w-11 min-h-11 text-emerald-500' : 'min-w-11 min-h-11 text-[var(--text-muted)] opacity-50'}><Star size={18} /></button>{i.recommended === true && <Badge>แนะนำเดิม</Badge>}
+                        <button type="button" aria-pressed={i.isPinnedBest === true} title={i.isPinnedBest ? 'เลิกปักหมุดขายดี' : 'ปักหมุดขายดี'} aria-label={i.isPinnedBest ? 'เลิกปักหมุดขายดี' : 'ปักหมุดขายดี'} onClick={e => { e.stopPropagation(); toggleHighlight(i, 'isPinnedBest'); }} className={i.isPinnedBest ? 'min-w-11 min-h-11 text-emerald-500' : 'min-w-11 min-h-11 text-[var(--text-muted)] opacity-50'}><TrendingUp size={18} /></button>
                         {i.excludeFromSale && <Clock size={18} className="text-indigo-500" title="ยกเว้นลด Happy Hour" />}
                       </div>
                       <div className="flex flex-wrap items-center gap-3">
@@ -947,9 +994,10 @@ ${withDescription
                       </div>
                     </div>
                     <div className="flex gap-3">
+                      <Button type="button" title="บันทึกของเสีย" aria-label="บันทึกของเสีย" onClick={e => { e.stopPropagation(); setWasteMenuId(i.id); setWasteQuantity(''); }}><PackageX size={20} /> บันทึกของเสีย</Button>
                       <button onClick={() => toggleExcludeFromSale(i)} title={i.excludeFromSale ? 'ยกเว้นลด Happy Hour (กดเพื่อให้ร่วมลด)' : 'ร่วมลด Happy Hour (กดเพื่อยกเว้น เช่น เค้กใหม่)'} className={`p-4 rounded-2xl transition-all shadow-sm active:scale-90 ${i.excludeFromSale ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border border-[var(--border-color)]'}`}><Clock size={22} /></button>
                       <button onClick={() => toggleAvailability(i)} className={`p-4 rounded-2xl transition-all shadow-sm active:scale-90 ${i.available !== false ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border border-[var(--border-color)]'}`}>{i.available !== false ? <Eye size={22} /> : <EyeOff size={22} />}</button>
-                      <button onClick={() => { setEditingItem(i); setNewItem({ ...i, nameEn: i.nameEn || '', descriptionEn: i.descriptionEn || '' }); }} aria-label="แก้ไขเมนู" className="p-4 bg-blue-50 text-blue-500 rounded-2xl transition-all shadow-sm border border-blue-100 active:scale-90"><Edit size={22} /></button>
+                      <button onClick={() => { editMenu(i); }} aria-label="แก้ไขเมนู" className="p-4 bg-blue-50 text-blue-500 rounded-2xl transition-all shadow-sm border border-blue-100 active:scale-90"><Edit size={22} /></button>
                       <button onClick={() => {
                         setMenuToDelete(i);
                         setShowDeleteMenuConfirm(true);
@@ -961,7 +1009,7 @@ ${withDescription
             ))}
           </div>
         </div>
-        <div className="w-full lg:w-[400px] xl:w-[500px] bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[var(--radius)] shadow-[var(--elev-3)] border border-emerald-50 p-6 md:p-6 lg:p-12 overflow-y-auto flex flex-col shadow-emerald-500/10 text-[var(--text-primary)] order-first lg:order-last">
+        <div ref={editorRef} className="w-full lg:w-[400px] xl:w-[500px] bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[var(--radius)] shadow-[var(--elev-3)] border border-emerald-50 p-6 md:p-6 lg:p-12 overflow-y-auto flex flex-col shadow-emerald-500/10 text-[var(--text-primary)] order-first lg:order-last">
           <h2 className="font-semibold text-3xl text-[var(--text-primary)] mb-10 flex items-center gap-4  font-semibold leading-none"><div className={`p-3.5 rounded-3xl shadow-[var(--elev-2)] ${editingItem ? 'bg-blue-500 shadow-blue-500/20' : 'bg-emerald-500 shadow-emerald-500/20'} text-white`}><PackagePlus size={32} /></div>{editingItem ? 'แก้ไขเมนูเดิม' : 'เพิ่มเมนูใหม่'}</h2>
           <form onSubmit={saveMenuItem} className="space-y-8 text-[var(--text-primary)]">
             <div><label className="text-xs font-medium text-[var(--text-muted)]  tracking-[0.2em] block mb-3 ml-2 leading-none">ชื่อรายการอาหาร</label><input type="text" required value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} className="w-full bg-[#f8faf9] border border-[var(--border-color)] rounded-[var(--radius)] p-6 text-base font-semibold outline-none focus:bg-[var(--bg-secondary)] transition-all shadow-inner leading-none" /></div>
@@ -1304,20 +1352,7 @@ Return [] if no stock items match.`;
 
                     <div className="flex items-end gap-4">
                       <div className="flex-1 space-y-2">
-                        <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest ml-2">ปริมาณที่ใช้</label>
-                        <div className="relative flex items-center bg-[var(--bg-tertiary)] rounded-xl px-5 h-14 border border-[var(--border-color)]">
-                          <input
-                            type="number"
-                            step="any"
-                            value={link.usage}
-                            onChange={(e) => updateStockLink(idx, 'usage', e.target.value)}
-                            className="w-full bg-transparent border-none text-left text-lg font-semibold outline-none text-[var(--text-primary)]"
-                            placeholder="0.00"
-                          />
-                          <div className="bg-[var(--bg-secondary)] px-4 py-2 rounded-lg border border-[var(--border-color)] text-xs font-medium text-emerald-600  shadow-sm shrink-0">
-                            {stock.find(s => s.id === link.stockId)?.unit || 'หน่วย'}
-                          </div>
-                        </div>
+                        <StockUsageInput key={String(editingItem?.id || 'new') + '-' + link.stockId + '-' + idx} usage={link.usage} unit={stockById.get(link.stockId)?.unit || 'หน่วย'} onChange={value => updateStockLink(idx, 'usage', value)} />
                       </div>
                       <button
                         type="button"
@@ -1412,6 +1447,16 @@ Return [] if no stock items match.`;
         </div>
       </div>
 
+      <Modal isOpen={wasteMenuId !== null} onClose={() => { if (!savingWaste) setWasteMenuId(null); }} title="บันทึกของเสีย" size="md">
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">{wasteMenu?.name || 'เมนูนี้ถูกลบแล้ว'}</h3>
+          {waste.costed ? <p>ต้นทุนต่อชิ้น ฿{unitWaste.costPerUnit.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p> : <div role="alert"><p>ต้องผูกสต็อกก่อนถึงจะรู้มูลค่าของเสีย</p><Button disabled={!wasteMenu} onClick={() => { editMenu(wasteMenu); setWasteMenuId(null); }}>ไปแก้ไขเมนูและผูกสต็อก</Button></div>}
+          {waste.missingLinks > 0 && <p role="alert">มีลิงก์ชี้ไปสต็อกที่ถูกลบแล้ว {waste.missingLinks} รายการ มูลค่าของเสียจะต่ำกว่าจริง</p>}
+          <Input label="จำนวนชิ้นที่ทิ้ง" type="number" min="0" step="any" value={wasteQuantity} disabled={savingWaste} onChange={e => setWasteQuantity(e.target.value)} />
+          {validWasteQuantity && waste.costed && <div aria-live="polite"><p>มูลค่าของเสีย ฿{waste.cost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p><p>จะตัดสต็อก:</p>{Object.entries(waste.usageByStock).map(([id, used]) => <p key={id}>{stockById.get(id)?.name} {used} {stockById.get(id)?.unit}</p>)}</div>}
+          <Button disabled={!wasteMenu || !validWasteQuantity || !waste.costed || savingWaste} onClick={confirmWaste}>{savingWaste ? 'กำลังบันทึก...' : 'ยืนยันบันทึกของเสีย'}</Button>
+        </div>
+      </Modal>
       {/* Delete Menu Confirm Modal */}
       <ConfirmModal
         isOpen={showDeleteMenuConfirm}

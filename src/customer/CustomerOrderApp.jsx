@@ -75,6 +75,8 @@ const TX = {
     startingFromShort: 'เริ่ม ',
     bestSellerRailTitle: '🔥 เมนูขายดี',
     featuredRailTitle: '⭐ เมนูแนะนำ',
+    cakeRailTitle: 'เค้กวันนี้',
+    cakeRailSubtitle: 'อบสดใหม่ มีจำนวนจำกัด',
     happyHourBanner: (pct, left) => `Happy Hour! เค้กลด ${pct}% · เหลืออีก ${left} ⏳`,
     happyHourUntil: (end) => `ถึง ${end} น. · รีบสั่งก่อนหมดเวลา!`,
     hoursShort: 'ชม.',
@@ -160,6 +162,8 @@ const TX = {
     startingFromShort: 'From ',
     bestSellerRailTitle: '🔥 Best sellers',
     featuredRailTitle: '⭐ Featured',
+    cakeRailTitle: 'Today’s cakes',
+    cakeRailSubtitle: 'Freshly baked, limited quantities',
     happyHourBanner: (pct, left) => `Happy Hour! ${pct}% off cakes · ${left} left ⏳`,
     happyHourUntil: (end) => `Until ${end} · order before time runs out!`,
     hoursShort: 'hr',
@@ -1451,6 +1455,12 @@ function CustomerOrderApp() {
     [availableMenu],
   );
   const bestSellerIds = useMemo(() => new Set(bestSellers.map((m) => m.id)), [bestSellers]);
+  // ใช้ชื่อหมวดเป็นทางสำรองเฉพาะการจัดแสดง เพื่อไม่เปลี่ยนกติกาส่วนลดเดิม
+  const cakeItems = useMemo(() => availableMenu.filter(item =>
+    isCakeCategory(item.category, settingsData) ||
+    ((!Array.isArray(settingsData?.cakeSaleCategories) || settingsData.cakeSaleCategories.length === 0) && /เค้ก|cake/i.test(item.category || ''))
+  ), [availableMenu, settingsData]);
+
   const showHighlights = activeCategory === 'ทั้งหมด' && searchQuery.trim() === '';
 
   // Welcome popup items = ขายดี first, then แนะนำ (deduped). Showcase only.
@@ -2023,8 +2033,24 @@ function CustomerOrderApp() {
       </AnimatePresence>
 
       {/* ---- Highlight rails: ขายดี + แนะนำ ---- */}
-      {showHighlights && (bestSellers.length > 0 || featuredItems.length > 0) && (
+      {showHighlights && (cakeItems.length > 0 || bestSellers.length > 0 || featuredItems.length > 0) && (
         <div className="pt-4 space-y-5">
+          {cakeItems.length > 0 && <section className="mx-4 rounded-3xl border-2 border-[var(--accent-emerald)] bg-[var(--bg-tertiary)] py-5 shadow-lg" aria-label={t('cakeRailTitle')}>
+            <h2 className="px-4 text-2xl font-bold text-[var(--text-primary)]">🍰 {t('cakeRailTitle')}</h2>
+            <p className="px-4 mt-1 mb-4 text-sm text-[var(--text-secondary)]">{t('cakeRailSubtitle')}</p>
+            {/* วันที่เหลือเค้กไม่กี่ตัว ให้การ์ดขยายเต็มพื้นที่แทนที่จะทิ้งกล่องโล่งไว้ครึ่งจอ
+                ข้อมูลจริงเปิดขายพร้อมกันแค่ตัวสองตัวเป็นปกติ (57 เมนู เปิดอยู่ 1)
+                วันไหนเค้กเยอะค่อยเลื่อนแนวนอนเหมือนแถบอื่น */}
+            {cakeItems.length <= 4 ? (
+              <div className="grid gap-4 px-4 justify-start [grid-template-columns:repeat(auto-fit,minmax(240px,380px))]">
+                {cakeItems.map(item => <MenuItemCard key={item.id} item={item} onAdd={handleMenuItemClick} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} />)}
+              </div>
+            ) : (
+              <div className="flex gap-4 overflow-x-auto px-4 pb-2 snap-x">
+                {cakeItems.map(item => <div key={item.id} className="w-60 sm:w-72 shrink-0 snap-start"><MenuItemCard item={item} onAdd={handleMenuItemClick} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} /></div>)}
+              </div>
+            )}
+          </section>}
           {bestSellers.length > 0 && (
             <HighlightRail
               title={t('bestSellerRailTitle')}
@@ -2052,7 +2078,7 @@ function CustomerOrderApp() {
 
       {/* ---- Menu grid ---- */}
       <main className="px-4 py-4 pb-32">
-        {showHighlights && (bestSellers.length > 0 || featuredItems.length > 0) && (
+        {showHighlights && (cakeItems.length > 0 || bestSellers.length > 0 || featuredItems.length > 0) && (
           <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3 px-0.5">{t('allMenuHeading')}</h2>
         )}
         {filteredMenu.length === 0 ? (

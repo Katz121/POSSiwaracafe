@@ -30,3 +30,5 @@ export { default as EmptyState } from './EmptyState';
 export { default as ErrorBoundary } from './ErrorBoundary';
 
 export { default as SearchSelect } from './SearchSelect';
+
+export { default as StockUsageInput } from './StockUsageInput';
