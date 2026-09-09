@@ -42,7 +42,7 @@ export async function notifyNewOrderToLine({ queueNumber, customerName, items = 
       })),
     };
 
-    await fetch(NOTIFY_URL, {
+    const response = await fetch(NOTIFY_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -50,6 +50,11 @@ export async function notifyNewOrderToLine({ queueNumber, customerName, items = 
       },
       body: JSON.stringify(payload),
     });
+    // fetch ไม่ throw เมื่อเจอ 4xx/5xx · ถ้าไม่เช็คเอง secret ผิดหรือ worker ล่ม
+    // จะเงียบสนิทและร้านไม่รู้ตัวว่าแจ้งเตือนไม่ออก
+    if (!response.ok) {
+      console.warn('[lineNotify] worker rejected the alert', response.status);
+    }
   } catch (e) {
     // Non-fatal: the order is already saved; notification is best-effort.
     console.warn('[lineNotify] failed to notify shop', e);

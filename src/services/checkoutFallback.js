@@ -18,6 +18,7 @@
 import {
   collection, doc, getCountFromServer, increment, query, runTransaction, where,
 } from 'firebase/firestore';
+import { notifyNewOrderToLine } from './lineNotify';
 
 /** โค้ด error ที่แปลว่า "backend ล่ม" ไม่ใช่ "ข้อมูลลูกค้าผิด" */
 const BACKEND_DOWN_CODES = new Set([
@@ -80,6 +81,8 @@ export async function submitCheckoutDirect(db, appId, {
     : 0;
   const pointsToAdd = Math.floor(total / 10);
 
+  const orderTime = bangkokTime(now);
+
   const queueNumber = await runTransaction(db, async (transaction) => {
     const existing = await transaction.get(orderRef);
     // ส่งซ้ำด้วย requestId เดิม = ออเดอร์เดิม ไม่กดคิวใหม่ ไม่แจกแต้มซ้ำ
@@ -106,7 +109,7 @@ export async function submitCheckoutDirect(db, appId, {
       bringOwnGlass: false,
       createdAt: now,
       date: bangkokDate(now),
-      time: bangkokTime(now),
+      time: orderTime,
       table: 'QR',
       source: 'qr',
       checkoutRequestId: requestId,
@@ -128,6 +131,17 @@ export async function submitCheckoutDirect(db, appId, {
     }
 
     return nextQueue;
+  });
+
+  // แจ้งเตือนร้าน · ปกติ Cloud Function เป็นคนยิงให้ แต่เส้นทางนี้ข้าม function ไปแล้ว
+  // ถ้าไม่ยิงเองตรงนี้ ร้านจะไม่รู้เลยว่ามีออเดอร์เข้า · best-effort ล้มก็ไม่กระทบออเดอร์
+  // ที่บันทึกไปแล้ว (หน้า POS ยังมีเสียงเตือนในแอปเป็นตาข่ายรองอีกชั้น)
+  await notifyNewOrderToLine({
+    queueNumber,
+    customerName,
+    items: cart,
+    total,
+    time: orderTime,
   });
 
   // จำนวนคิวที่รออยู่ ใช้โชว์บนหน้าสำเร็จเท่านั้น · นับนอกทรานแซกชันเพราะ Web SDK
