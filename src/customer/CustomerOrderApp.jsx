@@ -2035,21 +2035,22 @@ function CustomerOrderApp() {
       {/* ---- Highlight rails: ขายดี + แนะนำ ---- */}
       {showHighlights && (cakeItems.length > 0 || bestSellers.length > 0 || featuredItems.length > 0) && (
         <div className="pt-4 space-y-5">
-          {cakeItems.length > 0 && <section className="mx-4 rounded-3xl border-2 border-[var(--accent-emerald)] bg-[var(--bg-tertiary)] py-5 shadow-lg" aria-label={t('cakeRailTitle')}>
-            <h2 className="px-4 text-2xl font-bold text-[var(--text-primary)]">🍰 {t('cakeRailTitle')}</h2>
-            <p className="px-4 mt-1 mb-4 text-sm text-[var(--text-secondary)]">{t('cakeRailSubtitle')}</p>
-            {/* วันที่เหลือเค้กไม่กี่ตัว ให้การ์ดขยายเต็มพื้นที่แทนที่จะทิ้งกล่องโล่งไว้ครึ่งจอ
-                ข้อมูลจริงเปิดขายพร้อมกันแค่ตัวสองตัวเป็นปกติ (57 เมนู เปิดอยู่ 1)
-                วันไหนเค้กเยอะค่อยเลื่อนแนวนอนเหมือนแถบอื่น */}
-            {cakeItems.length <= 4 ? (
-              <div className="grid gap-4 px-4 justify-start [grid-template-columns:repeat(auto-fit,minmax(240px,380px))]">
-                {cakeItems.map(item => <MenuItemCard key={item.id} item={item} onAdd={handleMenuItemClick} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} />)}
-              </div>
-            ) : (
-              <div className="flex gap-4 overflow-x-auto px-4 pb-2 snap-x">
-                {cakeItems.map(item => <div key={item.id} className="w-60 sm:w-72 shrink-0 snap-start"><MenuItemCard item={item} onAdd={handleMenuItemClick} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} /></div>)}
-              </div>
-            )}
+          {/* อยู่บนสุดเพื่อให้ลูกค้าเห็นก่อน แต่คุมน้ำหนักให้อยู่ในภาษาเดียวกับแถบอื่น
+              แถบขายดี/แนะนำ ใช้หัวข้อ text-sm การ์ด w-40 · เค้กขยับขึ้นแค่หนึ่งขั้น
+              (หัวข้อ text-base การ์ด w-48) ไม่ใส่กรอบหนาหรือเงา เพราะกล่องใหญ่ที่มี
+              เค้กใบเดียวอ่านแล้วเหมือนโฆษณาแทรก ไม่ใช่ส่วนหนึ่งของเมนู */}
+          {cakeItems.length > 0 && <section aria-label={t('cakeRailTitle')}>
+            <div className="px-4 mb-2">
+              <h2 className="text-base font-bold text-[var(--text-primary)]">🍰 {t('cakeRailTitle')}</h2>
+              <p className="text-xs text-[var(--text-muted)]">{t('cakeRailSubtitle')}</p>
+            </div>
+            <div className="flex gap-3 overflow-x-auto px-4 pb-1 snap-x">
+              {cakeItems.map(item => (
+                <div key={item.id} className="w-48 flex-shrink-0 snap-start">
+                  <MenuItemCard item={item} onAdd={handleMenuItemClick} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} />
+                </div>
+              ))}
+            </div>
           </section>}
           {bestSellers.length > 0 && (
             <HighlightRail
