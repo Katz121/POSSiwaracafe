@@ -11,7 +11,7 @@ import { getISODate, getOrderDate, compressImage } from '../../utils/calculation
 import { getModifierGroups, STOCK_CATEGORIES, getStockCategory } from '../../config/constants';
 import { generateMenuImage } from '../../services/aiService';
 import { uploadImageToR2, isBase64Image } from '../../services/imageUpload';
-import { Button, Modal, Input, Select, EmptyState, useToast, ConfirmModal, InputModal, Skeleton } from '../ui';
+import { Button, Modal, Input, Select, EmptyState, useToast, ConfirmModal, InputModal, Skeleton, SearchSelect } from '../ui';
 
 export default function MenuManageView() {
   const {
@@ -1255,18 +1255,14 @@ Return [] if no stock items match.`;
                   <div key={idx} className="bg-[var(--bg-secondary)]/80 p-4 rounded-[var(--radius)] border border-emerald-50 shadow-sm space-y-4 relative group text-[var(--text-primary)]">
                     <div className="flex flex-col gap-3">
                       <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest ml-2">เลือกวัตถุดิบ</label>
-                      <select
+                      <SearchSelect
                         value={link.stockId}
-                        onChange={(e) => updateStockLink(idx, 'stockId', e.target.value)}
-                        className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl px-5 h-14 text-sm font-semibold outline-none text-[var(--text-primary)]"
-                      >
-                        <option value="">เลือกพัสดุในคลัง...</option>
-                        {stockLinkGroups.map(([category, items]) => (
-                          <optgroup key={category} label={category}>
-                            {items.map(s => <option key={s.id} value={s.id}>{String(s.name)}</option>)}
-                          </optgroup>
-                        ))}
-                      </select>
+                        onChange={id => updateStockLink(idx, 'stockId', id)}
+                        groups={stockLinkGroups}
+                        getOptionValue={s => s.id}
+                        getOptionLabel={s => String(s.name)}
+                        placeholder="พิมพ์ค้นหาวัตถุดิบ..."
+                      />
                       {(() => {
                         const s = stock.find(s => s.id === link.stockId);
                         if (!s) return null;

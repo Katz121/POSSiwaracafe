@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronDown, ChevronRight, Box, Plus, Minus, Edit, Trash2, Package, AlertTriangle, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ChevronRight, Box, Plus, Minus, Edit, Trash2, Package, AlertTriangle, AlertCircle, Search, X } from 'lucide-react';
 import { collection, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
@@ -34,6 +34,13 @@ export default function StockView() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [stockToDelete, setStockToDelete] = useState(null);
   const [collapsedCategories, setCollapsedCategories] = useState({});
+  const [stockSearch, setStockSearch] = useState('');
+  const searchQuery = stockSearch.toLowerCase();
+  const isSearching = stockSearch.length > 0;
+  const filteredStock = useMemo(() => sortedStock.filter(item => (
+    String(item.name ?? '').toLowerCase().includes(searchQuery)
+    || getStockCategory(item).toLowerCase().includes(searchQuery)
+  )), [sortedStock, searchQuery]);
 
   // Handlers
   const saveStockItem = async (e) => {
@@ -111,7 +118,31 @@ export default function StockView() {
             เพิ่มสต็อก
           </Button>
         </header>
-        <div className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-6 p-4 md:p-6 lg:p-6 overflow-hidden text-[var(--text-primary)]">
+        <div className="shrink-0 px-4 md:px-6 pt-4">
+          <Input
+            aria-label="ค้นหาวัตถุดิบ"
+            placeholder="ค้นหาวัตถุดิบ..."
+            value={stockSearch}
+            onChange={e => setStockSearch(e.target.value)}
+            leftIcon={<Search size={18} aria-hidden="true" />}
+            rightIcon={isSearching && (
+              <button
+                type="button"
+                aria-label="ล้างคำค้น"
+                onClick={() => setStockSearch('')}
+                className="p-1 rounded hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            )}
+          />
+          {isSearching && (
+            <p role="status" className="mt-2 text-xs text-[var(--text-muted)]">
+              เจอ {filteredStock.length} จาก {stock.length} รายการ
+            </p>
+          )}
+        </div>
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 md:gap-6 p-4 md:p-6 lg:p-6 overflow-hidden text-[var(--text-primary)]">
           {/* Stock List */}
           <div className="flex-1 min-w-0 bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[var(--radius)] shadow-sm border border-[var(--border-color)] overflow-hidden flex flex-col shadow-emerald-500/5">
             <div className="p-4 md:p-4 lg:p-6 xl:p-6 bg-[var(--bg-tertiary)]/50 border-b font-semibold text-[var(--text-muted)] text-xs md:text-xs flex justify-between px-4 md:px-6 lg:px-8 xl:px-10 tracking-[0.2em] leading-none">
@@ -128,7 +159,7 @@ export default function StockView() {
                   <Skeleton.Table rows={6} cols={4} />
                 </div>
               )}
-              {!isSyncing && stock.length === 0 && (
+              {!isSyncing && !isSearching && stock.length === 0 && (
                 <EmptyState
                   icon={Package}
                   title="ไม่มีข้อมูลสต็อก"
@@ -137,23 +168,34 @@ export default function StockView() {
                   onAction={() => setNewStockItem({ name: '', category: 'อื่น ๆ', quantity: 0, unit: DEFAULT_STOCK_UNIT, minQuantity: DEFAULT_MIN_QUANTITY, unitCost: 0 })}
                 />
               )}
-              {sortedStock.map((item, index) => (
+              {!isSyncing && isSearching && filteredStock.length === 0 && (
+                <EmptyState
+                  icon={Search}
+                  title={`ไม่พบวัตถุดิบที่ตรงกับ "${stockSearch}"`}
+                  actionLabel="ล้างคำค้น"
+                  onAction={() => setStockSearch('')}
+                  className="break-words [overflow-wrap:anywhere]"
+                />
+              )}
+              {filteredStock.map((item, index) => (
                 <React.Fragment key={item.id}>
-                  {(index === 0 || getStockCategory(item) !== getStockCategory(sortedStock[index - 1])) && (
+                  {(index === 0 || getStockCategory(item) !== getStockCategory(filteredStock[index - 1])) && (
                     <button
                       type="button"
+                      // คงค่าพับหมวดเดิมไว้ เพื่อให้ล้างคำค้นแล้วกลับไปดูต่อได้เหมือนก่อนค้นหา
+                      disabled={isSearching}
                       onClick={() => setCollapsedCategories(current => ({
                         ...current,
                         [getStockCategory(item)]: !current[getStockCategory(item)]
                       }))}
                       className="sticky top-0 z-[var(--z-dropdown)] w-full flex items-center justify-between px-3 md:px-4 lg:px-5 py-3 mt-2 bg-emerald-50/90 border-y border-emerald-100 text-emerald-700 text-xs font-semibold tracking-wider text-left"
-                      aria-expanded={!collapsedCategories[getStockCategory(item)]}
+                      aria-expanded={isSearching || !collapsedCategories[getStockCategory(item)]}
                     >
                       <span>{getStockCategory(item)}</span>
-                      {collapsedCategories[getStockCategory(item)] ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                      {!isSearching && collapsedCategories[getStockCategory(item)] ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
                     </button>
                   )}
-                  {!collapsedCategories[getStockCategory(item)] && <div
+                  {(isSearching || !collapsedCategories[getStockCategory(item)]) && <div
                   className={`p-3 md:p-4 lg:p-4 xl:p-6 flex flex-col sm:flex-row items-center gap-3 md:gap-4 lg:gap-6 xl:gap-6 group rounded-2xl md:rounded-[var(--radius)] xl:rounded-[var(--radius)] transition-all my-2 md:my-3 border shadow-sm ${Number(item.quantity) <= Number(item.minQuantity)
                       ? 'bg-red-50 border-red-100'
                       : 'bg-[var(--bg-secondary)] border-gray-50 hover:border-emerald-100'

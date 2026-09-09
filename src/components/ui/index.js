@@ -28,3 +28,5 @@ export { default as EmptyState } from './EmptyState';
 
 // Error Handling
 export { default as ErrorBoundary } from './ErrorBoundary';
+
+export { default as SearchSelect } from './SearchSelect';
