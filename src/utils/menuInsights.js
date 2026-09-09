@@ -10,6 +10,12 @@
 
 import { DEFAULT_INVENTORY_CATEGORIES, computeProfitability, computeUnitCost } from './profitability';
 
+/**
+ * ต้นทุนต่ำกว่า 8% ของราคาขายถือว่าเป็นไปไม่ได้สำหรับร้านกาแฟ
+ * แค่แก้วกับฝาก็ปาเข้าไป 5-8% แล้ว · ค่าเดียวกับใน profitability.js
+ */
+const SUSPICIOUS_COST_RATIO = 0.08;
+
 const num = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -249,6 +255,11 @@ export function computeItemPerformance({ orders = [], menu = [], stock = [], spl
         // สัดส่วนหน่วยที่คิดต้นทุนได้จริง · ต่ำกว่า 1 แปลว่ามาร์จิ้นข้างบนสูงเกินจริง
         costedShare: r.units > 0 ? r.costedUnits / r.units : 0,
         staleLinkShare: r.units > 0 ? r.staleLinkUnits / r.units : 0,
+        // ผูกครบทุกแก้วแล้วแต่ต้นทุนยังต่ำจนเป็นไปไม่ได้ = สูตรเองไม่ครบ
+        // เคสจริง: อเมริกาโนผูกไว้แค่แก้วกับหลอด ฿2.4 ส่วนเมล็ดอยู่ที่ตัวเลือก
+        // ซึ่งยังไม่ได้ผูกสต็อก มาร์จิ้นเลยขึ้น 95% ทั้งที่ต้นทุนครบ 100%
+        // คนละอาการกับ costedShare ต่ำ จึงต้องมีธงแยก
+        suspiciousCost: r.revenue > 0 && r.cogs / r.revenue < SUSPICIOUS_COST_RATIO,
         profitPerUnit: r.units > 0 ? grossProfit / r.units : 0,
         avgPrice: r.units > 0 ? r.revenue / r.units : 0,
         // ส่วนลดที่ถูกปันลงเมนูนี้ · ใช้ดูว่าโปรโมชั่นกินกำไรตัวไหนมากที่สุด
@@ -435,6 +446,7 @@ export function computeModifierCoverage({ orders = [], beanModifiers = [], stock
       grossProfit,
       marginPct: row.revenue > 0 ? Math.round((grossProfit / row.revenue) * 100) : 0,
       costPerUnit: row.units > 0 ? row.cogs / row.units : 0,
+      suspiciousCost: row.revenue > 0 && row.cogs / row.revenue < SUSPICIOUS_COST_RATIO,
       // ต่ำกว่า 1 แปลว่ามาร์จิ้นข้างบนสูงเกินจริง เพราะบางแก้วคิดต้นทุนไม่ได้
       costedShare: row.units > 0 ? row.costedUnits / row.units : 0,
       // ตัวเลือกที่ถูกลบไปแล้วต่างจากตัวเลือกที่ยังอยู่แต่ยังไม่ผูก เพราะตัวที่ถูกลบ

@@ -33,9 +33,17 @@ const renderItemName = row => <span className="min-w-0 whitespace-normal break-w
     <span>{row.baseName}</span>
     {row.modifier && <span className="block text-xs text-[var(--text-muted)]">{row.modifier}</span>}
 </span>;
-const itemName = { key: 'name', label: 'ชื่อเมนู', render: (_, row) => <span className="flex flex-wrap items-center gap-2">{renderItemName(row)}{!row.costed && <Badge variant="warning">ยังไม่ผูกต้นทุน</Badge>}</span> };
+const itemName = { key: 'name', label: 'ชื่อเมนู', render: (_, row) => <span className="flex flex-wrap items-center gap-2">{renderItemName(row)}{row.costedShare === 0 && !(row.staleLinkShare > 0) && <Badge variant="warning" size="xs">ยังไม่ผูกต้นทุน</Badge>}</span> };
 const unitsColumn = { key: 'units', label: 'จำนวนขาย', render: number };
-const marginColumn = { key: 'marginPct', label: 'มาร์จิ้น %', render: (value, row) => row.costed ? percent(value) : 'ยังไม่ทราบ' };
+// ใช้สัดส่วนที่ส่งมาเพราะการคิดต้นทุนได้บางแก้วไม่ได้ทำให้ทั้งแถวน่าเชื่อถือ
+const renderMargin = (value, row) => <span className="inline-flex flex-col items-start gap-1">
+    <span className="whitespace-nowrap num">{row.costedShare > 0 ? percent(value) : 'ยังไม่ทราบ'}</span>
+    {row.costedShare > 0 && row.costedShare < 0.9 && <Badge variant="warning" size="xs" className="whitespace-nowrap">ต้นทุนครบ {percent(Math.round(row.costedShare * 100))}</Badge>}
+    {row.staleLinkShare > 0 && <span className="w-44 whitespace-normal text-xs text-[var(--state-warn)]">
+        สูตรอ้างสต็อกที่ถูกลบไปแล้ว {percent(Math.round(row.staleLinkShare * 100))} · ไปผูกสต็อกใหม่ให้เมนูนี้ในหน้าจัดการเมนู
+    </span>}
+</span>;
+const marginColumn = { key: 'marginPct', label: 'มาร์จิ้น %', render: renderMargin };
 const salesColumns = [itemName, unitsColumn, { key: 'revenue', label: 'ยอดขาย', render: money }, { key: 'revenueShare', label: '% ของยอดขายรวม', render: percent }, marginColumn];
 const profitColumns = [itemName, { key: 'grossProfit', label: 'กำไรขั้นต้น', render: money }, { key: 'profitShare', label: '% ของกำไรรวม', render: percent }, unitsColumn, marginColumn];
 const thinColumns = [itemName, marginColumn, { key: 'unitCost', label: 'ต้นทุน/ชิ้น', render: money }, { key: 'avgPrice', label: 'ราคาเฉลี่ย', render: money }, unitsColumn];
@@ -44,7 +52,16 @@ const axisStyle = { fill: 'var(--text-muted)', fontSize: 11 };
 const chartMoney = value => '฿' + Number(value).toLocaleString('th-TH', { notation: 'compact' });
 const SEGMENTS = ['star', 'workhorse', 'puzzle', 'dog'];
 const shortDay = day => new Date(day + 'T00:00:00Z').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' });
-const modifierColumns = [{ key: 'name', label: 'ชื่อตัวเลือก' }, unitsColumn, { key: 'revenue', label: 'ยอดขาย', render: money }];
+const modifierColumns = [
+    { key: 'name', label: 'ชื่อตัวเลือก', render: (value, row) => <span className="flex flex-col items-start gap-1">
+        <span>{value}</span>
+        <Badge variant={row.linked ? 'success' : 'warning'} size="xs" className="whitespace-nowrap">{row.linked ? 'ผูกต้นทุนแล้ว' : 'ยังไม่ผูกต้นทุน'}</Badge>
+    </span> },
+    unitsColumn,
+    { key: 'revenue', label: 'ยอดขาย', render: money },
+    { key: 'costPerUnit', label: 'ต้นทุน/แก้ว', render: money },
+    marginColumn,
+];
 
 export default function ProfitabilityView() {
     const { orders, expenses, menu, stock, beanModifiers, setView } = useAppContext();
@@ -83,6 +100,8 @@ export default function ProfitabilityView() {
     const modifierCoverage = useMemo(() => computeModifierCoverage({
         orders: orders.filter(order => order.status === 'completed'), beanModifiers, stock,
     }), [orders, beanModifiers, stock]);
+    // รวมตัวเลือกที่ยังอยู่เพื่อเทียบกำไรได้ครบ ส่วนตัวเลือกที่ถูกลบยังแจ้งแยกตามเดิม
+    const soldModifiers = useMemo(() => modifierCoverage.rows.filter(row => row.exists).sort((a, b) => b.revenue - a.revenue), [modifierCoverage]);
     const unsoldUnlinked = modifierCoverage.neverSold.filter(row => !row.linked);
     // ใช้ช่วงเดียวกัน · เพื่อไม่ให้จำนวนบิลกับกำไรอ้างถึงคนละช่วงเวลา
     const rangeOrders = useMemo(() => {
@@ -196,6 +215,8 @@ export default function ProfitabilityView() {
                         )}
                     </div>
 
+                    <p className="text-xs text-[var(--text-muted)]">มาร์จิ้นในตารางด้านล่างคิดจากต้นทุนที่ผูกไว้ · เดือนสรุป {currentMonth} ครอบคลุมยอดขาย {percent(profitability.cogsCoverage)} · รายการที่มีป้ายเตือนคือตัวที่ต้นทุนยังไม่ครบ ตัวเลขจะสูงเกินจริง</p>
+
                     {/* ผูกสต็อกไม่ครบ = กำไรขั้นต้นสวยเกินจริงเสมอ ต้องเตือนให้เห็น */}
                     {profitability.uncostedItems.length > 0 && (
                         <div className="rounded-2xl p-5 border border-[var(--border-color)] bg-[var(--bg-tertiary)]">
@@ -213,8 +234,8 @@ export default function ProfitabilityView() {
                         <h3 className="font-bold">ต้นทุนของตัวเลือก (#)</h3>
                         <p className="text-xs text-[var(--text-muted)]">บิลสำเร็จทั้งหมดที่โหลดมา · แยกจากเดือนสรุปกำไรและช่วงกราฟ</p>
                         <p>ยอดขาย {money(modifierCoverage.totalRevenue)} วิ่งผ่านตัวเลือก · ผูกต้นทุนแล้ว {percent(modifierCoverage.coveragePct)}</p>
-                        <p className="text-sm text-[var(--text-muted)]">ตัวเลือกที่ยังไม่ผูกต้นทุน เรียงตามยอดขาย · ผูกได้ที่หน้าแอดมินในรายการตัวเลือก (#)</p>
-                        <Table data={modifierCoverage.unlinked} columns={modifierColumns} sortable={false} emptyMessage="ไม่มีตัวเลือกที่ขายแล้วและยังไม่ผูกต้นทุนในทะเบียน" />
+                        <p className="text-sm text-[var(--text-muted)]">ตัวเลือกที่เคยขายและยังอยู่ในทะเบียนทั้งหมด เรียงตามยอดขาย · ป้ายใต้ชื่อบอกสถานะการผูกปัจจุบัน ป้ายใต้มาร์จิ้นบอกต้นทุนที่คิดได้จากบิล · ผูกได้ที่หน้าแอดมินในรายการตัวเลือก (#)</p>
+                        <Table className="min-w-0 [&_table]:min-w-[640px]" data={soldModifiers} columns={modifierColumns} sortable={false} emptyMessage="ยังไม่มีตัวเลือกที่เคยขายและยังอยู่ในทะเบียน" />
                         {modifierCoverage.missing.length > 0 && <p className="text-sm text-[var(--state-warn)]">มีอีก {modifierCoverage.missing.length} ตัวเลือกที่ถูกลบไปแล้ว บิลเก่าจะไม่มีต้นทุนตลอดไป แก้ไม่ได้</p>}
                         {unsoldUnlinked.length > 0 && <p className="text-sm text-[var(--state-warn)]">ยังไม่ผูกและยังไม่เคยขาย {unsoldUnlinked.length} ตัวเลือก: {unsoldUnlinked.map(row => row.name).join(' · ')} · ควรผูกก่อนเริ่มขาย</p>}
                     </div>
@@ -319,13 +340,15 @@ export default function ProfitabilityView() {
                             onClick={() => setSplitByModifier(value)}
                         >{label}</Button>)}
                     </div>
+                    {/* ใช้ช่วงกราฟเพื่อไม่ให้ความครอบคลุมของเดือนอื่นทำให้เข้าใจผิด */}
+                    <p className="text-xs text-[var(--text-muted)]">มาร์จิ้นตามช่วงกราฟครอบคลุมยอดขาย {percent(rangeProfitability.cogsCoverage)} · ป้ายเตือนบอกสัดส่วนหน่วยที่คิดต้นทุนได้ ตัวเลขมาร์จิ้นจะสูงเกินจริงเมื่อคิดต้นทุนไม่ครบ · ยังไม่ทราบ หมายถึงยังคิดต้นทุนไม่ได้</p>
                     {visibleRankings.map(ranking => <Card key={ranking.key} padding="lg" className="space-y-4">
                         <div className="flex flex-wrap justify-between items-center gap-3">
                             <h3 className="font-bold">{ranking.title}</h3>
                             {ranking.all.length > 10 && <Button variant="secondary" className="min-h-11" aria-expanded={!!expanded[ranking.key]} onClick={() => toggle(ranking.key)}>{expanded[ranking.key] ? 'ย่อเหลือ 10 อันดับ' : 'ดูทั้งหมด (' + ranking.all.length + ')'}</Button>}
                         </div>
                         {ranking.hint && <p className="text-sm text-[var(--text-muted)]">{ranking.hint}</p>}
-                        <Table data={ranking.visible} columns={ranking.columns} sortable={false} emptyMessage="ยังไม่มีเมนูในช่วงนี้" />
+                        <Table className="min-w-0 [&_table]:min-w-[640px]" data={ranking.visible} columns={ranking.columns} sortable={false} emptyMessage="ยังไม่มีเมนูในช่วงนี้" />
                     </Card>)}
                     <div className="space-y-3">
                         <h3 className="text-lg font-bold">การจัดกลุ่มเมนู</h3>

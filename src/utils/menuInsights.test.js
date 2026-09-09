@@ -173,8 +173,8 @@ describe('computeModifierCoverage', () => {
     const c = computeModifierCoverage({
       orders: [
         order('2026-08', 80, [{ name: 'ลาเต้', price: 80, quantity: 1, beanModifier: '#คั่วเข้ม' }]),
-        // แก้วนี้สูตรชี้ไปสต็อกที่ถูกลบ คิดต้นทุนไม่ได้
-        order('2026-08', 80, [{ name: 'ลาเต้', price: 80, quantity: 3, beanModifier: '#คั่วเข้ม',
+        // แก้วนี้สูตรชี้ไปสต็อกที่ถูกลบ และเมนูก็ไม่มีสูตรกลางให้ถอยไปใช้
+        order('2026-08', 80, [{ name: 'ยังไม่ผูก', price: 80, quantity: 3, beanModifier: '#คั่วเข้ม',
           stockLinks: [{ stockId: 'สต็อกที่ถูกลบ', usage: 20 }] }]),
       ],
       beanModifiers: mods, stock, menu,
@@ -289,15 +289,38 @@ describe('computeItemPerformance', () => {
     const items = computeItemPerformance({
       orders: [
         order('2026-08', 80, [{ name: 'ลาเต้', price: 80, quantity: 1 }]),
-        order('2026-08', 720, [{ name: 'ลาเต้', price: 80, quantity: 9,
+        // ใช้เมนูที่ไม่มีสูตรกลางเลย เพื่อให้การถอยไปประมาณจากสูตรปัจจุบันช่วยไม่ได้
+        order('2026-08', 720, [{ name: 'ยังไม่ผูก', price: 80, quantity: 9,
           stockLinks: [{ stockId: 'เมล็ดที่ถูกลบ', usage: 20 }] }]),
       ],
       menu, stock,
     });
-    expect(items[0].units).toBe(10);
-    expect(items[0].costedUnits).toBe(1);
-    expect(items[0].costedShare).toBe(0.1);
-    expect(items[0].staleLinkShare).toBe(0.9);
+    const latte = items.find(i => i.name === 'ลาเต้');
+    const dead = items.find(i => i.name === 'ยังไม่ผูก');
+    expect(latte.costedShare).toBe(1);
+    expect(dead.costedShare).toBe(0);
+    expect(dead.staleLinkShare).toBe(1);
+    expect(items[0].units).toBeGreaterThan(0);
+  });
+
+  it('ผูกครบทุกแก้วแต่ต้นทุนต่ำจนเป็นไปไม่ได้ ต้องติดธงแยกจากเคสผูกไม่ครบ', () => {
+    // เคสจริง: อเมริกาโนผูกไว้แค่แก้วกับหลอด ส่วนเมล็ดอยู่ที่ตัวเลือกที่ยังไม่ผูก
+    const items = computeItemPerformance({
+      orders: [order('2026-08', 80, [{ name: 'แก้วอย่างเดียว', price: 80, quantity: 1 }])],
+      menu: [{ name: 'แก้วอย่างเดียว', stockLinks: [{ stockId: 'cup', usage: 0.5 }] }],
+      stock,
+    });
+    expect(items[0].costedShare).toBe(1);       // ผูกครบ
+    expect(items[0].suspiciousCost).toBe(true); // แต่ทุน 2 จาก 80 = 2.5%
+    expect(items[0].marginPct).toBe(98);
+  });
+
+  it('ต้นทุนสมเหตุสมผลต้องไม่ติดธงน่าสงสัย', () => {
+    const items = computeItemPerformance({
+      orders: [order('2026-08', 80, [{ name: 'ลาเต้', price: 80, quantity: 1 }])],
+      menu, stock,
+    });
+    expect(items[0].suspiciousCost).toBe(false); // ทุน 13 จาก 80 = 16%
   });
 
   it('เมนูที่ยังไม่ผูกต้นทุนถูกทำเครื่องหมายไว้ ไม่ใช่ปล่อยผ่านเป็นทุน 0', () => {

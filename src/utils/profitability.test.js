@@ -54,13 +54,49 @@ describe('computeUnitCost', () => {
     expect(costed).toBe(false);
   });
 
-  it('stockLink ที่ชี้ไปสต็อกที่ถูกลบไปแล้ว ต้องไม่ทำให้พัง', () => {
-    const { cost } = computeUnitCost(
+  it('บิลเก่าที่สูตรชี้ไปสต็อกที่ถูกลบ ต้องถอยไปประมาณจากสูตรปัจจุบัน ไม่ใช่ตีเป็นศูนย์', () => {
+    // เคสจริง: เจ้าของร้านเพิ่งมาผูกสต็อกทีหลัง เมล็ดตัวเก่าถูกลบไปแล้ว
+    // 181 จาก 198 แก้วของอเมริกาโน่ #คั่วเข้ม ตกกรณีนี้ มาร์จิ้นเลยขึ้น 99%
+    const r = computeUnitCost(
       { name: 'ลาเต้', stockLinks: [{ stockId: 'ของที่ลบไปแล้ว', usage: 10 }] },
       menuByName,
       stockById,
     );
-    expect(cost).toBe(0);
+    expect(r.cost).toBe(19); // สูตรปัจจุบันของลาเต้
+    expect(r.costed).toBe(true);
+    expect(r.estimated).toBe(true);
+    expect(r.missingLinks).toBe(1);
+  });
+
+  it('ประมาณจากสูตรปัจจุบันต้องรวมตัวเลือกที่ลูกค้าเลือกด้วย', () => {
+    const modifiersByName = new Map([
+      ['คั่วเข้ม', { name: 'คั่วเข้ม', stockLinks: [{ stockId: 'bean', usage: 18 }] }],
+    ]);
+    const r = computeUnitCost(
+      { name: 'เค้กมะพร้าว', beanModifier: '#คั่วเข้ม', stockLinks: [{ stockId: 'ตายแล้ว', usage: 1 }] },
+      menuByName, stockById, modifiersByName,
+    );
+    expect(r.cost).toBe(44); // additionalCost 35 + เมล็ด 18g × 0.5
+    expect(r.estimated).toBe(true);
+  });
+
+  it('สูตรในบิลที่ยังใช้ได้ ต้องไม่ถูกแทนที่ด้วยสูตรปัจจุบัน', () => {
+    const r = computeUnitCost(
+      { name: 'ลาเต้', stockLinks: [{ stockId: 'bean', usage: 40 }] },
+      menuByName, stockById,
+    );
+    expect(r.cost).toBe(20); // ใช้ 40g ตามบิล ไม่ใช่ 18g ตามสูตรวันนี้
+    expect(r.estimated).toBe(false);
+  });
+
+  it('ประมาณไม่ได้เลย (ทั้งบิลและสูตรปัจจุบันตายหมด) ต้องบอกว่าคิดต้นทุนไม่ได้', () => {
+    const r = computeUnitCost(
+      { name: 'ยังไม่ผูก', stockLinks: [{ stockId: 'ตายแล้ว', usage: 5 }] },
+      menuByName, stockById,
+    );
+    expect(r.costed).toBe(false);
+    expect(r.cost).toBe(0);
+    expect(r.estimated).toBe(false);
   });
 });
 

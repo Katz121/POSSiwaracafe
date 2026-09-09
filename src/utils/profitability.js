@@ -25,6 +25,8 @@
  * ที่ไหลออก เงินไหลออกไปแล้วตอนซื้อวัตถุดิบ (ของเดิมนับซ้ำตรงนี้)
  */
 
+import { mergeStockLinks } from './stockLinks';
+
 const WASTE_CATEGORY = 'ของเสีย (Waste)';
 
 /**
@@ -55,42 +57,79 @@ const num = (value) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/** รวมราคาทุนจากรายการสูตร · คืนจำนวนลิงก์ที่หาสต็อกไม่เจอด้วย */
+function priceLinks(links, stockById) {
+  let cost = 0;
+  let resolved = 0;
+  let missing = 0;
+  (Array.isArray(links) ? links : []).forEach((link) => {
+    if (!link?.stockId) return;
+    const stockItem = stockById.get(link.stockId);
+    if (!stockItem) { missing += 1; return; }
+    resolved += 1;
+    cost += num(stockItem.unitCost) * num(link.usage);
+  });
+  return { cost, resolved, missing };
+}
+
 /**
  * ต้นทุนวัตถุดิบต่อ 1 หน่วยของรายการที่ขายไป
  *
- * ใช้ stockLinks ที่ติดมากับรายการในบิลก่อน (เมล็ดที่ลูกค้าเลือกถูก merge ไว้
- * ตอนสั่ง) แล้วค่อย fallback ไปสูตรกลางของเมนู สำหรับบิลเก่าที่ยังไม่มี
+ * ลำดับการหาต้นทุน
+ * 1. สูตรที่ติดมากับบิล (เมล็ดที่ลูกค้าเลือกถูก merge ไว้ตั้งแต่ตอนสั่ง)
+ *    แม่นที่สุดเพราะสะท้อนสิ่งที่ใช้ไปจริงในวันนั้น
+ * 2. ถ้าสูตรในบิลชี้ไปสต็อกที่ถูกลบไปหมดแล้ว ให้ **ประมาณจากสูตรปัจจุบัน**
+ *    ของเมนูบวกตัวเลือกที่ลูกค้าเลือก (เทียบด้วยชื่อ)
+ * 3. ถ้ายังไม่ได้อีก ค่อยใช้สูตรกลางของเมนูอย่างเดียว
  *
- * @returns {{ cost: number, costed: boolean, missingLinks: number }}
- *   costed = หาต้นทุนได้จริงหรือไม่ · ใช้แยก "ต้นทุน 0 เพราะยังไม่ผูกสต็อก"
- *   ออกจาก "ต้นทุน 0 เพราะของแถม"
- *   missingLinks = สูตรอ้างสต็อกที่ถูกลบไปแล้วกี่รายการ · เกิดจริงในข้อมูล
- *   เมล็ดกาแฟตัวเก่าถูกลบออกจากคลัง แต่บิลเก่ายังอ้าง stockId นั้นอยู่
- *   ต้องนับไว้เตือน ไม่ใช่เงียบแล้วตีเป็นต้นทุนศูนย์
+ * ทำไมต้องมีข้อ 2: เจ้าของร้านเพิ่งมาผูกสต็อกทีหลัง เมล็ดตัวเก่าถูกลบไปแล้ว
+ * บิลเก่าจึงอ้าง stockId ที่ไม่มีอยู่ · ข้อมูลจริงคือ 181 จาก 198 แก้วของ
+ * อเมริกาโน่ #คั่วเข้ม ตกกรณีนี้ ทำให้มาร์จิ้นขึ้น 99% ทั้งที่ควรราว 70 กว่า
+ * ต้นทุนวันนี้ไม่ใช่ต้นทุนวันนั้นเป๊ะ แต่ **ค่าประมาณที่ติดป้ายว่าประมาณ
+ * ดีกว่าศูนย์ที่รู้อยู่แล้วว่าผิด** · ผู้เรียกใช้ดู `estimated` เพื่อบอกผู้ใช้ได้
+ *
+ * @param {Map} [modifiersByName] ทะเบียนตัวเลือกปัจจุบัน คีย์เป็นชื่อไม่มี #
+ * @returns {{cost:number, costed:boolean, missingLinks:number, estimated:boolean}}
  */
-export function computeUnitCost(orderItem, menuByName, stockById) {
+export function computeUnitCost(orderItem, menuByName, stockById, modifiersByName = null) {
   const menuItem = menuByName.get(orderItem?.name);
-  const links = (Array.isArray(orderItem?.stockLinks) && orderItem.stockLinks.length)
-    ? orderItem.stockLinks
-    : (menuItem?.stockLinks || []);
-
   const additional = num(menuItem?.additionalCost);
-  let cost = additional;
-  let linkedAny = false;
-  let missingLinks = 0;
+  const billLinks = Array.isArray(orderItem?.stockLinks) ? orderItem.stockLinks : [];
 
-  links.forEach((link) => {
-    if (!link?.stockId) return;
-    const stockItem = stockById.get(link.stockId);
-    if (!stockItem) {
-      missingLinks += 1;
-      return;
+  if (billLinks.length) {
+    const priced = priceLinks(billLinks, stockById);
+    if (priced.resolved > 0) {
+      return {
+        cost: additional + priced.cost,
+        costed: true,
+        missingLinks: priced.missing,
+        estimated: false,
+      };
     }
-    linkedAny = true;
-    cost += num(stockItem.unitCost) * num(link?.usage);
-  });
 
-  return { cost, costed: linkedAny || additional > 0, missingLinks };
+    // สูตรในบิลใช้ไม่ได้เลย ลองประกอบสูตรปัจจุบันขึ้นมาใหม่
+    const modifierName = String(orderItem?.beanModifier || '').replace(/^#/, '').trim();
+    const modifierLinks = modifiersByName?.get(modifierName)?.stockLinks;
+    const rebuilt = mergeStockLinks(menuItem?.stockLinks, modifierLinks);
+    const estimate = priceLinks(rebuilt, stockById);
+    if (estimate.resolved > 0) {
+      return {
+        cost: additional + estimate.cost,
+        costed: true,
+        missingLinks: priced.missing,
+        estimated: true,
+      };
+    }
+    return { cost: additional, costed: additional > 0, missingLinks: priced.missing, estimated: false };
+  }
+
+  const fromMenu = priceLinks(menuItem?.stockLinks, stockById);
+  return {
+    cost: additional + fromMenu.cost,
+    costed: fromMenu.resolved > 0 || additional > 0,
+    missingLinks: fromMenu.missing,
+    estimated: false,
+  };
 }
 
 /**
