@@ -38,6 +38,7 @@ import useKeyboardShortcuts, { KeyboardShortcutsHelp } from './hooks/useKeyboard
 import NewOrderAlert from './components/NewOrderAlert';
 import useDarkMode from './hooks/useDarkMode';
 import { getISODate } from './utils/calculations';
+import { computeOrderStockUsage } from './utils/wastage';
 
 // View Components (Lazy Loaded for Performance)
 const PosView = lazy(() => import('./components/views/PosView'));
@@ -86,22 +87,6 @@ const pinDeviceToken = async (pin) => {
   );
   return b64(new Uint8Array(bits));
 };
-
-// Aggregate total stock consumption for an order as { stockId: totalUnits }.
-// Each line item carries its own merged recipe (base menu + chosen bean
-// modifier) in stockLinks, captured at order time — so this reflects exactly
-// what was sold. Used both to deduct on completion and to restore on delete.
-function computeOrderStockUsage(order) {
-  const usage = {};
-  (order?.items || []).forEach(item => {
-    const qty = Number(item.quantity) || 0;
-    (item.stockLinks || []).forEach(link => {
-      if (!link?.stockId) return;
-      usage[link.stockId] = (usage[link.stockId] || 0) + qty * (Number(link.usage) || 0);
-    });
-  });
-  return usage;
-}
 
 // --- Main App Component ---
 export default function App() {
