@@ -197,6 +197,53 @@ describe('computeProfitability', () => {
     ]);
   });
 
+  it('ยังไม่ได้บันทึกค่าใช้จ่ายคงที่ ต้องไม่บอกว่าผ่านจุดคุ้มทุนแล้ว', () => {
+    const r = computeProfitability({ orders, expenses: [], menu, stock });
+    expect(r.hasFixedCosts).toBe(false);
+    expect(r.pastBreakEven).toBe(false);
+  });
+
+  it('เมล็ดกาแฟที่ลูกค้าเลือก (#ตัวเลือก) ถูกคิดต้นทุนผ่าน stockLinks ที่แนบมากับบิล', () => {
+    const r = computeProfitability({
+      orders: [order(80, [{
+        name: 'เอสเพรสโซ่เย็น',
+        price: 80,
+        quantity: 1,
+        beanModifier: '#คั่วเข้ม',
+        // ตอนสั่ง ระบบรวม stockLinks ของเมนู (แก้ว) กับของเมล็ดที่เลือก (18 กรัม) ไว้แล้ว
+        stockLinks: [{ stockId: 'cup', usage: 1 }, { stockId: 'bean', usage: 18 }],
+      }])],
+      expenses: [],
+      menu: [{ name: 'เอสเพรสโซ่เย็น', additionalCost: 2.5, stockLinks: [{ stockId: 'cup', usage: 1 }] }],
+      stock,
+    });
+    expect(r.cogs).toBe(15.5); // 2.5 + 4 + 9
+    expect(r.cogsCoverage).toBe(100);
+    expect(r.suspiciousItems).toEqual([]);
+  });
+
+  it('ผูกแค่บางส่วน (เมล็ดอยู่ที่ตัวเลือกที่ยังไม่ผูก) ต้องถูกจับว่าน่าสงสัย', () => {
+    const r = computeProfitability({
+      // ผูกแต่แก้ว 4 บาท จากราคา 80 = 5% ต่ำผิดปกติ
+      orders: [order(80, [{ name: 'เอสเพรสโซ่เย็น', price: 80, quantity: 1, stockLinks: [{ stockId: 'cup', usage: 1 }] }])],
+      expenses: [],
+      menu: [{ name: 'เอสเพรสโซ่เย็น', stockLinks: [] }],
+      stock,
+    });
+    expect(r.cogsCoverage).toBe(100); // ผ่านด่าน "คิดต้นทุนแล้ว" ได้
+    expect(r.suspiciousItems).toEqual([
+      { name: 'เอสเพรสโซ่เย็น', quantity: 1, revenue: 80, cost: 4 },
+    ]);
+  });
+
+  it('ต้นทุนสมเหตุสมผลต้องไม่ถูกจับว่าน่าสงสัย', () => {
+    const r = computeProfitability({
+      orders: [order(80, [{ name: 'ลาเต้', price: 80, quantity: 1 }])],
+      expenses: [], menu, stock,
+    });
+    expect(r.suspiciousItems).toEqual([]); // 19 จาก 80 = 24%
+  });
+
   it('ไม่มีออเดอร์เลยต้องไม่ระเบิดหรือหารศูนย์', () => {
     const r = computeProfitability({ orders: [], expenses: [], menu, stock });
     expect(r.revenue).toBe(0);

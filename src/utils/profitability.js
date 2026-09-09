@@ -28,6 +28,12 @@
 const WASTE_CATEGORY = 'ของเสีย (Waste)';
 
 /**
+ * ต่ำกว่านี้ถือว่าน่าสงสัยว่าผูกสต็อกไม่ครบ · เครื่องดื่มที่ต้นทุนวัตถุดิบต่ำกว่า 8%
+ * ของราคาขายแทบไม่มีจริง แค่แก้วกับฝาก็ปาเข้าไป 5-8% แล้ว
+ */
+const SUSPICIOUS_COST_RATIO = 0.08;
+
+/**
  * หมวดที่ถือเป็น "ซื้อของเข้าคลัง" ไม่ใช่ค่าใช้จ่ายของงวด
  * ต้องตรงกับ STOCK_CATEGORIES + 'วัตถุดิบ' ใน config/constants.js
  * (รับเข้ามาเป็นพารามิเตอร์เพื่อให้ไฟล์นี้เทสต์ได้โดยไม่ผูกกับ constants)
@@ -127,6 +133,7 @@ export function computeProfitability({
   let unitsSold = 0;
   let costedRevenue = 0;
   const uncosted = new Map();
+  const suspicious = new Map();
 
   orders.forEach((order) => {
     // ยอดบิลคือความจริงเรื่องเงินที่รับมา (ผ่านส่วนลด/VAT มาแล้ว) ส่วนราคารายชิ้น
@@ -142,6 +149,20 @@ export function computeProfitability({
       cogs += cost * qty;
       if (costed) {
         costedRevenue += lineRevenue;
+        // ผูกบางส่วนอันตรายกว่าไม่ผูกเลย เพราะมันผ่านด่าน "คิดต้นทุนแล้ว" ไปได้
+        // เคสจริงที่เจอ: เมนูผูกแก้วกับนมไว้ แต่เมล็ดกาแฟอยู่ที่ตัวเลือก (#) และ
+        // ตัวเลือกนั้นยังไม่ได้ผูกสต็อก ต้นทุนเลยเหลือแค่ค่าแก้ว 4 บาทจากราคา 80
+        const price = num(item?.price);
+        if (price > 0 && cost / price < SUSPICIOUS_COST_RATIO) {
+          const name = String(item?.name || 'ไม่ระบุ');
+          const prev = suspicious.get(name) || { name, quantity: 0, revenue: 0, cost: 0 };
+          suspicious.set(name, {
+            name,
+            quantity: prev.quantity + qty,
+            revenue: prev.revenue + lineRevenue,
+            cost: prev.cost + cost * qty,
+          });
+        }
       } else {
         const name = String(item?.name || 'ไม่ระบุ');
         const prev = uncosted.get(name) || { name, quantity: 0, revenue: 0 };
@@ -165,6 +186,11 @@ export function computeProfitability({
 
   // จุดคุ้มทุนคำนวณได้ต่อเมื่อกำไรขั้นต้นต่อหน่วยเป็นบวก ถ้าติดลบแปลว่า
   // ยิ่งขายยิ่งขาดทุน ไม่มีจำนวนไหนที่คุ้มทุนได้
+  //
+  // ค่าใช้จ่ายคงที่เป็น 0 ไม่ได้แปลว่าร้านไม่มีค่าใช้จ่าย แต่แปลว่ายังไม่ได้บันทึก
+  // ค่าเช่า/เงินเดือน/ค่าไฟ เข้าระบบ · ถ้าปล่อยผ่านจะได้ "จุดคุ้มทุน 0 หน่วย
+  // ผ่านแล้ว" ซึ่งอ่านแล้วเข้าใจผิดว่ากำไรตั้งแต่แก้วแรก ต้องบอกให้รู้ตัว
+  const hasFixedCosts = fixedCosts > 0;
   const canBreakEven = contributionPerUnit > 0;
   const breakEvenUnits = canBreakEven ? Math.ceil(fixedCosts / contributionPerUnit) : null;
   const breakEvenRevenue = canBreakEven ? Math.round(breakEvenUnits * averagePrice) : null;
@@ -204,9 +230,12 @@ export function computeProfitability({
     breakEvenUnits,
     breakEvenRevenue,
     unitsToBreakEven,
-    pastBreakEven: canBreakEven ? unitsSold >= breakEvenUnits : false,
+    pastBreakEven: canBreakEven && hasFixedCosts ? unitsSold >= breakEvenUnits : false,
+    hasFixedCosts,
 
     cogsCoverage,
     uncostedItems: [...uncosted.values()].sort((a, b) => b.revenue - a.revenue),
+    // ผูกแล้วแต่ต้นทุนต่ำจนน่าสงสัยว่าตกอะไรไป (เช่น เมล็ดอยู่ที่ตัวเลือกที่ยังไม่ผูก)
+    suspiciousItems: [...suspicious.values()].sort((a, b) => b.revenue - a.revenue),
   };
 }

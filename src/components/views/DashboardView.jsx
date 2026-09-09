@@ -834,6 +834,10 @@ const DashboardView = () => {
                             <p className="text-sm text-[var(--state-danger)] font-medium">
                                 ยังคำนวณจุดคุ้มทุนไม่ได้ · กำไรขั้นต้นต่อหน่วยไม่เป็นบวก แปลว่ายิ่งขายยิ่งขาดทุน ให้ตรวจราคาขายกับต้นทุนก่อน
                             </p>
+                        ) : !profitability.hasFixedCosts ? (
+                            <p className="text-sm text-[var(--state-warn)] font-medium">
+                                ยังไม่ได้บันทึกค่าใช้จ่ายคงที่ของเดือนนี้ (ค่าเช่า เงินเดือน ค่าไฟ) จุดคุ้มทุนเลยยังไม่มีความหมาย · บันทึกรายจ่ายพวกนี้เข้าระบบก่อน แล้วตัวเลขจะขึ้นเอง
+                            </p>
                         ) : (
                             <>
                                 <div className="flex items-baseline justify-between gap-4 flex-wrap mb-3">
@@ -874,6 +878,28 @@ const DashboardView = () => {
                                 ))}
                                 {profitability.uncostedItems.length > 12 && (
                                     <span className="text-xs px-3 py-1.5 text-[var(--text-muted)]">และอีก {profitability.uncostedItems.length - 12} เมนู</span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ผูกบางส่วนอันตรายกว่าไม่ผูกเลย เพราะมันผ่านด่าน "คิดต้นทุนแล้ว" ไปได้เงียบๆ */}
+                    {profitability.suspiciousItems.length > 0 && (
+                        <div className="rounded-2xl p-5 border border-[var(--border-color)] bg-[var(--bg-tertiary)]">
+                            <p className="text-sm font-bold text-[var(--state-warn)] mb-1 flex items-center gap-2">
+                                <AlertCircle size={16} /> ต้นทุนต่ำผิดปกติ {profitability.suspiciousItems.length} เมนู
+                            </p>
+                            <p className="text-xs text-[var(--text-muted)] mb-3">
+                                ผูกสต็อกไว้แล้วแต่ต้นทุนต่ำกว่า 8% ของราคาขาย มักเกิดตอนที่วัตถุดิบหลักอยู่ที่ตัวเลือก (#) ซึ่งยังไม่ได้ผูกสต็อก หรือยังไม่ได้ใส่แก้ว ฝา หลอด
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                {profitability.suspiciousItems.slice(0, 12).map(item => (
+                                    <span key={item.name} className="text-xs px-3 py-1.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)]">
+                                        {item.name} <span className="text-[var(--text-muted)] num">ทุน ฿{Math.round(item.cost / (item.quantity || 1)).toLocaleString()}/หน่วย</span>
+                                    </span>
+                                ))}
+                                {profitability.suspiciousItems.length > 12 && (
+                                    <span className="text-xs px-3 py-1.5 text-[var(--text-muted)]">และอีก {profitability.suspiciousItems.length - 12} เมนู</span>
                                 )}
                             </div>
                         </div>
