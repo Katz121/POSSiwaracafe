@@ -39,6 +39,9 @@ const unitsColumn = { key: 'units', label: 'จำนวนขาย', render: n
 const renderMargin = (value, row) => <span className="inline-flex flex-col items-start gap-1">
     <span className="whitespace-nowrap num">{row.costedShare > 0 ? percent(value) : 'ยังไม่ทราบ'}</span>
     {row.costedShare > 0 && row.costedShare < 0.9 && <Badge variant="warning" size="xs" className="whitespace-nowrap">ต้นทุนครบ {percent(Math.round(row.costedShare * 100))}</Badge>}
+    {/* คนละอาการกับต้นทุนครบไม่ถึง 90% · อันนี้คือผูกครบทุกแก้วแล้วแต่สูตรเองไม่ครบ
+        เช่นอเมริกาโนผูกไว้แค่แก้วกับหลอด ส่วนเมล็ดอยู่ที่ตัวเลือกที่ยังไม่ผูกสต็อก */}
+    {row.suspiciousCost && row.costedShare > 0 && <Badge variant="danger" size="xs" className="whitespace-nowrap">ต้นทุนต่ำผิดปกติ</Badge>}
     {row.staleLinkShare > 0 && <span className="w-44 whitespace-normal text-xs text-[var(--state-warn)]">
         สูตรอ้างสต็อกที่ถูกลบไปแล้ว {percent(Math.round(row.staleLinkShare * 100))} · ไปผูกสต็อกใหม่ให้เมนูนี้ในหน้าจัดการเมนู
     </span>}
@@ -97,9 +100,11 @@ export default function ProfitabilityView() {
         };
     }, [dailySeries]);
     // ใช้ประวัติทั้งหมดเพื่อไม่เรียกตัวเลือกที่เคยขายนอกช่วงว่าไม่เคยขาย
+    // ต้องส่ง menu ไปด้วย ไม่งั้นต้นทุนของแก้วที่สูตรในบิลชี้สต็อกที่ถูกลบแล้ว
+    // จะประมาณจากสูตรปัจจุบันไม่ได้ แล้วความครอบคลุมจะต่ำกว่าความจริง
     const modifierCoverage = useMemo(() => computeModifierCoverage({
-        orders: orders.filter(order => order.status === 'completed'), beanModifiers, stock,
-    }), [orders, beanModifiers, stock]);
+        orders: orders.filter(order => order.status === 'completed'), beanModifiers, stock, menu,
+    }), [orders, beanModifiers, stock, menu]);
     // รวมตัวเลือกที่ยังอยู่เพื่อเทียบกำไรได้ครบ ส่วนตัวเลือกที่ถูกลบยังแจ้งแยกตามเดิม
     const soldModifiers = useMemo(() => modifierCoverage.rows.filter(row => row.exists).sort((a, b) => b.revenue - a.revenue), [modifierCoverage]);
     const unsoldUnlinked = modifierCoverage.neverSold.filter(row => !row.linked);
@@ -109,7 +114,7 @@ export default function ProfitabilityView() {
         return orders.filter(order => order.status === 'completed' && periods.has(isDaily ? orderDay(order) : orderMonth(order)));
     }, [orders, series, periodKey, isDaily]);
     const rangeProfitability = useMemo(() => computeProfitability({ orders: rangeOrders, menu, stock, inventoryCategories: INVENTORY_CATEGORIES }), [rangeOrders, menu, stock]);
-    const items = useMemo(() => computeItemPerformance({ orders: rangeOrders, menu, stock, splitByModifier }), [rangeOrders, menu, stock, splitByModifier]);
+    const items = useMemo(() => computeItemPerformance({ orders: rangeOrders, menu, stock, beanModifiers, splitByModifier }), [rangeOrders, menu, stock, beanModifiers, splitByModifier]);
     const kpis = useMemo(() => computeHeadlineKpis({ orders: rangeOrders, items, profitability: rangeProfitability, series }), [rangeOrders, items, rangeProfitability, series]);
     const engineering = useMemo(() => classifyMenuEngineering(items), [items]);
     const groups = useMemo(() => Object.fromEntries([...SEGMENTS, 'unknown'].map(segment => [segment, engineering.items.filter(item => item.segment === segment)])), [engineering]);

@@ -98,16 +98,20 @@ export function computeUnitCost(orderItem, menuByName, stockById, modifiersByNam
 
   if (billLinks.length) {
     const priced = priceLinks(billLinks, stockById);
-    if (priced.resolved > 0) {
+    // ใช้สูตรในบิลได้ต่อเมื่อ **ทุกลิงก์ยังหาสต็อกเจอ** เท่านั้น
+    // ถ้าขาดไปบางตัวแล้วยังใช้ต่อ จะได้ต้นทุนที่ไม่ครบแบบเงียบๆ ซึ่งอันตรายกว่า
+    // ไม่มีเลย · เคสจริง: บิลเก็บ [แก้ว(ยังอยู่), เมล็ด(ถูกลบ)] เหลือแต่ค่าแก้ว
+    // ฿2.4 จากที่ควรเป็น ฿12.7 มาร์จิ้นเลยขึ้นไป 89%
+    if (priced.resolved > 0 && priced.missing === 0) {
       return {
         cost: additional + priced.cost,
         costed: true,
-        missingLinks: priced.missing,
+        missingLinks: 0,
         estimated: false,
       };
     }
 
-    // สูตรในบิลใช้ไม่ได้เลย ลองประกอบสูตรปัจจุบันขึ้นมาใหม่
+    // สูตรในบิลไม่ครบ ลองประกอบสูตรปัจจุบันขึ้นมาใหม่
     const modifierName = String(orderItem?.beanModifier || '').replace(/^#/, '').trim();
     const modifierLinks = modifiersByName?.get(modifierName)?.stockLinks;
     const rebuilt = mergeStockLinks(menuItem?.stockLinks, modifierLinks);
@@ -120,7 +124,13 @@ export function computeUnitCost(orderItem, menuByName, stockById, modifiersByNam
         estimated: true,
       };
     }
-    return { cost: additional, costed: additional > 0, missingLinks: priced.missing, estimated: false };
+    // ประมาณไม่ได้เลย · คืนเท่าที่บิลให้ได้ แต่ยังรายงาน missingLinks ไว้เตือน
+    return {
+      cost: additional + priced.cost,
+      costed: priced.resolved > 0 || additional > 0,
+      missingLinks: priced.missing,
+      estimated: false,
+    };
   }
 
   const fromMenu = priceLinks(menuItem?.stockLinks, stockById);

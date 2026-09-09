@@ -173,14 +173,16 @@ describe('computeModifierCoverage', () => {
     const c = computeModifierCoverage({
       orders: [
         order('2026-08', 80, [{ name: 'ลาเต้', price: 80, quantity: 1, beanModifier: '#คั่วเข้ม' }]),
-        // แก้วนี้สูตรชี้ไปสต็อกที่ถูกลบ และเมนูก็ไม่มีสูตรกลางให้ถอยไปใช้
-        order('2026-08', 80, [{ name: 'ยังไม่ผูก', price: 80, quantity: 3, beanModifier: '#คั่วเข้ม',
+        // แก้วนี้สูตรชี้ไปสต็อกที่ถูกลบ · เมนูไม่มีสูตรกลาง และตัวเลือกก็ไม่มี
+        // จึงประกอบสูตรปัจจุบันขึ้นมาใหม่ไม่ได้เลย
+        order('2026-08', 80, [{ name: 'ยังไม่ผูก', price: 80, quantity: 3, beanModifier: '#คั่วกลาง',
           stockLinks: [{ stockId: 'สต็อกที่ถูกลบ', usage: 20 }] }]),
       ],
       beanModifiers: mods, stock, menu,
     });
-    expect(c.rows[0].units).toBe(4);
-    expect(c.rows[0].costedShare).toBe(0.25);
+    const dead = c.rows.find(r => r.name === 'คั่วกลาง');
+    expect(dead.units).toBe(3);
+    expect(dead.costedShare).toBe(0);
   });
 
   it('ส่วนลดระดับบิลถูกปันลงตัวเลือกด้วย ไม่งั้นมาร์จิ้นสูงกว่าของเมนูเดียวกัน', () => {

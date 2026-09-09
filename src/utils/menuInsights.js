@@ -183,9 +183,12 @@ export function computeDailySeries({
  * มักไม่ใช่ตัวเดียวกัน เค้กราคาแพงแต่ต้นทุนสูงอาจแพ้กาแฟธรรมดาที่ขายถี่
  * ถ้าดูแต่ยอดขายจะทุ่มโปรโมชั่นผิดตัว
  */
-export function computeItemPerformance({ orders = [], menu = [], stock = [], splitByModifier = false } = {}) {
+export function computeItemPerformance({ orders = [], menu = [], stock = [], beanModifiers = [], splitByModifier = false } = {}) {
   const menuByName = new Map(menu.map((m) => [m.name, m]));
   const stockById = new Map(stock.map((s) => [s.id, s]));
+  // ต้องมีทะเบียนตัวเลือก ไม่งั้นบิลเก่าที่สูตรตายจะประกอบสูตรปัจจุบันได้ไม่ครบ
+  // จะได้แค่ส่วนของเมนู ขาดเมล็ดที่อยู่ฝั่งตัวเลือกไป
+  const modifiersByName = new Map(beanModifiers.map((m) => [String(m?.name || '').trim(), m]));
   const byName = new Map();
 
   orders.forEach((order) => {
@@ -206,7 +209,7 @@ export function computeItemPerformance({ orders = [], menu = [], stock = [], spl
       const modifier = String(item?.beanModifier || '').trim();
       const name = splitByModifier && modifier ? `${baseName} ${modifier}` : baseName;
       const qty = num(item?.quantity) || 1;
-      const { cost, costed, missingLinks } = computeUnitCost(item, menuByName, stockById);
+      const { cost, costed, missingLinks } = computeUnitCost(item, menuByName, stockById, modifiersByName);
       const prev = byName.get(name) || {
         name,
         baseName,
@@ -425,7 +428,7 @@ export function computeModifierCoverage({ orders = [], beanModifiers = [], stock
       const qty = num(item?.quantity) || 1;
       // ต้นทุนที่ผูกกับตัวเลือกนี้คือต้นทุนของทั้งแก้ว (สูตรเมนู + สูตรตัวเลือก)
       // เพราะนั่นคือสิ่งที่เสียไปจริงเมื่อลูกค้าเลือกตัวเลือกนี้
-      const { cost, costed } = computeUnitCost(item, menuByName, stockById);
+      const { cost, costed } = computeUnitCost(item, menuByName, stockById, byName);
       const prev = used.get(name) || { name, units: 0, costedUnits: 0, revenue: 0, cogs: 0 };
       used.set(name, {
         name,

@@ -80,6 +80,23 @@ describe('computeUnitCost', () => {
     expect(r.estimated).toBe(true);
   });
 
+  it('บิลที่มีลิงก์ตายปนอยู่ ต้องประมาณใหม่ทั้งชุด ไม่ใช่คิดเฉพาะตัวที่เหลือ', () => {
+    // เคสจริงที่พบมากที่สุด: บิลเก็บ [แก้ว(ยังอยู่), เมล็ด(ถูกลบ)]
+    // ถ้าคิดเฉพาะแก้วจะได้ต้นทุนไม่ครบแบบเงียบๆ ซึ่งอันตรายกว่าไม่มีเลย
+    const modifiersByName = new Map([
+      ['คั่วเข้ม', { name: 'คั่วเข้ม', stockLinks: [{ stockId: 'bean', usage: 18 }] }],
+    ]);
+    const r = computeUnitCost(
+      { name: 'ลาเต้', beanModifier: '#คั่วเข้ม',
+        stockLinks: [{ stockId: 'cup', usage: 1 }, { stockId: 'เมล็ดที่ถูกลบ', usage: 18 }] },
+      menuByName, stockById, modifiersByName,
+    );
+    // สูตรปัจจุบันของลาเต้ (เมล็ด 18g + แก้ว) รวมกับตัวเลือกอีก 18g
+    expect(r.cost).toBe(28);
+    expect(r.estimated).toBe(true);
+    expect(r.missingLinks).toBe(1);
+  });
+
   it('สูตรในบิลที่ยังใช้ได้ ต้องไม่ถูกแทนที่ด้วยสูตรปัจจุบัน', () => {
     const r = computeUnitCost(
       { name: 'ลาเต้', stockLinks: [{ stockId: 'bean', usage: 40 }] },
