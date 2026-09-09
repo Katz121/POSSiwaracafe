@@ -10,8 +10,14 @@ import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate } from '../../utils/calculations';
 import { countUnits } from '../../utils/salesHistory';
+import { computeProfitability } from '../../utils/profitability';
+import { STOCK_CATEGORIES } from '../../config/constants';
 import SmartAlerts from '../SmartAlerts';
 import { Button, Modal, Card, Badge, Spinner, Tabs, ConfirmModal, useToast } from '../ui';
+
+const WASTE_CATEGORY = 'ของเสีย (Waste)';
+// หมวดที่ถือว่า "ซื้อของเข้าคลัง" ไม่ใช่ค่าใช้จ่ายของงวด (ถูกนับผ่าน COGS แทน)
+const INVENTORY_CATEGORIES = ['วัตถุดิบ', ...STOCK_CATEGORIES];
 
 /**
  * DashboardView - ภาพรวมธุรกิจ Dashboard
@@ -62,7 +68,12 @@ const DashboardView = () => {
         const monthExpenses = expenses.filter(e => String(e.date || '').startsWith(currentMonth));
 
         const revenue = monthOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
-        const expenseTotal = monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        // ของเสียถูกบันทึกเป็นรายจ่ายซ้ำอีกรอบตอนตัดสต็อก (ดู StockView) ทั้งที่เงิน
+        // ไหลออกไปแล้วตอนซื้อวัตถุดิบ · ตัวเลขฝั่งเงินสดจึงต้องไม่นับมันอีก ไม่งั้น
+        // ซื้อ 1,000 แล้วทิ้ง 200 จะกลายเป็นรายจ่าย 1,200 ทั้งที่จ่ายจริง 1,000
+        const expenseTotal = monthExpenses
+            .filter(e => e.category !== WASTE_CATEGORY)
+            .reduce((s, e) => s + (Number(e.amount) || 0), 0);
         const count = monthOrders.length;
 
         // แก้ว = เครื่องดื่ม · ชิ้น = ขนม · แยกกันเพราะ "ออเดอร์" อ่านแล้วแยกไม่ออกว่าหมายถึงบิลหรือแก้ว
@@ -81,6 +92,17 @@ const DashboardView = () => {
         };
     }, [orders, expenses, currentMonth]);
 
+    // 1.0.1 ความสามารถทำกำไร · ตัดต้นทุนวัตถุดิบ "ตอนขาย" แทน "ตอนซื้อ"
+    // คนละมุมกับ monthlyStats ข้างบน (ซึ่งเป็นกระแสเงินสด) และห้ามเอามาบวกลบกัน
+    // ดูคำอธิบายเต็มใน utils/profitability.js
+    const profitability = useMemo(() => computeProfitability({
+        orders: orders.filter(o => o.status === 'completed' && String(getOrderDate(o)).startsWith(currentMonth)),
+        expenses: expenses.filter(e => String(e.date || '').startsWith(currentMonth)),
+        menu,
+        stock,
+        inventoryCategories: INVENTORY_CATEGORIES,
+    }), [orders, expenses, menu, stock, currentMonth]);
+
     // 1.1 Last Month Stats for Comparison
     const lastMonthStats = useMemo(() => {
         const currentDate = new Date(currentMonth + '-01');
@@ -91,7 +113,9 @@ const DashboardView = () => {
         const monthExpenses = expenses.filter(e => String(e.date || '').startsWith(lastMonth));
 
         const revenue = monthOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
-        const expenseTotal = monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        const expenseTotal = monthExpenses
+            .filter(e => e.category !== WASTE_CATEGORY)
+            .reduce((s, e) => s + (Number(e.amount) || 0), 0);
         const count = monthOrders.length;
 
         const units = monthOrders.reduce((acc, o) => {
@@ -757,6 +781,114 @@ const DashboardView = () => {
                     </Card>
                 </div>
 
+                {/* กำไรขั้นต้น · กำไรสุทธิ · จุดคุ้มทุน
+                    แยกจากตัวเลขเงินสดข้างบนโดยตั้งใจ ตัวนี้ตัดต้นทุนตอนขาย ไม่ใช่ตอนซื้อ */}
+                <Card padding="lg" className="space-y-6">
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div>
+                            <h2 className="text-lg font-bold text-[var(--text-primary)] tracking-tight flex items-center gap-3">
+                                <Target className="text-[var(--accent-emerald)]" /> ความสามารถทำกำไร
+                            </h2>
+                            <p className="text-xs text-[var(--text-muted)] mt-1">
+                                ตัดต้นทุนวัตถุดิบตอนขาย ไม่ใช่ตอนซื้อ · ห้ามเอาไปบวกลบกับตัวเลขเงินสด
+                            </p>
+                        </div>
+                        {profitability.cogsCoverage < 100 && (
+                            <Badge variant={profitability.cogsCoverage < 60 ? 'danger' : 'warning'}>
+                                ต้นทุนครอบคลุมยอดขาย {profitability.cogsCoverage}%
+                            </Badge>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="bg-[var(--bg-tertiary)] rounded-2xl p-4 border border-[var(--border-color)]">
+                            <p className="text-xs font-medium text-[var(--text-muted)] tracking-wider mb-2">กำไรขั้นต้น</p>
+                            <p className="text-2xl font-bold text-[var(--accent-emerald)] num">฿{Math.round(profitability.grossProfit).toLocaleString()}</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-1 num">มาร์จิ้น {profitability.grossMargin}%</p>
+                        </div>
+
+                        <div className="bg-[var(--bg-tertiary)] rounded-2xl p-4 border border-[var(--border-color)]">
+                            <p className="text-xs font-medium text-[var(--text-muted)] tracking-wider mb-2">ต้นทุนวัตถุดิบที่ใช้ไป</p>
+                            <p className="text-2xl font-bold text-[var(--text-primary)] num">฿{Math.round(profitability.cogs).toLocaleString()}</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-1 num">{profitability.cogsRatio}% ของยอดขาย</p>
+                        </div>
+
+                        <div className="bg-[var(--bg-tertiary)] rounded-2xl p-4 border border-[var(--border-color)]">
+                            <p className="text-xs font-medium text-[var(--text-muted)] tracking-wider mb-2">กำไรสุทธิ</p>
+                            <p className={`text-2xl font-bold num ${profitability.netProfit >= 0 ? 'text-[var(--accent-emerald)]' : 'text-[var(--state-danger)]'}`}>
+                                ฿{Math.round(profitability.netProfit).toLocaleString()}
+                            </p>
+                            <p className="text-xs text-[var(--text-muted)] mt-1 num">หลังหักค่าใช้จ่าย ฿{Math.round(profitability.fixedCosts).toLocaleString()}</p>
+                        </div>
+
+                        <div className="bg-[var(--bg-tertiary)] rounded-2xl p-4 border border-[var(--border-color)]">
+                            <p className="text-xs font-medium text-[var(--text-muted)] tracking-wider mb-2">กำไรขั้นต้นต่อแก้ว</p>
+                            <p className="text-2xl font-bold text-[var(--text-primary)] num">฿{Math.round(profitability.contributionPerUnit).toLocaleString()}</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-1 num">ขายไป {profitability.unitsSold.toLocaleString()} หน่วย</p>
+                        </div>
+                    </div>
+
+                    {/* จุดคุ้มทุน · ตัวเลขที่ใช้ตัดสินใจได้จริงที่สุดจากทั้งหน้านี้ */}
+                    <div className="rounded-2xl p-5 border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                        {profitability.breakEvenUnits === null ? (
+                            <p className="text-sm text-[var(--state-danger)] font-medium">
+                                ยังคำนวณจุดคุ้มทุนไม่ได้ · กำไรขั้นต้นต่อหน่วยไม่เป็นบวก แปลว่ายิ่งขายยิ่งขาดทุน ให้ตรวจราคาขายกับต้นทุนก่อน
+                            </p>
+                        ) : (
+                            <>
+                                <div className="flex items-baseline justify-between gap-4 flex-wrap mb-3">
+                                    <p className="text-sm font-bold text-[var(--text-primary)]">
+                                        จุดคุ้มทุนเดือนนี้ · <span className="num">{profitability.breakEvenUnits.toLocaleString()}</span> หน่วย
+                                        <span className="text-[var(--text-muted)] font-normal num"> (฿{profitability.breakEvenRevenue.toLocaleString()})</span>
+                                    </p>
+                                    <p className={`text-sm font-bold ${profitability.pastBreakEven ? 'text-[var(--accent-emerald)]' : 'text-[var(--state-warn)]'}`}>
+                                        {profitability.pastBreakEven
+                                            ? `เลยจุดคุ้มทุนแล้ว ทุกหน่วยจากนี้กำไรเต็ม ฿${Math.round(profitability.contributionPerUnit).toLocaleString()}`
+                                            : `เหลืออีก ${profitability.unitsToBreakEven.toLocaleString()} หน่วยถึงเท่าทุน`}
+                                    </p>
+                                </div>
+                                <div className="h-3 w-full bg-[var(--bg-tertiary)] rounded-full overflow-hidden border border-[var(--border-color)]">
+                                    <div
+                                        className={`h-full rounded-full transition-all ${profitability.pastBreakEven ? 'bg-[var(--accent-emerald)]' : 'bg-[var(--state-warn)]'}`}
+                                        style={{ width: `${Math.min(100, Math.round((profitability.unitsSold / profitability.breakEvenUnits) * 100))}%` }}
+                                    />
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    {/* ผูกสต็อกไม่ครบ = กำไรขั้นต้นสวยเกินจริงเสมอ ต้องเตือนให้เห็น */}
+                    {profitability.uncostedItems.length > 0 && (
+                        <div className="rounded-2xl p-5 border border-[var(--border-color)] bg-[var(--bg-tertiary)]">
+                            <p className="text-sm font-bold text-[var(--state-warn)] mb-1 flex items-center gap-2">
+                                <AlertCircle size={16} /> ยังไม่ได้ผูกต้นทุน {profitability.uncostedItems.length} เมนู
+                            </p>
+                            <p className="text-xs text-[var(--text-muted)] mb-3">
+                                เมนูพวกนี้ถูกคิดต้นทุนเป็น 0 ทำให้กำไรขั้นต้นข้างบนสูงกว่าความจริง · ผูกสต็อกในหน้าจัดการเมนูเพื่อให้ตัวเลขตรง
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                {profitability.uncostedItems.slice(0, 12).map(item => (
+                                    <span key={item.name} className="text-xs px-3 py-1.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)]">
+                                        {item.name} <span className="text-[var(--text-muted)] num">฿{Math.round(item.revenue).toLocaleString()}</span>
+                                    </span>
+                                ))}
+                                {profitability.uncostedItems.length > 12 && (
+                                    <span className="text-xs px-3 py-1.5 text-[var(--text-muted)]">และอีก {profitability.uncostedItems.length - 12} เมนู</span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* อธิบายว่าทำไมกำไรกับเงินสดไม่เท่ากัน แทนที่จะให้วางงงเอง */}
+                    {Math.abs(profitability.inventoryMovement) > 100 && (
+                        <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                            {profitability.inventoryMovement > 0
+                                ? `เดือนนี้ซื้อของเข้าคลังมากกว่าที่ใช้ไป ฿${Math.round(profitability.inventoryMovement).toLocaleString()} เงินสดเลยดูหายมากกว่ากำไรที่หายจริง ของก้อนนี้จะกลายเป็นยอดขายเดือนหน้า`
+                                : `เดือนนี้ใช้ของเก่าในคลังมากกว่าที่ซื้อเข้า ฿${Math.abs(Math.round(profitability.inventoryMovement)).toLocaleString()} เงินสดเลยดูดีกว่ากำไรจริง เดือนหน้าถ้าต้องตุนของ เงินสดจะตกลง`}
+                        </p>
+                    )}
+                </Card>
+
                 {/* Month Comparison Section */}
                 <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-[var(--radius)] p-6 shadow-[var(--elev-3)] border border-slate-700">
                     <div className="flex items-center justify-between mb-8">
@@ -784,7 +916,7 @@ const DashboardView = () => {
                         {/* Profit Comparison */}
                         <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700">
                             <div className="flex items-center justify-between mb-3">
-                                <span className="text-xs font-medium text-slate-400  tracking-wider">กำไร</span>
+                                <span className="text-xs font-medium text-slate-400  tracking-wider">เงินสดสุทธิ</span>
                                 <div className={`flex items-center gap-1 text-xs font-medium ${growthStats.profitGrowth >= 0 ? 'text-[var(--accent-emerald)]' : 'text-[var(--state-danger)]'}`}>
                                     {growthStats.profitGrowth >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                                     {Math.abs(growthStats.profitGrowth)}%
