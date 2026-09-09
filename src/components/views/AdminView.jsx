@@ -67,6 +67,13 @@ export default function AdminView() {
     lockApp
   } = useAppContext();
 
+  // ลิงก์ไปสต็อกที่ลบแล้วใช้คิดต้นทุนไม่ได้ จึงไม่นับเป็นการผูก
+  const modifierLinkCounts = useMemo(() => {
+    const stockIds = new Set(stock.map(item => item.id));
+    return new Map(beanModifiers.map(mod => [mod.id, (mod.stockLinks || []).filter(link => stockIds.has(link?.stockId)).length]));
+  }, [beanModifiers, stock]);
+  const linkedModifierCount = [...modifierLinkCounts.values()].filter(count => count > 0).length;
+
   const stockLinkGroups = useMemo(() => {
     const categoryOrder = new Map(STOCK_CATEGORIES.map((category, index) => [category, index]));
     const groups = new Map();
@@ -1258,13 +1265,15 @@ export default function AdminView() {
                   </div>
                 </form>
 
-                {/* List of existing bean modifiers */}
+                  <p className="text-sm text-[var(--text-muted)]">ผูกแล้ว {linkedModifierCount} · ยังไม่ผูก {beanModifiers.length - linkedModifierCount}</p>
+                  {/* แสดงสถานะแม้ซ่อนตัวเลือก เพื่อให้เตรียมต้นทุนก่อนเปิดขายได้ */}
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-2 scrollbar-hide">
                   {beanModifiers.length === 0 ? (
                     <p className="text-center text-xs text-[var(--text-muted)] font-semibold  tracking-widest py-4">ยังไม่มีแท็ก</p>
                   ) : (
                     beanModifiers.map(mod => {
                       const isHidden = mod.available === false;
+                      const linkCount = modifierLinkCounts.get(mod.id) || 0;
                       // Ingredient cost of this bean (mirrors the menu cost calc)
                       const beanCost = (mod.stockLinks || []).reduce((sum, link) => {
                         const s = stock.find(st => st.id === link.stockId);
@@ -1272,7 +1281,7 @@ export default function AdminView() {
                       }, 0) + Number(mod.additionalCost || 0);
                       return (
                       <div key={mod.id} className={`flex items-center justify-between p-4 rounded-2xl border ${isHidden ? 'bg-[var(--bg-tertiary)] border-[var(--border-color)] opacity-60' : 'bg-amber-50 border-amber-100'}`}>
-                        <div className="flex items-center gap-3">
+                          <div className="flex flex-wrap items-center gap-3 min-w-0">
                           <span className={`font-semibold ${isHidden ? 'text-[var(--text-muted)] line-through' : 'text-amber-700'}`}>#{mod.name}</span>
                           <span className="text-sm font-bold text-[var(--text-muted)] num">฿{Number(mod.price).toLocaleString()}</span>
                           {beanCost > 0 && (
@@ -1287,11 +1296,9 @@ export default function AdminView() {
                               <EyeOff size={10} /> ซ่อน (เมล็ดหมด)
                             </span>
                           )}
-                          {!isHidden && (mod.stockLinks || []).length > 0 && (
-                            <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 flex items-center gap-1">
-                              <Link2 size={10} /> {(mod.stockLinks || []).length} สต็อก
-                            </span>
-                          )}
+                            <Badge variant={linkCount > 0 ? 'success' : 'warning'}>
+                              {linkCount > 0 ? 'ผูกสต็อกแล้ว · ' + linkCount + ' รายการ' : 'ยังไม่ผูกสต็อก'}
+                            </Badge>
                         </div>
                         <div className="flex gap-1">
                           <button

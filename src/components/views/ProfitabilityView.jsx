@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ComposedChart, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar, Line } from 'recharts';
-import { computeMonthlySeries, computeItemPerformance, classifyMenuEngineering, computeHeadlineKpis, SEGMENT_LABELS, orderMonth } from '../../utils/menuInsights';
+import { computeDailySeries, computeModifierCoverage, orderDay, computeMonthlySeries, computeItemPerformance, classifyMenuEngineering, computeHeadlineKpis, SEGMENT_LABELS, orderMonth } from '../../utils/menuInsights';
 import { AlertCircle, ChevronLeft, Target } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate } from '../../utils/calculations';
@@ -38,9 +38,11 @@ const tooltipStyle = { backgroundColor: 'var(--bg-secondary)', borderColor: 'var
 const axisStyle = { fill: 'var(--text-muted)', fontSize: 11 };
 const chartMoney = value => '฿' + Number(value).toLocaleString('th-TH', { notation: 'compact' });
 const SEGMENTS = ['star', 'workhorse', 'puzzle', 'dog'];
+const shortDay = day => new Date(day + 'T00:00:00Z').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const modifierColumns = [{ key: 'name', label: 'ชื่อตัวเลือก' }, unitsColumn, { key: 'revenue', label: 'ยอดขาย', render: money }];
 
 export default function ProfitabilityView() {
-    const { orders, expenses, menu, stock, setView } = useAppContext();
+    const { orders, expenses, menu, stock, beanModifiers, setView } = useAppContext();
     const [currentMonth, setCurrentMonth] = useState(() => getISODate().slice(0, 7));
     const profitability = useMemo(() => computeProfitability({
         orders: orders.filter(o => o.status === 'completed' && String(getOrderDate(o)).startsWith(currentMonth)),
@@ -52,14 +54,34 @@ export default function ProfitabilityView() {
 
 
 
+    const [mode, setMode] = useState('monthly');
+    const [daysBack, setDaysBack] = useState(30);
+    const isDaily = mode === 'daily';
     const [monthsBack, setMonthsBack] = useState(6);
     const [expanded, setExpanded] = useState({});
-    const series = useMemo(() => computeMonthlySeries({ orders, expenses, menu, stock, monthsBack, inventoryCategories: INVENTORY_CATEGORIES }), [orders, expenses, menu, stock, monthsBack]);
+    const monthlySeries = useMemo(() => computeMonthlySeries({ orders, expenses, menu, stock, monthsBack, inventoryCategories: INVENTORY_CATEGORIES }), [orders, expenses, menu, stock, monthsBack]);
+    const dailySeries = useMemo(() => computeDailySeries({ orders, menu, stock, days: daysBack }), [orders, menu, stock, daysBack]);
+    const series = isDaily ? dailySeries : monthlySeries;
+    const periodKey = isDaily ? 'day' : 'month';
+    const dailySummary = useMemo(() => {
+        // วันหยุดไม่ควรดึงยอดเฉลี่ยลง จึงนับเฉพาะวันที่มีบิลสำเร็จ
+        const openDays = dailySeries.filter(row => row.bills > 0);
+        return {
+            openDays: openDays.length,
+            averageRevenue: openDays.length ? openDays.reduce((sum, row) => sum + row.revenue, 0) / openDays.length : 0,
+            best: openDays.reduce((best, row) => !best || row.revenue > best.revenue ? row : best, null),
+        };
+    }, [dailySeries]);
+    // ใช้ประวัติทั้งหมดเพื่อไม่เรียกตัวเลือกที่เคยขายนอกช่วงว่าไม่เคยขาย
+    const modifierCoverage = useMemo(() => computeModifierCoverage({
+        orders: orders.filter(order => order.status === 'completed'), beanModifiers, stock,
+    }), [orders, beanModifiers, stock]);
+    const unsoldUnlinked = modifierCoverage.neverSold.filter(row => !row.linked);
     // ใช้ช่วงเดียวกัน · เพื่อไม่ให้จำนวนบิลกับกำไรอ้างถึงคนละช่วงเวลา
     const rangeOrders = useMemo(() => {
-        const months = new Set(series.map(row => row.month));
-        return orders.filter(order => order.status === 'completed' && months.has(orderMonth(order)));
-    }, [orders, series]);
+        const periods = new Set(series.map(row => row[periodKey]));
+        return orders.filter(order => order.status === 'completed' && periods.has(isDaily ? orderDay(order) : orderMonth(order)));
+    }, [orders, series, periodKey, isDaily]);
     const rangeProfitability = useMemo(() => computeProfitability({ orders: rangeOrders, menu, stock, inventoryCategories: INVENTORY_CATEGORIES }), [rangeOrders, menu, stock]);
     const items = useMemo(() => computeItemPerformance({ orders: rangeOrders, menu, stock }), [rangeOrders, menu, stock]);
     const kpis = useMemo(() => computeHeadlineKpis({ orders: rangeOrders, items, profitability: rangeProfitability, series }), [rangeOrders, items, rangeProfitability, series]);
@@ -180,6 +202,16 @@ export default function ProfitabilityView() {
                         </div>
                     )}
 
+                    <div className="rounded-2xl p-5 border border-[var(--border-color)] bg-[var(--bg-tertiary)] space-y-3">
+                        <h3 className="font-bold">ต้นทุนของตัวเลือก (#)</h3>
+                        <p className="text-xs text-[var(--text-muted)]">บิลสำเร็จทั้งหมดที่โหลดมา · แยกจากเดือนสรุปกำไรและช่วงกราฟ</p>
+                        <p>ยอดขาย {money(modifierCoverage.totalRevenue)} วิ่งผ่านตัวเลือก · ผูกต้นทุนแล้ว {percent(modifierCoverage.coveragePct)}</p>
+                        <p className="text-sm text-[var(--text-muted)]">ตัวเลือกที่ยังไม่ผูกต้นทุน เรียงตามยอดขาย · ผูกได้ที่หน้าแอดมินในรายการตัวเลือก (#)</p>
+                        <Table data={modifierCoverage.unlinked} columns={modifierColumns} sortable={false} emptyMessage="ไม่มีตัวเลือกที่ขายแล้วและยังไม่ผูกต้นทุนในทะเบียน" />
+                        {modifierCoverage.missing.length > 0 && <p className="text-sm text-[var(--state-warn)]">มีอีก {modifierCoverage.missing.length} ตัวเลือกที่ถูกลบไปแล้ว บิลเก่าจะไม่มีต้นทุนตลอดไป แก้ไม่ได้</p>}
+                        {unsoldUnlinked.length > 0 && <p className="text-sm text-[var(--state-warn)]">ยังไม่ผูกและยังไม่เคยขาย {unsoldUnlinked.length} ตัวเลือก: {unsoldUnlinked.map(row => row.name).join(' · ')} · ควรผูกก่อนเริ่มขาย</p>}
+                    </div>
+
                     {/* ผูกบางส่วนอันตรายกว่าไม่ผูกเลย เพราะมันผ่านด่าน "คิดต้นทุนแล้ว" ไปได้เงียบๆ */}
                     {profitability.suspiciousItems.length > 0 && (
                         <div className="rounded-2xl p-5 border border-[var(--border-color)] bg-[var(--bg-tertiary)]">
@@ -206,24 +238,27 @@ export default function ProfitabilityView() {
                 <section className="space-y-6" aria-label="วิเคราะห์ตามช่วงกราฟ">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div><h2 className="text-xl font-bold">แนวโน้มและวิเคราะห์เมนู</h2>
-                            <p className="text-sm text-[var(--text-muted)]">ช่วงนี้ใช้กับกราฟ ตัวเลขสรุป และตารางด้านล่าง · สิ้นสุดเดือนล่าสุดที่มีขาย</p>
-                            <p className="text-sm">{series.length ? series[0].month + ' ถึง ' + series[series.length - 1].month : 'ยังไม่มีข้อมูลการขาย'}</p>
+                            <p className="text-sm text-[var(--text-muted)]">ช่วงนี้ใช้กับกราฟ ตัวเลขสรุป และตารางด้านล่าง · สิ้นสุด{isDaily ? 'วัน' : 'เดือน'}ล่าสุดที่มีขาย</p>
+                            <p className="text-sm">{series.length ? series[0][periodKey] + ' ถึง ' + series[series.length - 1][periodKey] : 'ยังไม่มีข้อมูลการขาย'}</p>
                         </div>
-                        <div className="flex gap-2" role="group" aria-label="ช่วงเวลาสำหรับกราฟและวิเคราะห์เมนู">
-                            {[[6, '6 เดือน'], [12, '1 ปี'], [null, 'ทั้งหมด']].map(([value, label]) => <Button key={label} className="min-h-11" variant={monthsBack === value ? 'primary' : 'secondary'} aria-pressed={monthsBack === value} onClick={() => setMonthsBack(value)}>{label}</Button>)}
+                        <div className="flex flex-wrap gap-2" role="group" aria-label="โหมดกราฟ">
+                            {[['daily', 'รายวัน'], ['monthly', 'รายเดือน']].map(([value, label]) => <Button key={value} className="min-h-11" variant={mode === value ? 'primary' : 'secondary'} aria-pressed={mode === value} onClick={() => setMode(value)}>{label}</Button>)}
+                        </div>
+                        <div className="flex flex-wrap gap-2" role="group" aria-label="ช่วงเวลาสำหรับกราฟและวิเคราะห์เมนู">
+                            {(isDaily ? [[7, '7 วัน'], [30, '30 วัน'], [90, '90 วัน']] : [[6, '6 เดือน'], [12, '1 ปี'], [null, 'ทั้งหมด']]).map(([value, label]) => <Button key={label} className="min-h-11" variant={(isDaily ? daysBack : monthsBack) === value ? 'primary' : 'secondary'} aria-pressed={(isDaily ? daysBack : monthsBack) === value} onClick={() => isDaily ? setDaysBack(value) : setMonthsBack(value)}>{label}</Button>)}
                         </div>
                     </div>
                     <Card padding="lg" className="space-y-4">
-                        <h3 className="font-bold">ยอดขาย ต้นทุน และกำไรรายเดือน</h3>
+                        <h3 className="font-bold">ยอดขาย ต้นทุน และกำไร{isDaily ? 'รายวัน' : 'รายเดือน'}</h3>
                         <p className="text-xs text-[var(--text-muted)]">แกนซ้าย: บาท · แกนขวา: มาร์จิ้น % · ต้นทุนที่ยังไม่ผูกอาจทำให้กำไรสูงเกินจริง</p>
                         <div className="h-[360px] min-w-0">
                             <ResponsiveContainer width="100%" height="100%">
                                 <ComposedChart data={series} margin={{ top: 12, right: 0, bottom: 8, left: 0 }}>
                                     <CartesianGrid stroke="var(--border-color)" strokeDasharray="3 3" />
-                                    <XAxis dataKey="month" tick={axisStyle} minTickGap={24} stroke="var(--border-color)" />
+                                    <XAxis dataKey={periodKey} tickFormatter={isDaily ? shortDay : undefined} interval="preserveStartEnd" tick={axisStyle} minTickGap={24} stroke="var(--border-color)" />
                                     <YAxis yAxisId="money" tick={axisStyle} tickFormatter={chartMoney} width={65} stroke="var(--border-color)" />
                                     <YAxis yAxisId="margin" orientation="right" tick={axisStyle} tickFormatter={percent} width={48} stroke="var(--border-color)" />
-                                    <Tooltip contentStyle={tooltipStyle} labelFormatter={label => 'เดือน ' + label} formatter={(value, name) => [name === 'มาร์จิ้น' ? percent(value) : money(value), name]} />
+                                    <Tooltip contentStyle={tooltipStyle} labelFormatter={label => isDaily ? shortDay(label) + ' (' + label + ')' : 'เดือน ' + label} formatter={(value, name) => [name === 'มาร์จิ้น' ? percent(value) : money(value), name]} />
                                     <Legend wrapperStyle={{ fontSize: 12 }} />
                                     <Bar yAxisId="money" dataKey="revenue" name="ยอดขาย" fill="var(--accent-emerald)" />
                                     <Bar yAxisId="money" dataKey="cogs" name="ต้นทุนวัตถุดิบ" fill="var(--accent-orange)" />
@@ -233,16 +268,24 @@ export default function ProfitabilityView() {
                             </ResponsiveContainer>
                         </div>
                     </Card>
+                    {isDaily && <div className="space-y-4">
+                        <p className="text-sm text-[var(--text-muted)]">รายวันดูกำไรขั้นต้นเท่านั้น ค่าเช่ากับเงินเดือนจ่ายเป็นก้อนรายเดือน หารรายวันแล้วอ่านผิด</p>
+                        <div className="grid sm:grid-cols-3 gap-4">
+                            <Card padding="md"><p className="text-sm text-[var(--text-muted)]">วันที่ขายดีที่สุดในช่วง</p><p className="text-xl font-bold mt-2 num">{dailySummary.best ? shortDay(dailySummary.best.day) + ' · ' + money(dailySummary.best.revenue) : 'ยังไม่มีวันที่เปิดร้าน'}</p></Card>
+                            <Card padding="md"><p className="text-sm text-[var(--text-muted)]">ยอดขายเฉลี่ยต่อวันที่เปิดร้าน</p><p className="text-2xl font-bold mt-2 num">{money(dailySummary.averageRevenue)}</p></Card>
+                            <Card padding="md"><p className="text-sm text-[var(--text-muted)]">จำนวนวันที่เปิดร้านในช่วง</p><p className="text-2xl font-bold mt-2 num">{number(dailySummary.openDays)} วัน</p></Card>
+                        </div>
+                    </div>}
                     <Card padding="lg" className="space-y-3">
-                        <h3 className="font-bold">จำนวนบิลรายเดือน</h3>
+                        <h3 className="font-bold">จำนวนบิล{isDaily ? 'รายวัน' : 'รายเดือน'}</h3>
                         <p className="text-xs text-[var(--text-muted)]">ดูว่ายอดขายเปลี่ยนตามจำนวนการซื้อหรือไม่ · จำนวนบิลไม่ใช่จำนวนลูกค้าที่ไม่ซ้ำกัน</p>
                         <div className="h-56 min-w-0">
                             <ResponsiveContainer width="100%" height="100%">
                                 <ComposedChart data={series}>
                                     <CartesianGrid stroke="var(--border-color)" strokeDasharray="3 3" />
-                                    <XAxis dataKey="month" tick={axisStyle} minTickGap={24} stroke="var(--border-color)" />
+                                    <XAxis dataKey={periodKey} tickFormatter={isDaily ? shortDay : undefined} interval="preserveStartEnd" tick={axisStyle} minTickGap={24} stroke="var(--border-color)" />
                                     <YAxis tick={axisStyle} allowDecimals={false} stroke="var(--border-color)" />
-                                    <Tooltip contentStyle={tooltipStyle} labelFormatter={label => 'เดือน ' + label} formatter={value => [number(value) + ' บิล', 'จำนวนบิล']} />
+                                    <Tooltip contentStyle={tooltipStyle} labelFormatter={label => isDaily ? shortDay(label) + ' (' + label + ')' : 'เดือน ' + label} formatter={value => [number(value) + ' บิล', 'จำนวนบิล']} />
                                     <Bar dataKey="bills" name="จำนวนบิล" fill="var(--accent-emerald)" />
                                 </ComposedChart>
                             </ResponsiveContainer>
@@ -255,7 +298,7 @@ export default function ProfitabilityView() {
                         ].map(([label, value]) => <Card key={label} padding="md"><p className="text-sm text-[var(--text-muted)]">{label}</p><p className="text-2xl font-bold mt-2 num">{value}</p></Card>)}
                     </div>
                     <Card padding="lg" className="space-y-2">
-                        <p className="font-bold">เดือนล่าสุดในกราฟเทียบเดือนก่อน {series.length > 1 && '(' + series[series.length - 1].month + ' เทียบ ' + series[series.length - 2].month + ')'}</p>
+                        <p className="font-bold">{isDaily ? 'วันล่าสุดในกราฟเทียบวันก่อน' : 'เดือนล่าสุดในกราฟเทียบเดือนก่อน'} {series.length > 1 && '(' + series[series.length - 1][periodKey] + ' เทียบ ' + series[series.length - 2][periodKey] + ')'}</p>
                         <p>ยอดขาย {growthText(kpis.revenueGrowth)} · กำไรขั้นต้น {growthText(kpis.profitGrowth)}</p>
                         <p>{kpis.concentration.count > 0 ? 'กำไร ' + kpis.concentration.sharePct + '% มาจาก ' + kpis.concentration.count + ' เมนู จากทั้งหมด ' + kpis.concentration.of + ' เมนู' : 'ยังไม่มีกำไรบวกสำหรับวิเคราะห์การกระจุกตัว'}</p>
                         <p className="text-xs text-[var(--state-warn)]">กำไรและส่วนแบ่งกำไรรวมเมนูที่ยังไม่ผูกต้นทุน จึงอาจสูงเกินจริง</p>
