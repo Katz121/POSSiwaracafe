@@ -610,7 +610,7 @@ function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, on
           {groups.map((group) => (
             <div key={group.name} className="space-y-2">
 {multi && <p className="text-xs font-medium tracking-widest text-[var(--text-muted)] ml-1">{dispGroup(group.name, lang)}</p>}
-              {group.mods.map(({ mod, surcharge }) => {
+              {group.mods.map(({ mod }) => {
                 const selected = selections[group.name]?.id === mod.id;
                 // กลุ่มเดียว = แตะแล้วเพิ่มทันที (UX เดิม); หลายกลุ่ม = แตะเพื่อเลือกในกลุ่ม
                 const onClick = needsConfirmButton
@@ -624,9 +624,30 @@ function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, on
 className={`w-full flex items-center justify-between p-4 rounded-[var(--radius)] border-2 transition-all text-left min-h-[56px] ${selected ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] ring-2 ring-[var(--accent-emerald-light)]' : 'border-[var(--border-color)] hover:border-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-light)]'}`}
                   >
 <span className="font-semibold text-[var(--text-primary)]">{dispField(mod, lang)}</span>
-                    <span className={`font-bold ${surcharge > 0 ? 'text-orange-500' : 'text-emerald-600'}`}>
-                      {formatCurrency(computeModifierPrice(item, [mod]))}
-                    </span>
+                    {(() => {
+                      // ราคาที่โชว์ต้องเป็นราคาที่ "จะจ่ายจริงถ้ากดตัวนี้" โดยคิดรวมกับ
+                      // ตัวเลือกกลุ่มอื่นที่เลือกไว้แล้ว · ของเดิมโชว์ราคาแบบเลือกตัวนี้
+                      // ตัวเดียว ทำให้เอธิโชว์ 90 ส้มสดโชว์ 80 แต่พอเลือกคู่กันจ่ายจริง 105
+                      const withThis = groups
+                        .map((g) => (g.name === group.name ? mod : selections[g.name]))
+                        .filter(Boolean);
+                      const priceIfChosen = computeModifierPrice(item, withThis);
+                      const delta = priceIfChosen - previewPrice;
+                      return (
+                        <span className="flex flex-col items-end leading-tight">
+                          {/* สีบอกทิศทางเทียบกับที่เลือกอยู่ ไม่ใช่เทียบราคาฐาน
+                              ตัวที่ถูกลงต้องไม่ย้อมสีเหมือนตัวที่บวกเพิ่ม */}
+                          <span className={`font-bold ${delta > 0 ? 'text-orange-500' : 'text-emerald-600'}`}>
+                            {formatCurrency(priceIfChosen)}
+                          </span>
+                          {!selected && delta !== 0 && (
+                            <span className="text-xs font-semibold text-[var(--text-muted)]">
+                              {delta > 0 ? `+${formatCurrency(delta)}` : `ถูกลง ${formatCurrency(-delta)}`}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })()}
                   </motion.button>
                 );
               })}
