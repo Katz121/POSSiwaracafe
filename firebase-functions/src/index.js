@@ -75,11 +75,16 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
       const existing = await transaction.get(requestRef);
       if (existing.exists) return { response: existing.data().response, order: null };
 
+      // อ่านทีละคำสั่ง ห้ามยิง transaction.get พร้อมกันหลายตัว: Firestore ต่อหนึ่ง
+      // ทรานแซกชันรับ read ได้ทีละคำสั่ง การยิงขนาน (Promise.all / promise ที่ยัง
+      // ไม่ await) ทำให้ read บางตัวอ้างทรานแซกชันที่ยังไม่พร้อมหรือหมดอายุแล้ว และ
+      // ตกด้วย `10 ABORTED: The referenced transaction has expired or is no longer
+      // valid` ทุกครั้งจนลูกค้าสั่งของไม่ได้ · เอกสารหลายใบใช้ getAll ซึ่งเป็น read
+      // เดียวแบบ batch ไม่ใช่การยิงขนาน
       const pendingQuery = database.collection(`${basePath}/orders`).where('status', '==', 'pending');
-      const pendingSnapshotPromise = transaction.get(pendingQuery);
+      const pendingSnapshot = await transaction.get(pendingQuery);
       const refs = [settingsRef, queueRef, ...menuRefs, ...modifierRefs, ...(memberRef ? [memberRef] : [])];
-      const snapshots = await Promise.all(refs.map((ref) => transaction.get(ref)));
-      const pendingSnapshot = await pendingSnapshotPromise;
+      const snapshots = await transaction.getAll(...refs);
       const [settingsSnapshot, queueSnapshot] = snapshots;
       const menuStart = 2;
       const modifierStart = menuStart + menuRefs.length;
