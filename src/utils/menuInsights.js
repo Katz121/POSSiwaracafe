@@ -200,12 +200,14 @@ export function computeItemPerformance({ orders = [], menu = [], stock = [], spl
       const modifier = String(item?.beanModifier || '').trim();
       const name = splitByModifier && modifier ? `${baseName} ${modifier}` : baseName;
       const qty = num(item?.quantity) || 1;
-      const { cost, costed } = computeUnitCost(item, menuByName, stockById);
+      const { cost, costed, missingLinks } = computeUnitCost(item, menuByName, stockById);
       const prev = byName.get(name) || {
         name,
         baseName,
         modifier: splitByModifier ? modifier : '',
         units: 0,
+        costedUnits: 0,
+        staleLinkUnits: 0,
         revenue: 0,
         grossRevenue: 0,
         cogs: 0,
@@ -218,6 +220,12 @@ export function computeItemPerformance({ orders = [], menu = [], stock = [], spl
         modifier: prev.modifier,
         category: prev.category,
         units: prev.units + qty,
+        // นับเป็น "หน่วย" ไม่ใช่ธง true/false · ของเดิมใช้ prev.costed || costed
+        // แก้วเดียวที่คิดต้นทุนได้จึงทำให้ทั้งกลุ่มดูเหมือนคิดต้นทุนครบ
+        // เคสจริง: อเมริกาโน่ #คั่วเข้ม 199 แก้ว มีแค่ 17 แก้วที่มีต้นทุน
+        // แต่รายงานขึ้นมาร์จิ้น 99% แบบดูน่าเชื่อถือ
+        costedUnits: prev.costedUnits + (costed ? qty : 0),
+        staleLinkUnits: prev.staleLinkUnits + (missingLinks > 0 ? qty : 0),
         revenue: prev.revenue + num(item?.price) * qty * ratio,
         // ราคาก่อนปันส่วนลด เก็บไว้ให้เทียบได้ว่าส่วนลดกินไปเท่าไหร่
         grossRevenue: prev.grossRevenue + num(item?.price) * qty,
@@ -238,6 +246,9 @@ export function computeItemPerformance({ orders = [], menu = [], stock = [], spl
         ...r,
         grossProfit,
         marginPct: r.revenue > 0 ? Math.round((grossProfit / r.revenue) * 100) : 0,
+        // สัดส่วนหน่วยที่คิดต้นทุนได้จริง · ต่ำกว่า 1 แปลว่ามาร์จิ้นข้างบนสูงเกินจริง
+        costedShare: r.units > 0 ? r.costedUnits / r.units : 0,
+        staleLinkShare: r.units > 0 ? r.staleLinkUnits / r.units : 0,
         profitPerUnit: r.units > 0 ? grossProfit / r.units : 0,
         avgPrice: r.units > 0 ? r.revenue / r.units : 0,
         // ส่วนลดที่ถูกปันลงเมนูนี้ · ใช้ดูว่าโปรโมชั่นกินกำไรตัวไหนมากที่สุด
@@ -381,22 +392,36 @@ export function computeHeadlineKpis({ orders = [], items = [], profitability = n
  * @param {Array} input.beanModifiers ตัวเลือกที่มีอยู่ตอนนี้
  * @param {Array} input.stock ใช้เช็คว่า stockLink ยังชี้ไปของที่มีอยู่จริง
  */
-export function computeModifierCoverage({ orders = [], beanModifiers = [], stock = [] } = {}) {
+export function computeModifierCoverage({ orders = [], beanModifiers = [], stock = [], menu = [] } = {}) {
   const stockIds = new Set(stock.map((s) => s.id));
   const byName = new Map(beanModifiers.map((m) => [String(m?.name || '').trim(), m]));
+  const menuByName = new Map(menu.map((m) => [m.name, m]));
+  const stockById = new Map(stock.map((s) => [s.id, s]));
   const used = new Map();
 
   orders.forEach((order) => {
-    (order?.items || []).forEach((item) => {
+    const lines = order?.items || [];
+    // ปันส่วนลดระดับบิลเหมือน computeItemPerformance ไม่งั้นมาร์จิ้นของตัวเลือก
+    // จะสูงกว่าของเมนูเดียวกันโดยไม่มีเหตุผล
+    const lineSum = lines.reduce((sum, item) => sum + num(item?.price) * (num(item?.quantity) || 1), 0);
+    const billTotal = num(order?.total);
+    const ratio = lineSum > 0 && billTotal > 0 ? billTotal / lineSum : 1;
+
+    lines.forEach((item) => {
       // ชื่อในบิลเก็บเป็น "#ชื่อตัวเลือก" ต้องตัด # ออกก่อนเทียบกับทะเบียนตัวเลือก
       const name = String(item?.beanModifier || '').replace(/^#/, '').trim();
       if (!name) return;
       const qty = num(item?.quantity) || 1;
-      const prev = used.get(name) || { name, units: 0, revenue: 0 };
+      // ต้นทุนที่ผูกกับตัวเลือกนี้คือต้นทุนของทั้งแก้ว (สูตรเมนู + สูตรตัวเลือก)
+      // เพราะนั่นคือสิ่งที่เสียไปจริงเมื่อลูกค้าเลือกตัวเลือกนี้
+      const { cost, costed } = computeUnitCost(item, menuByName, stockById);
+      const prev = used.get(name) || { name, units: 0, costedUnits: 0, revenue: 0, cogs: 0 };
       used.set(name, {
         name,
         units: prev.units + qty,
-        revenue: prev.revenue + num(item?.price) * qty,
+        costedUnits: prev.costedUnits + (costed ? qty : 0),
+        revenue: prev.revenue + num(item?.price) * qty * ratio,
+        cogs: prev.cogs + cost * qty,
       });
     });
   });
@@ -404,8 +429,14 @@ export function computeModifierCoverage({ orders = [], beanModifiers = [], stock
   const rows = [...used.values()].map((row) => {
     const modifier = byName.get(row.name);
     const links = (modifier?.stockLinks || []).filter((link) => stockIds.has(link?.stockId));
+    const grossProfit = row.revenue - row.cogs;
     return {
       ...row,
+      grossProfit,
+      marginPct: row.revenue > 0 ? Math.round((grossProfit / row.revenue) * 100) : 0,
+      costPerUnit: row.units > 0 ? row.cogs / row.units : 0,
+      // ต่ำกว่า 1 แปลว่ามาร์จิ้นข้างบนสูงเกินจริง เพราะบางแก้วคิดต้นทุนไม่ได้
+      costedShare: row.units > 0 ? row.costedUnits / row.units : 0,
       // ตัวเลือกที่ถูกลบไปแล้วต่างจากตัวเลือกที่ยังอยู่แต่ยังไม่ผูก เพราะตัวที่ถูกลบ
       // ไปแล้วแก้ไม่ได้ ต้องยอมรับว่าบิลเก่าจะไม่มีต้นทุนตลอดไป
       exists: !!modifier,

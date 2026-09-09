@@ -155,6 +155,42 @@ describe('computeModifierCoverage', () => {
     expect(c.neverSold.map(r => r.name)).toContain('ยังไม่เคยขาย');
   });
 
+  it('คิดมาร์จิ้นของแต่ละตัวเลือกจากต้นทุนทั้งแก้ว', () => {
+    const c = computeModifierCoverage({
+      // ลาเต้ทุน 13 (เมล็ด 18g + แก้ว) ขาย 80 · ตัวเลือกผูกเมล็ดเพิ่มอีก 18g = ทุน 22
+      orders: [order('2026-08', 80, [
+        { name: 'ลาเต้', price: 80, quantity: 1, beanModifier: '#คั่วเข้ม',
+          stockLinks: [{ stockId: 'bean', usage: 18 }, { stockId: 'cup', usage: 1 }, { stockId: 'bean2', usage: 18 }] },
+      ])],
+      beanModifiers: mods, stock: [...stock, { id: 'bean2', unitCost: 0.5 }], menu,
+    });
+    expect(c.rows[0]).toMatchObject({ units: 1, revenue: 80, cogs: 22, grossProfit: 58, marginPct: 73 });
+    expect(c.rows[0].costPerUnit).toBe(22);
+    expect(c.rows[0].costedShare).toBe(1);
+  });
+
+  it('ตัวเลือกที่บางแก้วคิดต้นทุนไม่ได้ ต้องรายงาน costedShare ไม่ใช่ปล่อยมาร์จิ้นลอย', () => {
+    const c = computeModifierCoverage({
+      orders: [
+        order('2026-08', 80, [{ name: 'ลาเต้', price: 80, quantity: 1, beanModifier: '#คั่วเข้ม' }]),
+        // แก้วนี้สูตรชี้ไปสต็อกที่ถูกลบ คิดต้นทุนไม่ได้
+        order('2026-08', 80, [{ name: 'ลาเต้', price: 80, quantity: 3, beanModifier: '#คั่วเข้ม',
+          stockLinks: [{ stockId: 'สต็อกที่ถูกลบ', usage: 20 }] }]),
+      ],
+      beanModifiers: mods, stock, menu,
+    });
+    expect(c.rows[0].units).toBe(4);
+    expect(c.rows[0].costedShare).toBe(0.25);
+  });
+
+  it('ส่วนลดระดับบิลถูกปันลงตัวเลือกด้วย ไม่งั้นมาร์จิ้นสูงกว่าของเมนูเดียวกัน', () => {
+    const c = computeModifierCoverage({
+      orders: [order('2026-08', 50, [{ name: 'ลาเต้', price: 100, quantity: 1, beanModifier: '#คั่วเข้ม' }])],
+      beanModifiers: mods, stock, menu,
+    });
+    expect(c.rows[0].revenue).toBe(50);
+  });
+
   it('ไม่มีบิลที่ใช้ตัวเลือกเลย ต้องไม่หารศูนย์', () => {
     const c = computeModifierCoverage({ orders: [], beanModifiers: mods, stock });
     expect(c.coveragePct).toBe(0);
@@ -245,6 +281,23 @@ describe('computeItemPerformance', () => {
       menu, stock,
     });
     expect(items[0].revenue).toBe(80);
+  });
+
+  it('แก้วเดียวที่คิดต้นทุนได้ ต้องไม่ทำให้ทั้งกลุ่มดูเหมือนคิดต้นทุนครบ', () => {
+    // เคสจริงที่เจอ: อเมริกาโน่ #คั่วเข้ม 199 แก้ว มีแค่ 17 แก้วที่สูตรยังชี้ไปสต็อกที่มีอยู่
+    // ที่เหลือชี้ไปเมล็ดที่ถูกลบ แต่รายงานขึ้นมาร์จิ้น 99% แบบดูน่าเชื่อถือ
+    const items = computeItemPerformance({
+      orders: [
+        order('2026-08', 80, [{ name: 'ลาเต้', price: 80, quantity: 1 }]),
+        order('2026-08', 720, [{ name: 'ลาเต้', price: 80, quantity: 9,
+          stockLinks: [{ stockId: 'เมล็ดที่ถูกลบ', usage: 20 }] }]),
+      ],
+      menu, stock,
+    });
+    expect(items[0].units).toBe(10);
+    expect(items[0].costedUnits).toBe(1);
+    expect(items[0].costedShare).toBe(0.1);
+    expect(items[0].staleLinkShare).toBe(0.9);
   });
 
   it('เมนูที่ยังไม่ผูกต้นทุนถูกทำเครื่องหมายไว้ ไม่ใช่ปล่อยผ่านเป็นทุน 0', () => {

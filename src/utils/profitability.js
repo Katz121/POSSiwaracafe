@@ -61,8 +61,12 @@ const num = (value) => {
  * ใช้ stockLinks ที่ติดมากับรายการในบิลก่อน (เมล็ดที่ลูกค้าเลือกถูก merge ไว้
  * ตอนสั่ง) แล้วค่อย fallback ไปสูตรกลางของเมนู สำหรับบิลเก่าที่ยังไม่มี
  *
- * @returns {{ cost: number, costed: boolean }} costed = หาต้นทุนได้จริงหรือไม่
- *   ใช้แยก "ต้นทุน 0 เพราะยังไม่ผูกสต็อก" ออกจาก "ต้นทุน 0 เพราะของแถม"
+ * @returns {{ cost: number, costed: boolean, missingLinks: number }}
+ *   costed = หาต้นทุนได้จริงหรือไม่ · ใช้แยก "ต้นทุน 0 เพราะยังไม่ผูกสต็อก"
+ *   ออกจาก "ต้นทุน 0 เพราะของแถม"
+ *   missingLinks = สูตรอ้างสต็อกที่ถูกลบไปแล้วกี่รายการ · เกิดจริงในข้อมูล
+ *   เมล็ดกาแฟตัวเก่าถูกลบออกจากคลัง แต่บิลเก่ายังอ้าง stockId นั้นอยู่
+ *   ต้องนับไว้เตือน ไม่ใช่เงียบแล้วตีเป็นต้นทุนศูนย์
  */
 export function computeUnitCost(orderItem, menuByName, stockById) {
   const menuItem = menuByName.get(orderItem?.name);
@@ -73,15 +77,20 @@ export function computeUnitCost(orderItem, menuByName, stockById) {
   const additional = num(menuItem?.additionalCost);
   let cost = additional;
   let linkedAny = false;
+  let missingLinks = 0;
 
   links.forEach((link) => {
-    const stockItem = stockById.get(link?.stockId);
-    if (!stockItem) return;
+    if (!link?.stockId) return;
+    const stockItem = stockById.get(link.stockId);
+    if (!stockItem) {
+      missingLinks += 1;
+      return;
+    }
     linkedAny = true;
     cost += num(stockItem.unitCost) * num(link?.usage);
   });
 
-  return { cost, costed: linkedAny || additional > 0 };
+  return { cost, costed: linkedAny || additional > 0, missingLinks };
 }
 
 /**
