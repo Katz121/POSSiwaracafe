@@ -1257,8 +1257,16 @@ export default function PosView() {
                 <div key={group.name} className="space-y-2">
                   {multi && <p className="text-xs font-medium text-[var(--text-muted)] ml-1">{group.name}</p>}
                   <div className="space-y-2">
-                    {group.mods.map(({ mod, surcharge }) => {
+                    {group.mods.map(({ mod }) => {
                       const selected = pendingBeanSelections[group.name]?.id === mod.id;
+                      // ราคาบนปุ่มต้องเป็นราคาที่จะจ่ายจริงถ้ากดตัวนี้ โดยคิดรวมกับ
+                      // ตัวเลือกกลุ่มอื่นที่เลือกไว้แล้ว · ของเดิมคิดแบบเลือกตัวนี้
+                      // ตัวเดียว ทำให้เอธิโชว์ 90 ส้มสดโชว์ 80 แต่เลือกคู่กันจ่ายจริง 105
+                      const withThis = groups
+                        .map(g => (g.name === group.name ? mod : pendingBeanSelections[g.name]))
+                        .filter(Boolean);
+                      const priceIfChosen = computeModifierPrice(pendingBeanItem, withThis);
+                      const delta = priceIfChosen - previewPrice;
                       // กลุ่มเดียว = แตะเลือกแล้วเพิ่มลงตะกร้าทันที (UX เดิม).
                       // หลายกลุ่ม = แตะเพื่อเลือกในกลุ่มนั้น แล้วกดยืนยันด้านล่าง.
                       const onClick = needsConfirmButton
@@ -1268,8 +1276,17 @@ export default function PosView() {
                         <button key={mod.id} onClick={onClick}
                           className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${selected ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-500 ring-2 ring-amber-400' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 hover:border-amber-500'}`}>
                           <span className="font-bold text-amber-800 dark:text-amber-400">#{mod.name}</span>
-                          <span className={`font-bold ${surcharge > 0 ? 'text-amber-600' : 'text-[var(--accent-emerald)]'}`}>
-                            ฿{computeModifierPrice(pendingBeanItem, [mod]).toLocaleString()}
+                          <span className="flex flex-col items-end leading-tight">
+                            {/* สีบอกทิศทางเทียบกับที่เลือกอยู่ ไม่ใช่เทียบราคาฐาน
+                                ตัวที่ถูกลงต้องไม่ย้อมสีเหมือนตัวที่บวกเพิ่ม */}
+                            <span className={`font-bold ${delta > 0 ? 'text-amber-600' : 'text-[var(--accent-emerald)]'}`}>
+                              ฿{priceIfChosen.toLocaleString()}
+                            </span>
+                            {!selected && delta !== 0 && (
+                              <span className="text-xs font-semibold text-[var(--text-muted)]">
+                                {delta > 0 ? `+฿${delta.toLocaleString()}` : `ถูกลง ฿${(-delta).toLocaleString()}`}
+                              </span>
+                            )}
                           </span>
                         </button>
                       );
