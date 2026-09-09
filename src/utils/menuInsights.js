@@ -259,9 +259,20 @@ export function computeHeadlineKpis({ orders = [], items = [], profitability = n
     topBySales: [...items].sort((a, b) => b.revenue - a.revenue).slice(0, 10),
     topByProfit: [...items].sort((a, b) => b.grossProfit - a.grossProfit).slice(0, 10),
     // ขายดีแต่มาร์จิ้นบาง ขึ้นราคา 5 บาทตรงนี้ได้ผลกว่าออกเมนูใหม่ทั้งตัว
-    thinMargin: items
-      .filter((i) => i.costed && i.units > 0)
-      .sort((a, b) => a.marginPct - b.marginPct)
-      .slice(0, 10),
+    //
+    // ต้องกรองเอาเฉพาะตัวที่ "ขายได้ถึงค่ากลาง" ด้วย ไม่ใช่เรียงมาร์จิ้นต่ำสุดล้วนๆ
+    // เมนูที่ขายได้ชิ้นเดียวทั้งเดือนต่อให้มาร์จิ้น 5% ขึ้นราคาไปก็ไม่เปลี่ยนอะไร
+    // แต่กินที่ในรายการจนบังตัวที่ขยับแล้วเห็นผลจริง
+    // ไม่มี fallback ไปใช้ทั้งหมดเมื่อกรองแล้วเหลือน้อย เพราะ fallback จะลาก
+    // เมนูขายชิ้นเดียวกลับเข้ามาบังตัวที่ขยับแล้วเห็นผล · เหลือน้อยแปลว่า
+    // ไม่มีอะไรให้ทำจริงๆ ซึ่งเป็นคำตอบที่ถูกต้องกว่ารายการยาวๆ ที่ทำตามไม่ได้
+    thinMargin: (() => {
+      const rated = items.filter((i) => i.costed && i.units > 0);
+      const cutoff = median(rated.map((i) => i.units));
+      return rated
+        .filter((i) => i.units >= cutoff)
+        .sort((a, b) => a.marginPct - b.marginPct)
+        .slice(0, 10);
+    })(),
   };
 }

@@ -175,6 +175,30 @@ describe('computeHeadlineKpis', () => {
     expect(kpis.profitGrowth).toBe(200);
   });
 
+  it('thinMargin ต้องตัดเมนูที่ขายน้อยทิ้ง เพราะขึ้นราคาแล้วไม่เปลี่ยนอะไร', () => {
+    const items = [
+      // ขายน้อยมากแต่มาร์จิ้นต่ำสุด ไม่ควรติดอันดับ
+      { name: 'ขายชิ้นเดียว', units: 1, marginPct: 2, costed: true },
+      ...Array.from({ length: 6 }, (_, n) => ({
+        name: `ขายดี${n}`, units: 50 + n, marginPct: 20 + n, costed: true,
+      })),
+    ];
+    const { thinMargin } = computeHeadlineKpis({ items });
+    expect(thinMargin.map(i => i.name)).not.toContain('ขายชิ้นเดียว');
+    // ค่ากลางของ [1,50,51,52,53,54,55] คือ 52 · ขายดี0 กับ 1 จึงตกเกณฑ์ไปด้วย
+    // เหลือ 52-55 แล้วมาร์จิ้นต่ำสุดในกลุ่มนั้นคือขายดี2
+    expect(thinMargin[0].name).toBe('ขายดี2');
+  });
+
+  it('เมนูมาร์จิ้นต่ำกว่าแต่ขายน้อยกว่าค่ากลาง ต้องไม่ถูกลากกลับเข้ามา', () => {
+    const items = [
+      { name: 'A', units: 10, marginPct: 30, costed: true },
+      { name: 'B', units: 1, marginPct: 10, costed: true },
+    ];
+    const { thinMargin } = computeHeadlineKpis({ items });
+    expect(thinMargin.map(i => i.name)).toEqual(['A']);
+  });
+
   it('ไม่มีบิลเลยต้องไม่หารศูนย์', () => {
     const kpis = computeHeadlineKpis({});
     expect(kpis.averageTicket).toBe(0);

@@ -11,7 +11,7 @@ import { getISODate, getOrderDate, compressImage } from '../../utils/calculation
 import { getModifierGroups, STOCK_CATEGORIES, getStockCategory } from '../../config/constants';
 import { generateMenuImage } from '../../services/aiService';
 import { uploadImageToR2, isBase64Image } from '../../services/imageUpload';
-import { Button, Modal, Input, Select, EmptyState, useToast, ConfirmModal, InputModal, Skeleton, SearchSelect } from '../ui';
+import { Badge, Button, Modal, Input, Select, EmptyState, useToast, ConfirmModal, InputModal, Skeleton, SearchSelect } from '../ui';
 
 export default function MenuManageView() {
   const {
@@ -85,10 +85,28 @@ export default function MenuManageView() {
   const [showPromoInputModal, setShowPromoInputModal] = useState(false);
   const [selectedPromo, setSelectedPromo] = useState(null);
 
+  const [stockFilter, setStockFilter] = useState('all');
+  const stockById = useMemo(() => new Map(stock.map(item => [item.id, item])), [stock]);
+  // แยกสถานะจากยอดต้นทุน เพราะลิงก์ที่ถูกลบหรือยังไม่ผูกต้องไม่ดูเหมือนกำไรสูง
+  const menuCostStatus = useMemo(() => new Map(menu.map(item => {
+    const links = (item.stockLinks || []).filter(link => stockById.has(link.stockId));
+    const totalCost = links.reduce((sum, link) => sum + Number(stockById.get(link.stockId).unitCost || 0) * Number(link.usage || 0), 0) + Number(item.additionalCost || 0);
+    const linked = links.length > 0 || Number(item.additionalCost) > 0;
+    const price = Number(item.price) || 0;
+    // ใช้เกณฑ์เดียวกับ profitability เพราะการผูกเพียงบรรจุภัณฑ์อาจทำให้กำไรดูสูงเกินจริง
+    const suspicious = linked && price > 0 && totalCost / price < 0.08;
+    return [item.id, { linked, count: links.length, suspicious, marginPercent: Math.round((price - totalCost) / (price || 1) * 100) }];
+  })), [menu, stockById]);
+  const stockCounts = useMemo(() => {
+    const linked = menu.filter(item => menuCostStatus.get(item.id).linked).length;
+    return { linked, unlinked: menu.length - linked };
+  }, [menu, menuCostStatus]);
+  const filteredMenu = useMemo(() => menu.filter(item => stockFilter === 'all' || menuCostStatus.get(item.id).linked === (stockFilter === 'linked')), [menu, menuCostStatus, stockFilter]);
+
   // Memoized groupedMenu
   const groupedMenu = useMemo(() => {
     const groups = {};
-    menu.forEach(item => {
+    filteredMenu.forEach(item => {
       const cat = item.category || 'ไม่ระบุหมวดหมู่';
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(item);
@@ -107,7 +125,7 @@ export default function MenuManageView() {
         return aOut - bOut;
       })
     }));
-  }, [menu]);
+  }, [filteredMenu]);
 
   // Set all categories collapsed by default
   useEffect(() => {
@@ -874,7 +892,14 @@ ${withDescription
               </button>
             )}
           </div>
+          <div className="px-6 py-3 space-y-2 border-b border-[var(--border-color)]">
+            <p className="text-sm text-[var(--text-muted)]">ผูกแล้ว {stockCounts.linked} · ยังไม่ผูก {stockCounts.unlinked}</p>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="กรองสถานะการผูกสต็อก">
+              {[['all', 'ทั้งหมด'], ['linked', 'ผูกแล้ว'], ['unlinked', 'ยังไม่ผูก']].map(([value, label]) => <Button key={value} type="button" className="min-h-11" variant={stockFilter === value ? 'primary' : 'secondary'} aria-pressed={stockFilter === value} onClick={() => setStockFilter(value)}>{label}</Button>)}
+            </div>
+          </div>
           <div className="flex-1 overflow-y-auto divide-y divide-gray-50 scrollbar-hide px-6">
+            {!isSyncing && menu.length > 0 && filteredMenu.length === 0 && <EmptyState icon={ClipboardList} title="ไม่มีเมนูที่ตรงกับตัวกรอง" />}
             {isSyncing && (
               <div className="py-6 px-4 space-y-4">
                 {[...Array(6)].map((_, i) => <Skeleton.Card key={i} />)}
@@ -906,22 +931,18 @@ ${withDescription
                         {i.isPinnedBest && <TrendingUp size={18} className="text-orange-500" title="ปักหมุดขายดี" />}
                         {i.excludeFromSale && <Clock size={18} className="text-indigo-500" title="ยกเว้นลด Happy Hour" />}
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <p className="text-xs text-emerald-500  bg-emerald-50 w-fit px-4 py-1 rounded-full border border-emerald-100 font-medium leading-none">฿{Number(i.price).toLocaleString()} • {String(i.category)}</p>
                         {(() => {
-                          const linkedCost = (i.stockLinks || []).reduce((sum, link) => {
-                            const s = stock.find(item => item.id === link.stockId);
-                            return sum + (Number(s?.unitCost || 0) * Number(link.usage || 0));
-                          }, 0);
-                          const totalCost = linkedCost + Number(i.additionalCost || 0);
-                          const margin = Number(i.price) - totalCost;
-                          const marginPercent = Math.round((margin / (Number(i.price) || 1)) * 100);
-                          return (
-                            <div className="flex items-center gap-2">
-                              <span className={`text-xs font-medium px-3 py-1 rounded-full border ${marginPercent < 30 ? 'bg-red-50 text-red-500 border-red-100' : 'bg-blue-50 text-blue-500 border-blue-100'}`}>กำไร {marginPercent}%</span>
-                              {marginPercent < 30 && <AlertTriangle size={14} className="text-red-500 animate-pulse" title="กำไรต่ำกว่า 30%" />}
-                            </div>
-                          );
+                          const status = menuCostStatus.get(i.id);
+                          return <>
+                            <Badge variant={status.linked ? 'success' : 'warning'}>{status.linked ? 'ผูกสต็อกแล้ว' + (status.count ? ' · ' + status.count + ' รายการ' : ' · ต้นทุนเพิ่มเติม') : 'ยังไม่ผูกสต็อก'}</Badge>
+                            {status.suspicious && <Badge variant="warning">ต้นทุนน่าสงสัย</Badge>}
+                            {status.linked && <div className="flex items-center gap-2">
+                              <Badge variant={status.marginPercent < 30 ? 'danger' : 'info'}>กำไร {status.marginPercent}%</Badge>
+                              {status.marginPercent < 30 && <AlertTriangle size={14} className="text-[var(--state-danger)]" title="กำไรต่ำกว่า 30%" />}
+                            </div>}
+                          </>;
                         })()}
                       </div>
                     </div>
