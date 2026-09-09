@@ -9,6 +9,7 @@ import { collection, doc, writeBatch, increment, arrayUnion, serverTimestamp } f
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getNameKey } from '../../utils/calculations';
+import { mergeStockLinks } from '../../utils/stockLinks';
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeCategory, isCakeSaleActive } from '../../utils/promotions';
 import { bumpMenuSoldCount } from '../../utils/menuSales';
 import useDebounce from '../../hooks/useDebounce';
@@ -347,12 +348,9 @@ export default function PosView() {
     const milkKey = milkType ? `-milk-${milkType}` : '';
     const cartItemId = `${item.id}${modifierKey}${sweetnessKey}${milkKey}`;
     const milkLabel = MILK_OPTIONS.find(option => option.value === milkType)?.label || '';
-    const mergedStockLinks = [...(item.stockLinks || [])];
-    mods.forEach(mod => (mod.stockLinks || []).forEach(link => {
-      const existing = mergedStockLinks.find(l => l.stockId === link.stockId);
-      if (existing) existing.usage = (Number(existing.usage) || 0) + (Number(link.usage) || 0);
-      else mergedStockLinks.push({ ...link });
-    }));
+    // ใช้ตัวกลางร่วมกับหน้าลูกค้า · ของเดิมเขียนทับ usage บนอ็อบเจ็กต์ตัวเดียวกับ
+    // สูตรของเมนูใน state ทำให้หยิบลงตะกร้าซ้ำแล้วปริมาณสะสมทับสูตรกลางไปเรื่อยๆ
+    const mergedStockLinks = mergeStockLinks(item.stockLinks, ...mods.map(mod => mod.stockLinks));
     setCart(prev => {
       const existing = prev.find(c => c.cartId === cartItemId);
       if (existing) return prev.map(c => c.cartId === cartItemId ? { ...c, quantity: c.quantity + 1 } : c);

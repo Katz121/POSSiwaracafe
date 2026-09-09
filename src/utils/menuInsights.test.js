@@ -183,6 +183,70 @@ describe('computeItemPerformance', () => {
     expect(items[0].name).toBe('ลาเต้'); // ยอดน้อยกว่าเค้กต่อชิ้น แต่กำไรรวมสูงกว่า
   });
 
+  it('splitByModifier แยกอเมริกาโนแต่ละเมล็ดออกจากกัน เพราะคนละต้นทุนคนละราคา', () => {
+    const orders = [
+      order('2026-08', 80, [{ name: 'ลาเต้', price: 80, quantity: 1, beanModifier: '#คั่วเข้ม' }]),
+      order('2026-08', 100, [{ name: 'ลาเต้', price: 100, quantity: 1, beanModifier: '#คั่วกลาง ลาว' }]),
+      order('2026-08', 60, [{ name: 'ลาเต้', price: 60, quantity: 1 }]),
+    ];
+    const merged = computeItemPerformance({ orders, menu, stock });
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ name: 'ลาเต้', units: 3, revenue: 240 });
+
+    const split = computeItemPerformance({ orders, menu, stock, splitByModifier: true });
+    expect(split.map(i => i.name).sort()).toEqual(
+      ['ลาเต้', 'ลาเต้ #คั่วกลาง ลาว', 'ลาเต้ #คั่วเข้ม'].sort(),
+    );
+    const dark = split.find(i => i.name === 'ลาเต้ #คั่วเข้ม');
+    expect(dark).toMatchObject({ baseName: 'ลาเต้', modifier: '#คั่วเข้ม', units: 1, revenue: 80 });
+    // แยกแล้วยอดรวมต้องยังเท่าเดิม ไม่ใช่หายหรือซ้ำ
+    expect(split.reduce((s, i) => s + i.revenue, 0)).toBe(240);
+  });
+
+  it('ไม่แยกตัวเลือกโดยค่าเริ่มต้น เพราะการจัดกลุ่มเมนูควรมองที่ระดับเมนู', () => {
+    const items = computeItemPerformance({
+      orders: [order('2026-08', 80, [{ name: 'ลาเต้', price: 80, quantity: 1, beanModifier: '#คั่วเข้ม' }])],
+      menu, stock,
+    });
+    expect(items[0].name).toBe('ลาเต้');
+    expect(items[0].modifier).toBe('');
+  });
+
+  it('ส่วนลดระดับบิลถูกปันลงรายเมนู ผลรวมรายเมนูต้องเท่ากับรายได้จริง', () => {
+    // ราคารวมรายชิ้น 200 แต่เก็บเงินจริง 150 (ส่วนลด 50)
+    const items = computeItemPerformance({
+      orders: [order('2026-08', 150, [
+        { name: 'ลาเต้', price: 100, quantity: 1 },
+        { name: 'เค้ก', price: 100, quantity: 1 },
+      ])],
+      menu, stock,
+    });
+    expect(items.reduce((s, i) => s + i.revenue, 0)).toBe(150);
+    items.forEach(i => {
+      expect(i.revenue).toBe(75);
+      expect(i.grossRevenue).toBe(100);
+      expect(i.discountShare).toBe(25);
+    });
+  });
+
+  it('มาร์จิ้นต้องคิดจากเงินที่รับมาจริง ไม่ใช่ราคาป้าย', () => {
+    const items = computeItemPerformance({
+      orders: [order('2026-08', 50, [{ name: 'ลาเต้', price: 100, quantity: 1 }])],
+      menu, stock,
+    });
+    // ทุนลาเต้ 13 · ถ้าคิดจากราคาป้าย 100 จะได้มาร์จิ้น 87% ซึ่งสูงเกินจริง
+    expect(items[0].revenue).toBe(50);
+    expect(items[0].marginPct).toBe(74);
+  });
+
+  it('บิลที่ไม่มียอดรวม ต้องใช้ราคาเต็ม ไม่ใช่ทำให้ยอดหายไปทั้งบิล', () => {
+    const items = computeItemPerformance({
+      orders: [{ status: 'completed', date: '2026-08-15', items: [{ name: 'ลาเต้', price: 80, quantity: 1 }] }],
+      menu, stock,
+    });
+    expect(items[0].revenue).toBe(80);
+  });
+
   it('เมนูที่ยังไม่ผูกต้นทุนถูกทำเครื่องหมายไว้ ไม่ใช่ปล่อยผ่านเป็นทุน 0', () => {
     const items = computeItemPerformance({
       orders: [order('2026-08', 60, [{ name: 'ยังไม่ผูก', price: 60, quantity: 1 }])],

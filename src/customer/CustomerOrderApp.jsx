@@ -38,6 +38,7 @@ import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
 import { formatCurrency, VAT_RATE, roundUpTo5, getModifierGroups, isBaseModifier, computeModifierPrice, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH } from '../config/constants';
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory, supportsSweetnessChoice } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
+import { mergeStockLinks } from '../utils/stockLinks';
 import { applyCustomerSEO } from '../utils/seo';
 
 // ---------------------------------------------------------------------------
@@ -274,19 +275,6 @@ function LanguageToggle({ lang, onToggle }) {
 // ---------------------------------------------------------------------------
 // Helper: merge stock links from a menu item and a bean modifier
 // ---------------------------------------------------------------------------
-function mergeStockLinks(itemLinks = [], modifierLinks = []) {
-  const map = {};
-  [...itemLinks, ...modifierLinks].forEach((link) => {
-    const key = link.stockId || link.id || link.name;
-    if (map[key]) {
-      map[key] = { ...map[key], quantity: (map[key].quantity || 0) + (link.quantity || 0) };
-    } else {
-      map[key] = { ...link };
-    }
-  });
-  return Object.values(map);
-}
-
 // ---------------------------------------------------------------------------
 // Sub-component: MenuItemCard
 // ---------------------------------------------------------------------------

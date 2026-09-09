@@ -177,29 +177,50 @@ export function computeDailySeries({
  * มักไม่ใช่ตัวเดียวกัน เค้กราคาแพงแต่ต้นทุนสูงอาจแพ้กาแฟธรรมดาที่ขายถี่
  * ถ้าดูแต่ยอดขายจะทุ่มโปรโมชั่นผิดตัว
  */
-export function computeItemPerformance({ orders = [], menu = [], stock = [] } = {}) {
+export function computeItemPerformance({ orders = [], menu = [], stock = [], splitByModifier = false } = {}) {
   const menuByName = new Map(menu.map((m) => [m.name, m]));
   const stockById = new Map(stock.map((s) => [s.id, s]));
   const byName = new Map();
 
   orders.forEach((order) => {
-    (order?.items || []).forEach((item) => {
-      const name = String(item?.name || 'ไม่ระบุ');
+    const lines = order?.items || [];
+    // ส่วนลดถูกหักที่ระดับบิล ไม่ได้ถูกหักที่ราคารายชิ้น ถ้าเอา price × qty มารวมตรงๆ
+    // ยอดรายเมนูจะสูงกว่ารายได้จริง (ข้อมูลจริงเกินไป 1.9% จาก 300 บิลที่มีส่วนลด)
+    // แล้วมาร์จิ้นรายเมนูจะดูดีเกินจริงตามไปด้วย · จึงปันส่วนลดลงแต่ละรายการตาม
+    // สัดส่วนราคา ให้ผลรวมรายเมนูเท่ากับรายได้ที่รับมาจริง
+    const lineSum = lines.reduce((sum, item) => sum + num(item?.price) * (num(item?.quantity) || 1), 0);
+    const billTotal = num(order?.total);
+    // บิลที่ไม่มี total หรือรายการรวมเป็นศูนย์ ให้ใช้ราคาเต็ม ดีกว่าคูณด้วยศูนย์แล้วยอดหาย
+    const ratio = lineSum > 0 && billTotal > 0 ? billTotal / lineSum : 1;
+
+    lines.forEach((item) => {
+      const baseName = String(item?.name || 'ไม่ระบุ');
+      // แยกตามตัวเลือกเมื่อขอ เพราะอเมริกาโนคั่วกลางกับคั่วเข้มคนละต้นทุนคนละราคา
+      // รวมกันแล้วมองไม่ออกว่าลูกค้าซื้อตัวไหนจริง และควรสั่งเมล็ดตัวไหนเพิ่ม
+      const modifier = String(item?.beanModifier || '').trim();
+      const name = splitByModifier && modifier ? `${baseName} ${modifier}` : baseName;
       const qty = num(item?.quantity) || 1;
       const { cost, costed } = computeUnitCost(item, menuByName, stockById);
       const prev = byName.get(name) || {
         name,
+        baseName,
+        modifier: splitByModifier ? modifier : '',
         units: 0,
         revenue: 0,
+        grossRevenue: 0,
         cogs: 0,
         costed: false,
-        category: item?.category || menuByName.get(name)?.category || '',
+        category: item?.category || menuByName.get(baseName)?.category || '',
       };
       byName.set(name, {
         name: prev.name,
+        baseName: prev.baseName,
+        modifier: prev.modifier,
         category: prev.category,
         units: prev.units + qty,
-        revenue: prev.revenue + num(item?.price) * qty,
+        revenue: prev.revenue + num(item?.price) * qty * ratio,
+        // ราคาก่อนปันส่วนลด เก็บไว้ให้เทียบได้ว่าส่วนลดกินไปเท่าไหร่
+        grossRevenue: prev.grossRevenue + num(item?.price) * qty,
         cogs: prev.cogs + cost * qty,
         costed: prev.costed || costed,
       });
@@ -219,6 +240,8 @@ export function computeItemPerformance({ orders = [], menu = [], stock = [] } = 
         marginPct: r.revenue > 0 ? Math.round((grossProfit / r.revenue) * 100) : 0,
         profitPerUnit: r.units > 0 ? grossProfit / r.units : 0,
         avgPrice: r.units > 0 ? r.revenue / r.units : 0,
+        // ส่วนลดที่ถูกปันลงเมนูนี้ · ใช้ดูว่าโปรโมชั่นกินกำไรตัวไหนมากที่สุด
+        discountShare: r.grossRevenue - r.revenue,
         revenueShare: totalRevenue > 0 ? (r.revenue / totalRevenue) * 100 : 0,
         profitShare: totalProfit > 0 ? (grossProfit / totalProfit) * 100 : 0,
       };
