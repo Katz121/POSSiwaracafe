@@ -103,6 +103,73 @@ export function computeMonthlySeries({
   });
 }
 
+/** วันของบิลในรูป YYYY-MM-DD · เกณฑ์เดียวกับ orderMonth */
+export function orderDay(order) {
+  const raw = String(order?.date || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const seconds = order?.createdAt?.seconds;
+  if (seconds) return new Date(seconds * 1000).toISOString().slice(0, 10);
+  return '';
+}
+
+function addDays(day, delta) {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * ชุดข้อมูลรายวัน
+ *
+ * **จงใจไม่คืนกำไรสุทธิและกระแสเงินสดรายวัน** เพราะค่าใช้จ่ายอย่างค่าเช่ากับ
+ * เงินเดือนถูกบันทึกเป็นก้อนเดียวในวันที่จ่าย ถ้าเอามาหารรายวันตรงๆ วันที่จ่าย
+ * ค่าเช่าจะขาดทุนยับส่วนวันอื่นกำไรพุ่ง ซึ่งไม่ได้บอกอะไรเลย
+ * รายวันจึงบอกเฉพาะสิ่งที่วัดรายวันได้จริง: ขายได้เท่าไหร่ ต้นทุนวัตถุดิบที่ใช้ไป
+ * เท่าไหร่ และเหลือกำไรขั้นต้นเท่าไหร่
+ *
+ * @param {number} [days] จำนวนวันย้อนหลัง default 30
+ */
+export function computeDailySeries({
+  orders = [],
+  menu = [],
+  stock = [],
+  days = 30,
+  endDay = null,
+} = {}) {
+  const completed = orders.filter((o) => o?.status === 'completed' && orderDay(o));
+  const present = [...new Set(completed.map(orderDay))].sort();
+  if (!present.length) return [];
+
+  const last = endDay || present[present.length - 1];
+  const first = days ? addDays(last, -(days - 1)) : present[0];
+
+  const ordersByDay = new Map();
+  completed.forEach((order) => {
+    const d = orderDay(order);
+    if (!ordersByDay.has(d)) ordersByDay.set(d, []);
+    ordersByDay.get(d).push(order);
+  });
+
+  const wanted = [];
+  for (let d = first; d <= last; d = addDays(d, 1)) wanted.push(d);
+
+  return wanted.map((day) => {
+    const dayOrders = ordersByDay.get(day) || [];
+    // ไม่ส่ง expenses เข้าไป เพราะรายวันไม่คิดกำไรสุทธิ (ดูเหตุผลด้านบน)
+    const result = computeProfitability({ orders: dayOrders, expenses: [], menu, stock });
+    return {
+      day,
+      bills: dayOrders.length,
+      revenue: result.revenue,
+      cogs: result.cogs,
+      grossProfit: result.grossProfit,
+      grossMargin: result.grossMargin,
+      unitsSold: result.unitsSold,
+      averageTicket: dayOrders.length > 0 ? result.revenue / dayOrders.length : 0,
+    };
+  });
+}
+
 /**
  * ผลงานรายเมนู พร้อมส่วนแบ่งยอดขายและส่วนแบ่งกำไร
  *
@@ -274,5 +341,72 @@ export function computeHeadlineKpis({ orders = [], items = [], profitability = n
         .sort((a, b) => a.marginPct - b.marginPct)
         .slice(0, 10);
     })(),
+  };
+}
+
+/**
+ * ความครอบคลุมต้นทุนของ "ตัวเลือก" (#) เช่นเมล็ดกาแฟและผงมัทฉะ
+ *
+ * ทำไมต้องแยกดูจากระดับเมนู: เมนูอย่างอเมริกาโน่หรือเพียวมัทฉะไม่ได้ผูกเมล็ด/ผง
+ * ไว้ที่ตัวเมนู เพราะลูกค้าเลือกเองตอนสั่ง วัตถุดิบหลักจึงอยู่ที่ตัวเลือกทั้งหมด
+ * ถ้าตัวเลือกไม่ได้ผูกสต็อก ต้นทุนจะเหลือแค่ค่าแก้วแล้วมาร์จิ้นพุ่งไปเกือบ 100%
+ * โดยที่หน้าจอระดับเมนูมองไม่เห็นสาเหตุ
+ *
+ * ราคาขายไม่ต้องห่วง ระบบบันทึกราคาที่รวมส่วนต่างของตัวเลือกไว้ในบิลตั้งแต่ตอนสั่ง
+ * แล้ว (ดู computeModifierPrice) ที่ขาดคือฝั่งต้นทุนเท่านั้น
+ *
+ * @param {Array} input.beanModifiers ตัวเลือกที่มีอยู่ตอนนี้
+ * @param {Array} input.stock ใช้เช็คว่า stockLink ยังชี้ไปของที่มีอยู่จริง
+ */
+export function computeModifierCoverage({ orders = [], beanModifiers = [], stock = [] } = {}) {
+  const stockIds = new Set(stock.map((s) => s.id));
+  const byName = new Map(beanModifiers.map((m) => [String(m?.name || '').trim(), m]));
+  const used = new Map();
+
+  orders.forEach((order) => {
+    (order?.items || []).forEach((item) => {
+      // ชื่อในบิลเก็บเป็น "#ชื่อตัวเลือก" ต้องตัด # ออกก่อนเทียบกับทะเบียนตัวเลือก
+      const name = String(item?.beanModifier || '').replace(/^#/, '').trim();
+      if (!name) return;
+      const qty = num(item?.quantity) || 1;
+      const prev = used.get(name) || { name, units: 0, revenue: 0 };
+      used.set(name, {
+        name,
+        units: prev.units + qty,
+        revenue: prev.revenue + num(item?.price) * qty,
+      });
+    });
+  });
+
+  const rows = [...used.values()].map((row) => {
+    const modifier = byName.get(row.name);
+    const links = (modifier?.stockLinks || []).filter((link) => stockIds.has(link?.stockId));
+    return {
+      ...row,
+      // ตัวเลือกที่ถูกลบไปแล้วต่างจากตัวเลือกที่ยังอยู่แต่ยังไม่ผูก เพราะตัวที่ถูกลบ
+      // ไปแล้วแก้ไม่ได้ ต้องยอมรับว่าบิลเก่าจะไม่มีต้นทุนตลอดไป
+      exists: !!modifier,
+      linked: links.length > 0,
+      linkCount: links.length,
+    };
+  }).sort((a, b) => b.revenue - a.revenue);
+
+  const totalRevenue = rows.reduce((sum, r) => sum + r.revenue, 0);
+  const linkedRevenue = rows.filter((r) => r.linked).reduce((sum, r) => sum + r.revenue, 0);
+
+  return {
+    rows,
+    totalRevenue,
+    linkedRevenue,
+    coveragePct: totalRevenue > 0 ? Math.round((linkedRevenue / totalRevenue) * 100) : 0,
+    unlinked: rows.filter((r) => r.exists && !r.linked),
+    missing: rows.filter((r) => !r.exists),
+    // ตัวเลือกที่มีในทะเบียนแต่ยังไม่เคยถูกสั่ง ก็ควรผูกไว้ก่อนขาย
+    neverSold: beanModifiers
+      .filter((m) => !used.has(String(m?.name || '').trim()))
+      .map((m) => ({
+        name: String(m?.name || ''),
+        linked: (m?.stockLinks || []).some((link) => stockIds.has(link?.stockId)),
+      })),
   };
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   addMonths, classifyMenuEngineering, computeHeadlineKpis, computeItemPerformance,
-  computeMonthlySeries, concentration, growth, orderMonth,
+  computeDailySeries, computeModifierCoverage, computeMonthlySeries, concentration, growth, orderMonth,
 } from './menuInsights';
 
 const stock = [{ id: 'bean', unitCost: 0.5 }, { id: 'cup', unitCost: 4 }];
@@ -66,6 +66,99 @@ describe('computeMonthlySeries', () => {
       expenses: [], menu, stock,
     });
     expect(s).toEqual([]);
+  });
+});
+
+describe('computeDailySeries', () => {
+  const daily = (date, total, items) => ({ status: 'completed', date, total, items });
+  const orders = [
+    daily('2026-08-01', 160, [{ name: 'ลาเต้', price: 80, quantity: 2 }]),
+    daily('2026-08-01', 80, [{ name: 'ลาเต้', price: 80, quantity: 1 }]),
+    daily('2026-08-03', 80, [{ name: 'ลาเต้', price: 80, quantity: 1 }]),
+  ];
+
+  it('รวมยอดต่อวันและเติมวันที่ร้านไม่ได้ขายเป็นศูนย์', () => {
+    const s = computeDailySeries({ orders, menu, stock, days: 3 });
+    expect(s.map(r => r.day)).toEqual(['2026-08-01', '2026-08-02', '2026-08-03']);
+    expect(s[0]).toMatchObject({ bills: 2, revenue: 240, cogs: 39, grossProfit: 201 });
+    expect(s[1]).toMatchObject({ bills: 0, revenue: 0, grossProfit: 0 });
+  });
+
+  it('คิดยอดเฉลี่ยต่อบิลรายวัน และวันที่ไม่มีบิลต้องไม่หารศูนย์', () => {
+    const s = computeDailySeries({ orders, menu, stock, days: 3 });
+    expect(s[0].averageTicket).toBe(120);
+    expect(s[1].averageTicket).toBe(0);
+  });
+
+  it('ข้ามเดือนได้ถูกต้อง', () => {
+    const s = computeDailySeries({
+      orders: [daily('2026-09-01', 80, [{ name: 'ลาเต้', price: 80, quantity: 1 }])],
+      menu, stock, days: 3,
+    });
+    expect(s.map(r => r.day)).toEqual(['2026-08-30', '2026-08-31', '2026-09-01']);
+  });
+
+  it('ไม่คืนกำไรสุทธิรายวัน เพราะค่าเช่าถูกบันทึกเป็นก้อนเดียว หารรายวันแล้วหลอกตา', () => {
+    const s = computeDailySeries({ orders, menu, stock, days: 1 });
+    expect(s[0].netProfit).toBeUndefined();
+    expect(s[0].cashFlow).toBeUndefined();
+  });
+});
+
+describe('computeModifierCoverage', () => {
+  const mods = [
+    { name: 'คั่วเข้ม', stockLinks: [{ stockId: 'bean', usage: 18 }] },
+    { name: 'คั่วกลาง', stockLinks: [] },
+    { name: 'ยังไม่เคยขาย', stockLinks: [{ stockId: 'bean', usage: 18 }] },
+    { name: 'ลิงก์เสีย', stockLinks: [{ stockId: 'สต็อกที่ถูกลบ', usage: 18 }] },
+  ];
+  const orders = [
+    order('2026-08', 160, [
+      { name: 'อเมริกาโน่', price: 80, quantity: 2, beanModifier: '#คั่วเข้ม' },
+    ]),
+    order('2026-08', 50, [
+      { name: 'อเมริกาโน่', price: 50, quantity: 1, beanModifier: '#คั่วกลาง' },
+    ]),
+    order('2026-08', 90, [
+      { name: 'อเมริกาโน่', price: 90, quantity: 1, beanModifier: '#เมล็ดที่ลบไปแล้ว' },
+    ]),
+  ];
+
+  it('รวมยอดขายที่วิ่งผ่านตัวเลือกแต่ละตัว และตัด # นำหน้าออก', () => {
+    const c = computeModifierCoverage({ orders, beanModifiers: mods, stock });
+    expect(c.rows[0]).toMatchObject({ name: 'คั่วเข้ม', units: 2, revenue: 160, linked: true });
+  });
+
+  it('แยกตัวเลือกที่ยังไม่ผูก ออกจากตัวเลือกที่ถูกลบไปแล้ว', () => {
+    const c = computeModifierCoverage({ orders, beanModifiers: mods, stock });
+    expect(c.unlinked.map(r => r.name)).toEqual(['คั่วกลาง']);
+    expect(c.missing.map(r => r.name)).toEqual(['เมล็ดที่ลบไปแล้ว']);
+  });
+
+  it('คิด % ยอดขายที่ต้นทุนตัวเลือกครอบคลุมถึง', () => {
+    const c = computeModifierCoverage({ orders, beanModifiers: mods, stock });
+    expect(c.totalRevenue).toBe(300);
+    expect(c.linkedRevenue).toBe(160);
+    expect(c.coveragePct).toBe(53);
+  });
+
+  it('stockLink ที่ชี้ไปสต็อกที่ถูกลบแล้ว ไม่นับว่าผูก', () => {
+    const c = computeModifierCoverage({
+      orders: [order('2026-08', 80, [{ name: 'x', price: 80, quantity: 1, beanModifier: '#ลิงก์เสีย' }])],
+      beanModifiers: mods, stock,
+    });
+    expect(c.unlinked.map(r => r.name)).toEqual(['ลิงก์เสีย']);
+  });
+
+  it('บอกตัวเลือกที่ยังไม่เคยถูกสั่งด้วย จะได้ผูกไว้ก่อนขาย', () => {
+    const c = computeModifierCoverage({ orders, beanModifiers: mods, stock });
+    expect(c.neverSold.map(r => r.name)).toContain('ยังไม่เคยขาย');
+  });
+
+  it('ไม่มีบิลที่ใช้ตัวเลือกเลย ต้องไม่หารศูนย์', () => {
+    const c = computeModifierCoverage({ orders: [], beanModifiers: mods, stock });
+    expect(c.coveragePct).toBe(0);
+    expect(c.rows).toEqual([]);
   });
 });
 
