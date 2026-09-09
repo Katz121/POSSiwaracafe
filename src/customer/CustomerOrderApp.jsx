@@ -32,6 +32,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, functions, appId } from '../services/firebase';
 import { buildCheckoutItems, shouldKeepRequestId, submitTrustedCheckout } from '../services/checkoutService';
+import { isBackendDown, submitCheckoutDirect } from '../services/checkoutFallback';
 import { fetchPublicMenu, readCachedPublicMenu, writeCachedPublicMenu, SENSITIVE_SETTINGS_KEYS } from '../utils/publicMenu';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
 import { formatCurrency, VAT_RATE, roundUpTo5, getModifierGroups, isBaseModifier, computeModifierPrice, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH } from '../config/constants';
@@ -1766,6 +1767,37 @@ function CustomerOrderApp() {
     } catch (err) {
       console.error('[QR order submit] failed:', err);
       const code = err?.code || err?.message || 'unknown';
+
+      // Backend ล่ม (เช่น billing ปิด → Cloud Run ไม่รับ request) ไม่ใช่ความผิดลูกค้า
+      // เขียนออเดอร์ลง Firestore ตรงๆ แทน ร้านจะได้ไม่ต้องหยุดรับออเดอร์ทั้งวัน
+      if (isBackendDown(code)) {
+        try {
+          const fallback = await submitCheckoutDirect(db, appId, {
+            uid: auth.currentUser?.uid,
+            requestId: checkoutRequestIdRef.current,
+            customerName: customerName.trim(),
+            phone: customerPhone.trim(),
+            cart,
+            totals,
+            usePoints,
+            member,
+            redeemPointsThreshold,
+            vatIncluded: !!settings.vatEnabled,
+            promotionTitle: comboDiscount > 0
+              ? COMBO_PROMO_TITLE
+              : (spendDiscount > 0 ? `สั่งครบ ฿${spendThreshold.toLocaleString()} -${spendDiscountPercent}%` : ''),
+            promotionDiscountPercent: comboDiscount > 0 ? (combo.percent || 0) : spendDiscountPercent,
+          });
+          bumpMenuSoldCount(cart);
+          setSuccessQueue(fallback.pendingCount || 0);
+          checkoutRequestIdRef.current = null;
+          setView('success');
+          return;
+        } catch (fallbackErr) {
+          console.error('[QR order submit] direct-write fallback failed:', fallbackErr);
+        }
+      }
+
       if (!shouldKeepRequestId(code)) checkoutRequestIdRef.current = null;
       setSubmitError(t('submitFailedError', code));
     } finally {
