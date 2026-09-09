@@ -129,6 +129,7 @@ export function computeProfitability({
   const stockById = new Map(stock.map((s) => [s.id, s]));
 
   let revenue = 0;
+  let vatCollected = 0;
   let cogs = 0;
   let unitsSold = 0;
   let costedRevenue = 0;
@@ -136,9 +137,13 @@ export function computeProfitability({
   const suspicious = new Map();
 
   orders.forEach((order) => {
-    // ยอดบิลคือความจริงเรื่องเงินที่รับมา (ผ่านส่วนลด/VAT มาแล้ว) ส่วนราคารายชิ้น
-    // ใช้แค่หา COGS กับเช็คว่าต้นทุนครอบคลุมยอดแค่ไหน
-    revenue += num(order?.total);
+    // ยอดบิลคือเงินที่รับมาจริง (ผ่านส่วนลดมาแล้ว) แต่ **ต้องหัก VAT ออกก่อน**
+    // จึงจะเป็นรายได้ของร้าน · VAT เป็นเงินที่ร้านเก็บแทนสรรพากรแล้วต้องนำส่ง
+    // ไม่ใช่รายได้ · ถ้าไม่หัก มาร์จิ้นจะสูงเกินจริงเพราะ COGS ไม่มี VAT อยู่แล้ว
+    // (ตอนนี้ร้านเปิด VAT แค่บิลเดียวจาก 2,092 แต่ต้องถูกไว้ก่อนวันที่เปิดใช้จริง)
+    const vat = num(order?.vat);
+    vatCollected += vat;
+    revenue += num(order?.total) - vat;
 
     (order?.items || []).forEach((item) => {
       const qty = num(item?.quantity) || 1;
@@ -172,16 +177,26 @@ export function computeProfitability({
   });
 
   const split = splitExpenses(expenses, inventoryCategories);
-  const fixedCosts = split.operating + split.waste + num(extraFixedCosts);
+
+  // ของเสีย **ไม่ใช่ค่าใช้จ่ายคงที่** ตามหลัก CVP · มันผันแปรตามปริมาณที่ผลิตและขาย
+  // เอาไปกองรวมกับค่าเช่าแล้วหารหาจุดคุ้มทุน จะได้ผลว่า "ยิ่งทำของเสีย ยิ่งต้องขาย
+  // เยอะขึ้นถึงจะคุ้มค่าเช่า" ซึ่งผิดหลัก · ที่ถูกคือของเสียไปลด **กำไรส่วนเกินต่อหน่วย**
+  // เพราะมันคือวัตถุดิบที่จ่ายไปแล้วแต่ไม่ได้กลายเป็นของขาย
+  const fixedCosts = split.operating + num(extraFixedCosts);
+  const periodCosts = fixedCosts + split.waste;
 
   const grossProfit = revenue - cogs;
-  const netProfit = grossProfit - fixedCosts;
+  const netProfit = grossProfit - periodCosts;
 
   // ฝั่งเงินสด: ของเสียไม่ใช่เงินไหลออก (จ่ายไปแล้วตอนซื้อ) จึงไม่นับ
   const cashOut = split.inventory + split.operating + num(extraFixedCosts);
   const cashFlow = revenue - cashOut;
 
-  const contributionPerUnit = unitsSold > 0 ? grossProfit / unitsSold : 0;
+  // กำไรส่วนเกินต่อหน่วย = (รายได้ − ต้นทุนผันแปรทั้งหมด) ÷ จำนวนที่ขาย
+  // ต้นทุนผันแปร = COGS + ของเสีย · นิยามนี้ทำให้สมการปิดพอดี:
+  //   netProfit = unitsSold × contributionPerUnit − fixedCosts
+  const variableCosts = cogs + split.waste;
+  const contributionPerUnit = unitsSold > 0 ? (revenue - variableCosts) / unitsSold : 0;
   const averagePrice = unitsSold > 0 ? revenue / unitsSold : 0;
 
   // จุดคุ้มทุนคำนวณได้ต่อเมื่อกำไรขั้นต้นต่อหน่วยเป็นบวก ถ้าติดลบแปลว่า
@@ -212,10 +227,15 @@ export function computeProfitability({
     cogsRatio: revenue > 0 ? Math.round((cogs / revenue) * 100) : 0,
 
     wasteCost: split.waste,
+    vatCollected,
     operatingExpenses: split.operating,
     inventoryPurchases: split.inventory,
     extraFixedCosts: num(extraFixedCosts),
+    // fixedCosts = ต้นทุนคงที่จริงๆ ใช้หาจุดคุ้มทุน · periodCosts = ทุกอย่างที่หัก
+    // จากกำไรขั้นต้นในงวดนี้ (รวมของเสีย) ใช้หากำไรสุทธิ
     fixedCosts,
+    periodCosts,
+    variableCosts,
 
     netProfit,
     netMargin: revenue > 0 ? Math.round((netProfit / revenue) * 100) : 0,

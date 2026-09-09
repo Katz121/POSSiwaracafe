@@ -28,7 +28,12 @@ const suspiciousColumns = [
 const number = value => Number(value).toLocaleString('th-TH', { maximumFractionDigits: 1 });
 const percent = value => number(value) + '%';
 const growthText = value => value === null ? 'เทียบไม่ได้' : (value > 0 ? '+' : '') + percent(value);
-const itemName = { key: 'name', label: 'ชื่อเมนู', render: (value, row) => <span className="flex flex-wrap items-center gap-2">{value}{!row.costed && <Badge variant="warning">ยังไม่ผูกต้นทุน</Badge>}</span> };
+// ใช้รูปแบบเดียวกันทั้งตารางและกลุ่มเมนู เพื่อให้อ่านชื่อหลักและแยกตัวเลือกได้ทันที
+const renderItemName = row => <span className="min-w-0 whitespace-normal break-words">
+    <span>{row.baseName}</span>
+    {row.modifier && <span className="block text-xs text-[var(--text-muted)]">{row.modifier}</span>}
+</span>;
+const itemName = { key: 'name', label: 'ชื่อเมนู', render: (_, row) => <span className="flex flex-wrap items-center gap-2">{renderItemName(row)}{!row.costed && <Badge variant="warning">ยังไม่ผูกต้นทุน</Badge>}</span> };
 const unitsColumn = { key: 'units', label: 'จำนวนขาย', render: number };
 const marginColumn = { key: 'marginPct', label: 'มาร์จิ้น %', render: (value, row) => row.costed ? percent(value) : 'ยังไม่ทราบ' };
 const salesColumns = [itemName, unitsColumn, { key: 'revenue', label: 'ยอดขาย', render: money }, { key: 'revenueShare', label: '% ของยอดขายรวม', render: percent }, marginColumn];
@@ -59,6 +64,8 @@ export default function ProfitabilityView() {
     const isDaily = mode === 'daily';
     const [monthsBack, setMonthsBack] = useState(6);
     const [expanded, setExpanded] = useState({});
+    // เริ่มแบบแยกเพื่อให้เห็นตัวเลือกที่มีราคาและต้นทุนต่างกันก่อนดูภาพรวมเมนู
+    const [splitByModifier, setSplitByModifier] = useState(true);
     const monthlySeries = useMemo(() => computeMonthlySeries({ orders, expenses, menu, stock, monthsBack, inventoryCategories: INVENTORY_CATEGORIES }), [orders, expenses, menu, stock, monthsBack]);
     const dailySeries = useMemo(() => computeDailySeries({ orders, menu, stock, days: daysBack }), [orders, menu, stock, daysBack]);
     const series = isDaily ? dailySeries : monthlySeries;
@@ -83,7 +90,7 @@ export default function ProfitabilityView() {
         return orders.filter(order => order.status === 'completed' && periods.has(isDaily ? orderDay(order) : orderMonth(order)));
     }, [orders, series, periodKey, isDaily]);
     const rangeProfitability = useMemo(() => computeProfitability({ orders: rangeOrders, menu, stock, inventoryCategories: INVENTORY_CATEGORIES }), [rangeOrders, menu, stock]);
-    const items = useMemo(() => computeItemPerformance({ orders: rangeOrders, menu, stock }), [rangeOrders, menu, stock]);
+    const items = useMemo(() => computeItemPerformance({ orders: rangeOrders, menu, stock, splitByModifier }), [rangeOrders, menu, stock, splitByModifier]);
     const kpis = useMemo(() => computeHeadlineKpis({ orders: rangeOrders, items, profitability: rangeProfitability, series }), [rangeOrders, items, rangeProfitability, series]);
     const engineering = useMemo(() => classifyMenuEngineering(items), [items]);
     const groups = useMemo(() => Object.fromEntries([...SEGMENTS, 'unknown'].map(segment => [segment, engineering.items.filter(item => item.segment === segment)])), [engineering]);
@@ -303,6 +310,15 @@ export default function ProfitabilityView() {
                         <p>{kpis.concentration.count > 0 ? 'กำไร ' + kpis.concentration.sharePct + '% มาจาก ' + kpis.concentration.count + ' เมนู จากทั้งหมด ' + kpis.concentration.of + ' เมนู' : 'ยังไม่มีกำไรบวกสำหรับวิเคราะห์การกระจุกตัว'}</p>
                         <p className="text-xs text-[var(--state-warn)]">กำไรและส่วนแบ่งกำไรรวมเมนูที่ยังไม่ผูกต้นทุน จึงอาจสูงเกินจริง</p>
                     </Card>
+                    <div className="flex flex-wrap gap-2" role="group" aria-label="การแสดงตัวเลือกในตารางและกลุ่มเมนู">
+                        {[[false, 'รวมทุกตัวเลือก'], [true, 'แยกตามตัวเลือก']].map(([value, label]) => <Button
+                            key={label}
+                            className="min-h-11"
+                            variant={splitByModifier === value ? 'primary' : 'secondary'}
+                            aria-pressed={splitByModifier === value}
+                            onClick={() => setSplitByModifier(value)}
+                        >{label}</Button>)}
+                    </div>
                     {visibleRankings.map(ranking => <Card key={ranking.key} padding="lg" className="space-y-4">
                         <div className="flex flex-wrap justify-between items-center gap-3">
                             <h3 className="font-bold">{ranking.title}</h3>
@@ -319,7 +335,7 @@ export default function ProfitabilityView() {
                             {visibleGroups.map(({ segment, all, visible }) => <Card key={segment} padding="lg" className="space-y-3">
                                 <h4 className="font-bold">{SEGMENT_LABELS[segment].label} · {all.length} เมนู</h4>
                                 <p className="text-sm text-[var(--text-muted)]">{SEGMENT_LABELS[segment].hint}</p>
-                                <ol className="space-y-2">{visible.map(item => <li key={item.name} className="flex justify-between gap-3 text-sm"><span>{item.name}</span><span className="shrink-0 num">{money(item.grossProfit)}</span></li>)}</ol>
+                                <ol className="space-y-2">{visible.map(item => <li key={item.name} className="flex justify-between gap-3 text-sm">{renderItemName(item)}<span className="shrink-0 num">{money(item.grossProfit)}</span></li>)}</ol>
                                 {!all.length && <p className="text-sm text-[var(--text-muted)]">ไม่มีเมนูในกลุ่มนี้</p>}
                                 {all.length > 5 && <Button variant="secondary" className="min-h-11" aria-expanded={!!expanded[segment]} onClick={() => toggle(segment)}>{expanded[segment] ? 'ย่อเหลือ 5 เมนู' : 'ดูทั้งหมด (' + all.length + ')'}</Button>}
                             </Card>)}

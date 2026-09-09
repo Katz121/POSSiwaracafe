@@ -244,6 +244,58 @@ describe('computeProfitability', () => {
     expect(r.suspiciousItems).toEqual([]); // 19 จาก 80 = 24%
   });
 
+  it('VAT ไม่ใช่รายได้ของร้าน ต้องถูกหักออกจากยอดก่อนคิดกำไร', () => {
+    const r = computeProfitability({
+      // ลูกค้าจ่าย 107 (สินค้า 100 + VAT 7) · รายได้ของร้านคือ 100
+      orders: [{ total: 107, vat: 7, items: [{ name: 'ลาเต้', price: 100, quantity: 1 }] }],
+      expenses: [], menu, stock,
+    });
+    expect(r.revenue).toBe(100);
+    expect(r.vatCollected).toBe(7);
+    expect(r.grossProfit).toBe(81); // 100 − 19
+  });
+
+  it('ของเสียไม่ใช่ค่าใช้จ่ายคงที่ ต้องไม่ดันจุดคุ้มทุนให้สูงขึ้น', () => {
+    const base = {
+      orders, expenses: [{ category: 'ค่าเช่า', amount: 610 }], menu, stock,
+    };
+    const clean = computeProfitability(base);
+    const wasted = computeProfitability({
+      ...base,
+      expenses: [...base.expenses, { category: 'ของเสีย (Waste)', amount: 300 }],
+    });
+    // ค่าเช่าเท่าเดิม ค่าใช้จ่ายคงที่จึงต้องเท่าเดิม
+    expect(clean.fixedCosts).toBe(610);
+    expect(wasted.fixedCosts).toBe(610);
+    // ของเสียไปลดกำไรส่วนเกินต่อหน่วยแทน
+    expect(wasted.contributionPerUnit).toBeLessThan(clean.contributionPerUnit);
+    // และยังหักออกจากกำไรสุทธิครบ
+    expect(wasted.netProfit).toBe(clean.netProfit - 300);
+    expect(wasted.periodCosts).toBe(910);
+  });
+
+  it('สมการต้องปิดพอดี: กำไรสุทธิ = จำนวนขาย × กำไรส่วนเกินต่อหน่วย − ค่าใช้จ่ายคงที่', () => {
+    const r = computeProfitability({
+      orders,
+      expenses: [
+        { category: 'ค่าเช่า', amount: 500 },
+        { category: 'ของเสีย (Waste)', amount: 120 },
+        { category: 'วัตถุดิบ', amount: 9000 },
+      ],
+      menu, stock, extraFixedCosts: 250,
+    });
+    expect(r.unitsSold * r.contributionPerUnit - r.fixedCosts).toBeCloseTo(r.netProfit, 6);
+  });
+
+  it('ที่จุดคุ้มทุนพอดี กำไรสุทธิต้องเป็นศูนย์', () => {
+    const r = computeProfitability({
+      orders, expenses: [{ category: 'ค่าเช่า', amount: 610 }], menu, stock,
+    });
+    expect(r.breakEvenUnits * r.contributionPerUnit - r.fixedCosts).toBeGreaterThanOrEqual(0);
+    // ขายน้อยกว่าจุดคุ้มทุนหนึ่งหน่วย ต้องยังขาดทุน
+    expect((r.breakEvenUnits - 1) * r.contributionPerUnit - r.fixedCosts).toBeLessThan(0);
+  });
+
   it('ไม่มีออเดอร์เลยต้องไม่ระเบิดหรือหารศูนย์', () => {
     const r = computeProfitability({ orders: [], expenses: [], menu, stock });
     expect(r.revenue).toBe(0);
