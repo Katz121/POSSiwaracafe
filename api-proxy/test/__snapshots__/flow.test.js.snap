@@ -1,0 +1,489 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`snapshots a deterministic new stock create 1`] = `
+{
+  "transaction": "tx-test",
+  "writes": [
+    {
+      "currentDocument": {
+        "exists": false,
+      },
+      "update": {
+        "fields": {
+          "amount": {
+            "integerValue": "200",
+          },
+          "category": {
+            "stringValue": "นมและผลิตภัณฑ์นม",
+          },
+          "createdBy": {
+            "mapValue": {
+              "fields": {
+                "name": {
+                  "stringValue": "",
+                },
+                "tgUserId": {
+                  "integerValue": "7",
+                },
+              },
+            },
+          },
+          "date": {
+            "stringValue": "2026-09-10",
+          },
+          "entry": {
+            "stringValue": "manual",
+          },
+          "pricePerUnit": {
+            "integerValue": "200",
+          },
+          "quantity": {
+            "integerValue": "1",
+          },
+          "source": {
+            "stringValue": "telegram",
+          },
+          "stockId": {
+            "stringValue": "tg_abc12345_s0",
+          },
+          "stockQuantity": {
+            "integerValue": "1",
+          },
+          "stockUnit": {
+            "stringValue": "กิโลกรัม",
+          },
+          "tgBatchId": {
+            "stringValue": "abc12345",
+          },
+          "title": {
+            "stringValue": "นมใหม่",
+          },
+          "unit": {
+            "stringValue": "kg",
+          },
+        },
+        "name": "projects/siwarapos/databases/(default)/documents/artifacts/siwara-pos-v1/public/data/expenses/tg_abc12345_0",
+      },
+      "updateTransforms": [
+        {
+          "fieldPath": "createdAt",
+          "setToServerValue": "REQUEST_TIME",
+        },
+      ],
+    },
+    {
+      "currentDocument": {
+        "exists": false,
+      },
+      "update": {
+        "fields": {
+          "category": {
+            "stringValue": "นมและผลิตภัณฑ์นม",
+          },
+          "lastPurchaseUnitCost": {
+            "integerValue": "200",
+          },
+          "minQuantity": {
+            "integerValue": "5",
+          },
+          "name": {
+            "stringValue": "นมใหม่",
+          },
+          "quantity": {
+            "integerValue": "1",
+          },
+          "unit": {
+            "stringValue": "กิโลกรัม",
+          },
+          "unitCost": {
+            "integerValue": "200",
+          },
+        },
+        "name": "projects/siwarapos/databases/(default)/documents/artifacts/siwara-pos-v1/public/data/stock/tg_abc12345_s0",
+      },
+      "updateTransforms": [
+        {
+          "fieldPath": "lastPurchaseAt",
+          "setToServerValue": "REQUEST_TIME",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`snapshots non-inventory expense without stock writes 1`] = `
+{
+  "transaction": "tx-test",
+  "writes": [
+    {
+      "currentDocument": {
+        "exists": false,
+      },
+      "update": {
+        "fields": {
+          "amount": {
+            "integerValue": "400",
+          },
+          "category": {
+            "stringValue": "ค่าไฟ",
+          },
+          "createdBy": {
+            "mapValue": {
+              "fields": {
+                "name": {
+                  "stringValue": "",
+                },
+                "tgUserId": {
+                  "integerValue": "7",
+                },
+              },
+            },
+          },
+          "date": {
+            "stringValue": "2026-09-10",
+          },
+          "entry": {
+            "stringValue": "manual",
+          },
+          "pricePerUnit": {
+            "integerValue": "400",
+          },
+          "quantity": {
+            "integerValue": "1",
+          },
+          "source": {
+            "stringValue": "telegram",
+          },
+          "tgBatchId": {
+            "stringValue": "abc12345",
+          },
+          "title": {
+            "stringValue": "ค่าไฟ",
+          },
+          "unit": {
+            "stringValue": "ครั้ง",
+          },
+        },
+        "name": "projects/siwarapos/databases/(default)/documents/artifacts/siwara-pos-v1/public/data/expenses/tg_abc12345_0",
+      },
+      "updateTransforms": [
+        {
+          "fieldPath": "createdAt",
+          "setToServerValue": "REQUEST_TIME",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`snapshots remembered alias using appendMissingElements 1`] = `
+{
+  "transaction": "tx-test",
+  "writes": [
+    {
+      "currentDocument": {
+        "exists": false,
+      },
+      "update": {
+        "fields": {
+          "amount": {
+            "integerValue": "200",
+          },
+          "category": {
+            "stringValue": "นมและผลิตภัณฑ์นม",
+          },
+          "createdBy": {
+            "mapValue": {
+              "fields": {
+                "name": {
+                  "stringValue": "",
+                },
+                "tgUserId": {
+                  "integerValue": "7",
+                },
+              },
+            },
+          },
+          "date": {
+            "stringValue": "2026-09-10",
+          },
+          "entry": {
+            "stringValue": "manual",
+          },
+          "pricePerUnit": {
+            "integerValue": "200",
+          },
+          "quantity": {
+            "integerValue": "1",
+          },
+          "source": {
+            "stringValue": "telegram",
+          },
+          "stockId": {
+            "stringValue": "milk",
+          },
+          "stockQuantity": {
+            "integerValue": "1000",
+          },
+          "stockUnit": {
+            "stringValue": "กรัม",
+          },
+          "tgBatchId": {
+            "stringValue": "abc12345",
+          },
+          "title": {
+            "stringValue": "นม",
+          },
+          "unit": {
+            "stringValue": "ขวด",
+          },
+        },
+        "name": "projects/siwarapos/databases/(default)/documents/artifacts/siwara-pos-v1/public/data/expenses/tg_abc12345_0",
+      },
+      "updateTransforms": [
+        {
+          "fieldPath": "createdAt",
+          "setToServerValue": "REQUEST_TIME",
+        },
+      ],
+    },
+    {
+      "currentDocument": {
+        "exists": true,
+      },
+      "update": {
+        "fields": {
+          "lastPurchaseUnitCost": {
+            "doubleValue": 0.2,
+          },
+          "unitCost": {
+            "doubleValue": 0.15,
+          },
+        },
+        "name": "projects/siwarapos/databases/(default)/documents/artifacts/siwara-pos-v1/public/data/stock/milk",
+      },
+      "updateMask": {
+        "fieldPaths": [
+          "unitCost",
+          "lastPurchaseUnitCost",
+        ],
+      },
+      "updateTransforms": [
+        {
+          "fieldPath": "quantity",
+          "increment": {
+            "integerValue": "1000",
+          },
+        },
+        {
+          "fieldPath": "lastPurchaseAt",
+          "setToServerValue": "REQUEST_TIME",
+        },
+        {
+          "appendMissingElements": {
+            "values": [
+              {
+                "mapValue": {
+                  "fields": {
+                    "barcode": {
+                      "stringValue": "885",
+                    },
+                    "title": {
+                      "stringValue": "นม",
+                    },
+                    "toBase": {
+                      "integerValue": "1000",
+                    },
+                    "unit": {
+                      "stringValue": "ขวด",
+                    },
+                  },
+                },
+              },
+            ],
+          },
+          "fieldPath": "purchaseAliases",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`snapshots two lines folded against fresh stock in one commit 1`] = `
+{
+  "transaction": "tx-test",
+  "writes": [
+    {
+      "currentDocument": {
+        "exists": false,
+      },
+      "update": {
+        "fields": {
+          "amount": {
+            "integerValue": "200",
+          },
+          "category": {
+            "stringValue": "นมและผลิตภัณฑ์นม",
+          },
+          "createdBy": {
+            "mapValue": {
+              "fields": {
+                "name": {
+                  "stringValue": "Staff",
+                },
+                "tgUserId": {
+                  "integerValue": "7",
+                },
+              },
+            },
+          },
+          "date": {
+            "stringValue": "2026-09-10",
+          },
+          "entry": {
+            "stringValue": "manual",
+          },
+          "pricePerUnit": {
+            "integerValue": "200",
+          },
+          "quantity": {
+            "integerValue": "1",
+          },
+          "source": {
+            "stringValue": "telegram",
+          },
+          "stockId": {
+            "stringValue": "milk",
+          },
+          "stockQuantity": {
+            "integerValue": "1000",
+          },
+          "stockUnit": {
+            "stringValue": "กรัม",
+          },
+          "tgBatchId": {
+            "stringValue": "abc12345",
+          },
+          "title": {
+            "stringValue": "นม",
+          },
+          "unit": {
+            "stringValue": "kg",
+          },
+        },
+        "name": "projects/siwarapos/databases/(default)/documents/artifacts/siwara-pos-v1/public/data/expenses/tg_abc12345_0",
+      },
+      "updateTransforms": [
+        {
+          "fieldPath": "createdAt",
+          "setToServerValue": "REQUEST_TIME",
+        },
+      ],
+    },
+    {
+      "currentDocument": {
+        "exists": false,
+      },
+      "update": {
+        "fields": {
+          "amount": {
+            "integerValue": "300",
+          },
+          "category": {
+            "stringValue": "นมและผลิตภัณฑ์นม",
+          },
+          "createdBy": {
+            "mapValue": {
+              "fields": {
+                "name": {
+                  "stringValue": "Staff",
+                },
+                "tgUserId": {
+                  "integerValue": "7",
+                },
+              },
+            },
+          },
+          "date": {
+            "stringValue": "2026-09-10",
+          },
+          "entry": {
+            "stringValue": "manual",
+          },
+          "pricePerUnit": {
+            "integerValue": "300",
+          },
+          "quantity": {
+            "integerValue": "1",
+          },
+          "source": {
+            "stringValue": "telegram",
+          },
+          "stockId": {
+            "stringValue": "milk",
+          },
+          "stockQuantity": {
+            "integerValue": "1000",
+          },
+          "stockUnit": {
+            "stringValue": "กรัม",
+          },
+          "tgBatchId": {
+            "stringValue": "abc12345",
+          },
+          "title": {
+            "stringValue": "นม",
+          },
+          "unit": {
+            "stringValue": "kg",
+          },
+        },
+        "name": "projects/siwarapos/databases/(default)/documents/artifacts/siwara-pos-v1/public/data/expenses/tg_abc12345_1",
+      },
+      "updateTransforms": [
+        {
+          "fieldPath": "createdAt",
+          "setToServerValue": "REQUEST_TIME",
+        },
+      ],
+    },
+    {
+      "currentDocument": {
+        "exists": true,
+      },
+      "update": {
+        "fields": {
+          "lastPurchaseUnitCost": {
+            "doubleValue": 0.3,
+          },
+          "unitCost": {
+            "doubleValue": 0.175,
+          },
+        },
+        "name": "projects/siwarapos/databases/(default)/documents/artifacts/siwara-pos-v1/public/data/stock/milk",
+      },
+      "updateMask": {
+        "fieldPaths": [
+          "unitCost",
+          "lastPurchaseUnitCost",
+        ],
+      },
+      "updateTransforms": [
+        {
+          "fieldPath": "quantity",
+          "increment": {
+            "integerValue": "2000",
+          },
+        },
+        {
+          "fieldPath": "lastPurchaseAt",
+          "setToServerValue": "REQUEST_TIME",
+        },
+      ],
+    },
+  ],
+}
+`;
