@@ -1,4 +1,4 @@
-import { EXPENSE_CATEGORIES, STOCK_CATEGORIES, DEFAULT_MIN_QUANTITY, inferStockCategory } from '../../../src/config/constants.js';
+import { EXPENSE_CATEGORIES, STOCK_CATEGORIES, DEFAULT_MIN_QUANTITY, inferStockCategory, getStockCategory } from '../../../src/config/constants.js';
 import { isInventoryCategory, findAliasMatch, findStockCandidates, normalizeName, normalizeUnit, planStockIntake, applyIntakesSequentially, buildExpenseRecord, roundMoney } from '../../../src/utils/stockIntake.js';
 import { createWrite, updateWrite, serverTime, increment, appendMissingElements } from '../firestore.js';
 import { escapeTelegramHtml as h } from './api.js';
@@ -18,6 +18,14 @@ export function resolveLines(pending, stocks) {
   for (const [i, line] of pending.lines.entries()) {
     delete line.plan;
     delete line.unresolved;
+    if (!EXPENSE_CATEGORIES.includes(line.category)) {
+      // ชื่อ/บาร์โค้ดตรงกับสต็อกที่ร้านมีอยู่ = หลักฐานว่าเป็นวัตถุดิบ ใช้หมวดของสต็อกนั้นเลย
+      // (เช่น "บลูเบอรี่" ไม่มีคีย์เวิร์ดให้เดา แต่เป็นชื่อสต็อกจริง ไม่ต้องให้คนกดเลือกหมวด)
+      const known = (line.barcode && findAliasMatch(stocks, { barcode: line.barcode }))?.stock
+        || findAliasMatch(stocks, { title: line.title })?.stock
+        || stocks.find(s => normalizeName(s.name) === normalizeName(line.title));
+      if (known) line.category = getStockCategory(known);
+    }
     if (!EXPENSE_CATEGORIES.includes(line.category)) { line.unresolved = 'category'; continue; }
     if (!isInventoryCategory(line.category) || line.pick === 'skip') continue;
     let stock;

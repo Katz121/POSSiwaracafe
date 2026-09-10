@@ -2,7 +2,6 @@
 
 exports[`snapshots a deterministic new stock create 1`] = `
 {
-  "transaction": "tx-test",
   "writes": [
     {
       "currentDocument": {
@@ -114,7 +113,6 @@ exports[`snapshots a deterministic new stock create 1`] = `
 
 exports[`snapshots non-inventory expense without stock writes 1`] = `
 {
-  "transaction": "tx-test",
   "writes": [
     {
       "currentDocument": {
@@ -180,7 +178,6 @@ exports[`snapshots non-inventory expense without stock writes 1`] = `
 
 exports[`snapshots remembered alias using appendMissingElements 1`] = `
 {
-  "transaction": "tx-test",
   "writes": [
     {
       "currentDocument": {
@@ -251,7 +248,7 @@ exports[`snapshots remembered alias using appendMissingElements 1`] = `
     },
     {
       "currentDocument": {
-        "exists": true,
+        "updateTime": "2026-09-10T00:00:00.000001Z",
       },
       "update": {
         "fields": {
@@ -314,7 +311,6 @@ exports[`snapshots remembered alias using appendMissingElements 1`] = `
 
 exports[`snapshots two lines folded against fresh stock in one commit 1`] = `
 {
-  "transaction": "tx-test",
   "writes": [
     {
       "currentDocument": {
@@ -452,7 +448,7 @@ exports[`snapshots two lines folded against fresh stock in one commit 1`] = `
     },
     {
       "currentDocument": {
-        "exists": true,
+        "updateTime": "2026-09-10T00:00:00.000001Z",
       },
       "update": {
         "fields": {

@@ -1,4 +1,7 @@
-export const dependencies = (env, deps = {}) => ({ fetch: globalThis.fetch, kv: env.FOLLOWERS, now: () => Date.now(), ...deps });
+// ห่อ fetch ด้วยฟังก์ชัน ห้ามเก็บ globalThis.fetch ตรงๆ แล้วเรียกเป็น deps.fetch(...)
+// Cloudflare Workers ถือว่า this ผิดแล้วโยน "Illegal invocation" (Node ไม่สนใจ เทสต์เลยไม่เจอ)
+const boundFetch = (...args) => globalThis.fetch(...args);
+export const dependencies = (env, deps = {}) => ({ fetch: boundFetch, kv: env.FOLLOWERS, now: () => Date.now(), ...deps });
 
 export function encodeValue(value) {
   if (value == null) return { nullValue: null };
@@ -97,21 +100,32 @@ export function createFirestore(env, injected) {
     async runQuery(structuredQuery) {
       return (await request(`${base}:runQuery`, { structuredQuery })).filter(r => r.document).map(r => fsDoc(r.document));
     },
+    // transaction แบบ optimistic: อ่านพร้อม updateTime → คำนวณ → commit ครั้งเดียวโดยผูกทุก
+    // เอกสารที่อ่านไว้กับ updateTime นั้น ถ้ามีคนแก้ระหว่างทาง (เช่นขายของตัดสต็อก) Firestore
+    // ตอบ FAILED_PRECONDITION แล้วทั้งชุดไม่ถูกเขียน → อ่านใหม่คิดใหม่ ผลเท่ากับ transaction จริง
+    //
+    // ไม่ใช้ :beginTransaction เพราะ REST ปฏิเสธ (PERMISSION_DENIED) เมื่อใช้ ID token ของพนักงาน
+    // ตรวจกับระบบจริงแล้ว 2026-09-10 · commit ธรรมดาผ่าน rules ปกติ
     async runTransaction(build) {
-      // ต้องอ่านใหม่ทุกครั้งที่ชนกัน เพื่อไม่ใช้ต้นทุนเฉลี่ยจากสแนปช็อตเก่า
       for (let attempt = 0; ; attempt++) {
-        let transaction;
+        const versions = new Map();
+        const writes = await build({ async getAll(names) {
+          if (!names.length) return [];
+          const rows = await request(`${root}:batchGet`, { documents: names });
+          return names.map(n => {
+            const doc = rows.find(r => r.found?.name === n)?.found;
+            if (doc?.updateTime) versions.set(n, doc.updateTime);
+            return doc ? { ...fsDoc(doc), id: n.split('/').at(-1) } : null;
+          });
+        } });
+        const guarded = writes.map(w => (w.update && versions.has(w.update.name)
+          ? { ...w, currentDocument: { updateTime: versions.get(w.update.name) } }
+          : w));
         try {
-          ({ transaction } = await request(`${root}:beginTransaction`, { options: { readWrite: {} } }));
-          const writes = await build({ async getAll(names) {
-            if (!names.length) return [];
-            const rows = await request(`${root}:batchGet`, { documents: names, transaction });
-            return names.map(n => { const doc = rows.find(r => r.found?.name === n)?.found; return doc ? { ...fsDoc(doc), id: n.split('/').at(-1) } : null; });
-          } });
-          return await request(`${root}:commit`, { writes, transaction });
+          return await request(`${root}:commit`, { writes: guarded });
         } catch (error) {
-          if (transaction) await request(`${root}:rollback`, { transaction }).catch(() => {});
-          if (error.code === 'ALREADY_EXISTS' || attempt >= 3 || !(error.code === 'ABORTED' || error.status === 409)) throw error;
+          // ALREADY_EXISTS = รายจ่ายชุดนี้บันทึกไปแล้ว ส่งต่อให้ผู้เรียกตอบ "บันทึกไปแล้ว"
+          if (error.code !== 'FAILED_PRECONDITION' || attempt >= 3) throw error;
         }
       }
     },

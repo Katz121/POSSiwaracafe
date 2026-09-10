@@ -16,15 +16,14 @@ export function harness(stocks = []) {
     if (url.includes('securetoken')) return Response.json({ id_token: 'id-token', refresh_token: 'refresh' });
     if (url.includes('api.telegram.org')) return Response.json({ ok: true, result: {} });
     if (url.includes('/stock?')) return Response.json({ documents: stocks.map(s => ({ name: `projects/siwarapos/databases/(default)/documents/artifacts/siwara-pos-v1/public/data/stock/${s.id}`, fields: encodeFields(s) })) });
-    if (url.endsWith(':beginTransaction')) return Response.json({ transaction: 'tx-test' });
-    if (url.endsWith(':batchGet')) return Response.json(body.documents.map(name => { const s = stocks.find(s => name.endsWith(`/stock/${s.id}`)); return s ? { found: { name, fields: encodeFields(s) } } : { missing: name }; }));
+    if (url.endsWith(':batchGet')) return Response.json(body.documents.map(name => { const s = stocks.find(s => name.endsWith(`/stock/${s.id}`)); return s ? { found: { name, fields: encodeFields(s), updateTime: '2026-09-10T00:00:00.000001Z' } } : { missing: name }; }));
     if (url.endsWith(':commit')) {
       commits.push(body);
-      if (state.aborts-- > 0) return Response.json({ error: { status: 'ABORTED' } }, { status: 409 });
+      // รหัสจริงจาก Firestore เมื่อ updateTime ไม่ตรง (ตรวจกับระบบจริง 2026-09-10)
+      if (state.aborts-- > 0) return Response.json({ error: { status: 'FAILED_PRECONDITION' } }, { status: 400 });
       if (state.commitError) return Response.json({ error: { status: state.commitError } }, { status: 409 });
       return Response.json({ writeResults: [] });
     }
-    if (url.endsWith(':rollback')) return Response.json({});
     if (url.endsWith(':runQuery')) return Response.json([]);
     throw new Error(`Unmocked request: ${url}`);
   });

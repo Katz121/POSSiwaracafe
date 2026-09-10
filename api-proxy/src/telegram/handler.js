@@ -75,10 +75,12 @@ export async function handleTelegramExpense(request, env, injected) {
     if (callback) {
       const data = parseCallback(callback.data);
       if (!data || !pending || pending.batchId !== data.batchId) {
-        await telegramApi(env, 'answerCallbackQuery', { callback_query_id: callback.id, text: 'รายการนี้หมดอายุแล้ว ส่งใหม่อีกครั้ง' }, deps);
+        console.log('telegram callback expired', { hasData: Boolean(data), hasPending: Boolean(pending), sameBatch: pending?.batchId === data?.batchId });
+        await telegramApi(env, 'answerCallbackQuery', { callback_query_id: callback.id, text: 'รายการนี้หมดอายุแล้ว ส่งใหม่อีกครั้ง' }, deps).catch(() => {});
         return;
       }
-      await telegramApi(env, 'answerCallbackQuery', { callback_query_id: callback.id }, deps);
+      // แค่ปิดวงหมุนบนปุ่ม · query เก่าเกิน ~15 วิ Telegram ตอบ 400 ซึ่งต้องไม่ทำให้การยืนยันบันทึกล้ม
+      await telegramApi(env, 'answerCallbackQuery', { callback_query_id: callback.id }, deps).catch(() => {});
       if (data.action === 'x') { await deps.kv.delete(key); await reply('ยกเลิกรายจ่ายแล้ว'); return; }
       if (data.action === 'c') {
         try {
@@ -155,7 +157,11 @@ export async function handleTelegramExpense(request, env, injected) {
     }
     await show();
   };
-  const guarded = () => work().catch(error => reply(`ดำเนินการไม่สำเร็จ: ${h(error.message)}\nลองใหม่อีกครั้ง`));
+  // เก็บ error ลง log ของ worker ด้วย ไม่งั้นเห็นแค่ข้อความในแชท ตามสาเหตุย้อนหลังไม่ได้
+  const guarded = () => work().catch(error => {
+    console.error('telegram work failed', { updateId: update.update_id, code: error.code || null, status: error.status || null, message: error.message });
+    return reply(`ดำเนินการไม่สำเร็จ: ${h(error.message)}\nลองใหม่อีกครั้ง`);
+  });
   const image = message?.photo?.length || message?.document?.mime_type?.startsWith('image/');
   if (image && !callback && deps.ctx) deps.ctx.waitUntil(guarded());
   else await guarded();

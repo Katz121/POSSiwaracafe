@@ -140,3 +140,11 @@ it('worker rejects forged photo before any reply and report uses admin while not
   expect(sent(deps).at(-1).parse_mode).toBeUndefined();
   expect((await worker.fetch(req('report', 'admin', { dryRun: true }), config, {})).status).toBe(200);
 });
+it('a title that is an existing stock item takes that stock category instead of asking', async () => {
+  const deps = harness([{ id: 'bb', name: 'บลูเบอรี่', category: 'ผลไม้และของสด', unit: 'กรัม', quantity: 719, unitCost: 0.73 }]);
+  await handleTelegramExpense(request(message('รายจ่าย บลูเบอรี่ 1 กก. 50')), env, deps);
+  const p = await deps.kv.get('__expense_pending:42', 'json');
+  expect(p.lines[0]).toMatchObject({ category: 'ผลไม้และของสด', stockId: 'bb' });
+  expect(p.lines[0].unresolved).toBeUndefined();
+  expect(p.lines[0].plan).toMatchObject({ inQty: 1000, stockUnit: 'กรัม' });
+});

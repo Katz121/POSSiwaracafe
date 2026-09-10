@@ -667,7 +667,7 @@ export default {
       return handleTelegramExpenseSetup(request, env, headers);
     }
     if (pathname.endsWith('/telegram-expense')) {
-      return handleTelegramExpense(request, env, { fetch: globalThis.fetch, kv: env.FOLLOWERS, now: () => Date.now(), buildDailyReport, ctx });
+      return handleTelegramExpense(request, env, { buildDailyReport, ctx });
     }
     if (pathname.endsWith('/webhook')) {
       return handleWebhook(request, env);

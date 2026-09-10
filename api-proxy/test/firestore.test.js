@@ -54,9 +54,39 @@ it('retries transactions three times with fresh reads', async () => {
   expect(build).toHaveBeenCalledTimes(4);
   expect(deps.commits).toHaveLength(4);
 });
-it('stops after three retries and rolls back', async () => {
+it('stops after three retries on a stale read', async () => {
   const deps = harness(); deps.state.aborts = 5;
-  await expect(createFirestore(env, deps).runTransaction(async () => [])).rejects.toMatchObject({ code: 'ABORTED' });
+  await expect(createFirestore(env, deps).runTransaction(async () => [])).rejects.toMatchObject({ code: 'FAILED_PRECONDITION' });
   expect(deps.commits).toHaveLength(4);
-  expect(deps.calls.filter(c => c.url.endsWith(':rollback'))).toHaveLength(4);
+  expect(deps.calls.some(c => c.url.endsWith(':beginTransaction'))).toBe(false);
+});
+it('binds every read document to its updateTime so a concurrent sale forces a re-read', async () => {
+  const deps = harness([{ id: 'milk', name: 'นม', unit: 'กรัม', quantity: 100, unitCost: 1 }]);
+  const db = createFirestore(env, deps);
+  await db.runTransaction(async tx => {
+    const [milk] = await tx.getAll([db.name('stock', 'milk')]);
+    return [{ update: { name: db.name('stock', milk.id), fields: {} }, updateMask: { fieldPaths: [] }, currentDocument: { exists: true } },
+      { update: { name: db.name('expenses', 'tg_x_0'), fields: {} }, currentDocument: { exists: false } }];
+  });
+  const [stockWrite, expenseWrite] = deps.commits[0].writes;
+  expect(stockWrite.currentDocument).toEqual({ updateTime: '2026-09-10T00:00:00.000001Z' });
+  expect(expenseWrite.currentDocument).toEqual({ exists: false });
+  expect(deps.commits[0].transaction).toBeUndefined();
+});
+it('does not retry ALREADY_EXISTS (batch already saved)', async () => {
+  const deps = harness(); deps.state.commitError = 'ALREADY_EXISTS';
+  await expect(createFirestore(env, deps).runTransaction(async () => [])).rejects.toMatchObject({ code: 'ALREADY_EXISTS' });
+  expect(deps.commits).toHaveLength(1);
+});
+
+it('default fetch keeps the global receiver (Workers throws Illegal invocation otherwise)', async () => {
+  const { vi } = await import('vitest');
+  const { dependencies } = await import('../src/firestore.js');
+  vi.stubGlobal('fetch', function strictFetch() {
+    if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+    return Promise.resolve(new Response('ok'));
+  });
+  const deps = dependencies({});
+  await expect(deps.fetch('https://test.invalid')).resolves.toBeInstanceOf(Response);
+  vi.unstubAllGlobals();
 });
