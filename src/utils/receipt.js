@@ -1,3 +1,11 @@
+export function getReceiptPdfSize(canvasWidth, canvasHeight, paperWidth) {
+  if (!Number.isFinite(canvasWidth) || !Number.isFinite(canvasHeight) || canvasWidth <= 0 || canvasHeight <= 0) {
+    throw new Error('Invalid receipt canvas dimensions');
+  }
+  const width = Number(paperWidth) === 58 ? 58 : 80;
+  return { width, height: width * canvasHeight / canvasWidth };
+}
+
 export function buildReceiptModel(order = {}, { menu = [], settings = {}, vatPercentage = 7 } = {}) {
   const number = (value) => Number(value) || 0;
   // ลูกค้าอาจทิ้งใบเสร็จไว้ในร้าน จึงส่งเฉพาะเบอร์ที่ปิดแล้วไปยังส่วนพิมพ์

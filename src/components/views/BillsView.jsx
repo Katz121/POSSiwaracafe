@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, Calendar, Search, Clock, Receipt, Wallet, CreditCard, Coffee, UserCheck, X, ChevronRight, QrCode, CheckSquare, Square, Users, Printer } from 'lucide-react';
+import { ChevronLeft, Calendar, Search, Clock, Receipt, Wallet, CreditCard, Coffee, UserCheck, X, ChevronRight, QrCode, CheckSquare, Square, Users, Printer, FileText } from 'lucide-react';
 import { doc, updateDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate, groupItemsByCategory } from '../../utils/calculations';
 import usePrintReceipt from '../../hooks/usePrintReceipt';
+import useReceiptPdf from '../../hooks/useReceiptPdf';
 import useDebounce from '../../hooks/useDebounce';
 import { Button, Badge, EmptyState, Spinner, Skeleton, ConfirmModal, useToast } from '../ui';
 import { DEFAULT_OWN_GLASS_DISCOUNT, VAT_PERCENTAGE } from '../../config/constants';
@@ -25,7 +26,7 @@ export default function BillsView() {
   } = useAppContext();
 
   const toast = useToast();
-  const { printBill, receiptPortal, printUnavailable } = usePrintReceipt({
+  const { printBill, receiptPortal: printReceiptPortal, printUnavailable } = usePrintReceipt({
     menu, settings: { reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth },
   });
   const handlePrintBill = () => {
@@ -34,6 +35,14 @@ export default function BillsView() {
     if (printUnavailable) {
       toast.info('ถ้าหน้าต่างพิมพ์ไม่ขึ้น ให้เปิดระบบผ่าน Safari แล้วกดพิมพ์อีกครั้ง');
     }
+  };
+  const { openReceiptPdf, receiptPortal: pdfReceiptPortal, generating, fallbackUrl, clearFallback } = useReceiptPdf({
+    menu, settings: { reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth },
+  });
+  const handleOpenReceiptPdf = () => {
+    openReceiptPdf(selectedBill).catch(() => {
+      toast.error('สร้างใบเสร็จไม่สำเร็จ ลองใหม่อีกครั้ง');
+    });
   };
 
   const OWN_GLASS_DISCOUNT = Number(ownGlassDiscount) || DEFAULT_OWN_GLASS_DISCOUNT;
@@ -120,7 +129,17 @@ export default function BillsView() {
 
   return (
     <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-[var(--text-primary)]">
-      {receiptPortal}
+      {printReceiptPortal}
+      {pdfReceiptPortal}
+      {fallbackUrl && (
+        <div role="status" className="fixed bottom-4 right-4 left-4 sm:left-auto z-[100] flex items-center gap-3 rounded-2xl border border-blue-200 bg-white p-4 shadow-xl text-sm">
+          <div>
+            <p className="font-semibold">ใบเสร็จพร้อมแล้ว</p>
+            <a href={fallbackUrl} target="_blank" rel="noopener" className="text-blue-600 underline">เปิดใบเสร็จ PDF</a>
+          </div>
+          <button type="button" onClick={clearFallback} aria-label="ปิดแจ้งเตือนใบเสร็จ" className="p-2 rounded-lg hover:bg-gray-100"><X size={18} /></button>
+        </div>
+      )}
       {/* Responsive Header */}
       <header className="h-16 md:h-20 lg:h-24 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-3 md:px-6 lg:px-12 flex items-center justify-between shadow-sm z-[var(--z-nav)] gap-2">
         <div className="flex items-center gap-2 md:gap-4 text-emerald-600 cursor-pointer font-semibold min-w-0" onClick={() => handleViewChange('pos')}>
@@ -268,6 +287,7 @@ export default function BillsView() {
                     {selectedBill.isPaid ? <><Wallet size={16} /> <span className="hidden xl:inline">ยกเลิกชำระ</span></> : <><CreditCard size={16} /> <span className="hidden xl:inline">ชำระแล้ว</span></>}
                   </button>
                   <button onClick={handlePrintBill} className="bg-blue-50 text-blue-600 px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-blue-600 hover:text-white transition-all border border-blue-100 active:scale-95 shadow-sm flex items-center gap-2"><Printer size={16} /> พิมพ์บิล</button>
+                  <button onClick={handleOpenReceiptPdf} disabled={generating} className="disabled:opacity-50 disabled:cursor-not-allowed bg-blue-50 text-blue-600 px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-blue-600 hover:text-white transition-all border border-blue-100 active:scale-95 shadow-sm flex items-center gap-2"><FileText size={16} /> {generating ? 'กำลังสร้าง...' : 'PDF'}</button>
                   <button onClick={() => { setEditingOrderId(selectedBill.id); handleViewChange('pos'); }} className="bg-blue-50 text-blue-600 px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-blue-600 hover:text-white transition-all border border-blue-100 active:scale-95 shadow-sm">แก้ไข</button>
                   <button onClick={() => setOrderToCancel(selectedBill.id)} className="bg-red-50 text-[var(--state-danger)] px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-red-600 hover:text-white transition-all border border-red-100 active:scale-95 shadow-sm">ลบ</button>
                   <button onClick={() => setSelectedBill(null)} className="bg-[var(--bg-tertiary)] text-[var(--text-muted)] px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-[var(--bg-tertiary)] border border-[var(--border-color)]">ปิด</button>
@@ -473,7 +493,8 @@ export default function BillsView() {
                     {selectedBill.isPaid ? <><Wallet size={16} /> ยกเลิกชำระ</> : <><CreditCard size={16} /> ชำระแล้ว</>}
                   </button>
                   <button onClick={handlePrintBill} className="py-3 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 active:scale-95 transition-all flex items-center justify-center gap-2"><Printer size={16} /> พิมพ์บิล</button>
-                  <button onClick={() => { setEditingOrderId(selectedBill.id); handleViewChange('pos'); }} className="col-span-2 py-3 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 active:scale-95 transition-all">
+                  <button onClick={handleOpenReceiptPdf} disabled={generating} className="disabled:opacity-50 disabled:cursor-not-allowed py-3 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 active:scale-95 transition-all flex items-center justify-center gap-2"><FileText size={16} /> {generating ? 'กำลังสร้าง...' : 'PDF'}</button>
+                  <button onClick={() => { setEditingOrderId(selectedBill.id); handleViewChange('pos'); }} className="py-3 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 active:scale-95 transition-all">
                     แก้ไขข้อมูล
                   </button>
                 </div>

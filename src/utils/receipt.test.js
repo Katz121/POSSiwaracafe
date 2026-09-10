@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReceiptModel } from './receipt';
+import { buildReceiptModel, getReceiptPdfSize } from './receipt';
 
 const bill = {
   id: 'bill-abcdefgh', date: '2026-09-10', time: '09:30', queueNumber: 12, isPaid: true,
@@ -82,5 +82,20 @@ describe('buildReceiptModel', () => {
   it('เก็บชื่อลูกค้า QR แม้ไม่มีข้อมูลสมาชิก', () => {
     expect(buildReceiptModel({ ...bill, source: 'qr', memberNickname: 'ลูกค้า QR' }).customer)
       .toEqual({ name: 'ลูกค้า QR', phone: '' });
+  });
+});
+
+
+describe('getReceiptPdfSize', () => {
+  it.each([58, 80])('preserves aspect ratio on %s mm paper', (width) => {
+    expect(getReceiptPdfSize(600, 1800, width)).toEqual({ width, height: width * 3 });
+    expect(getReceiptPdfSize(1800, 5400, width)).toEqual({ width, height: width * 3 });
+  });
+  it('supports stored string widths and defaults to 80 mm', () => {
+    expect(getReceiptPdfSize(600, 900, '58')).toEqual({ width: 58, height: 87 });
+    expect(getReceiptPdfSize(600, 900)).toEqual({ width: 80, height: 120 });
+  });
+  it.each([[0, 100], [100, 0], [-1, 100], [NaN, 100], [100, Infinity]])('rejects invalid dimensions %s x %s', (width, height) => {
+    expect(() => getReceiptPdfSize(width, height, 80)).toThrow('Invalid receipt canvas dimensions');
   });
 });

@@ -2,10 +2,10 @@ import { QRCodeSVG } from 'qrcode.react';
 
 const money = (value) => `฿${(Number(value) || 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}`;
 
-export default function ReceiptSheet({ model }) {
+export default function ReceiptSheet({ model, id = 'receipt-sheet' }) {
   const { shop, meta, customer, lines, totals, footer } = model;
   return (
-    <div id="receipt-sheet" className={`receipt-sheet receipt-${model.shop.paperWidth}`}>
+    <div id={id} className={`receipt-sheet receipt-${model.shop.paperWidth}`}>
       <div className="receipt-center">
         <h1 className="receipt-shop-name">{shop.name}</h1>
         {shop.address && <p>{shop.address}</p>}
