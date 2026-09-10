@@ -536,6 +536,8 @@ html.dark .text-amber-600  { color: #fcd34d !important; }
 .receipt-customer, .receipt-footer { margin-top: 3mm; }
 .receipt-total { font-size: 20px; font-weight: 700; margin-top: 2mm; }
 .receipt-paid { font-weight: 700; }
+.receipt-qr { display: block; width: 32mm; height: 32mm; margin: 2mm auto 0; shape-rendering: crispEdges; }
+.receipt-58 .receipt-qr { width: 28mm; height: 28mm; }
 
 @media print {
   @page { margin: 0; }

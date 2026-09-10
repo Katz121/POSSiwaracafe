@@ -43,6 +43,9 @@ export function buildReceiptModel(order = {}, { menu = [], settings = {}, vatPer
       vatPercentage: number(vatPercentage), total: number(order.total),
       itemCount: lines.reduce((sum, line) => number(sum + line.quantity), 0),
     },
-    footer: { message: String(settings.receiptFooter || 'ขอบคุณที่อุดหนุนค่ะ'), reviewUrl: String(settings.reviewUrl || '') },
+    footer: {
+      message: String(settings.receiptFooter || (settings.reviewUrl ? 'สแกนรีวิวร้านให้เราหน่อยนะคะ' : 'ขอบคุณที่อุดหนุนค่ะ')),
+      reviewUrl: String(settings.reviewUrl || ''),
+    },
   };
 }

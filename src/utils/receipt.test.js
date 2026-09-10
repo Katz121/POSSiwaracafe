@@ -8,6 +8,18 @@ const bill = {
 };
 
 describe('buildReceiptModel', () => {
+  it.each([undefined, ''])('ใช้ข้อความขอบคุณเมื่อไม่มีลิงก์รีวิวและ receiptFooter เป็น %s', (receiptFooter) => {
+    expect(buildReceiptModel(bill, { settings: { receiptFooter } }).footer)
+      .toEqual({ message: 'ขอบคุณที่อุดหนุนค่ะ', reviewUrl: '' });
+  });
+  it.each([undefined, ''])('ใช้ข้อความชวนรีวิวเมื่อมีลิงก์รีวิวและ receiptFooter เป็น %s', (receiptFooter) => {
+    expect(buildReceiptModel(bill, { settings: { receiptFooter, reviewUrl: 'https://example.com/review' } }).footer)
+      .toEqual({ message: 'สแกนรีวิวร้านให้เราหน่อยนะคะ', reviewUrl: 'https://example.com/review' });
+  });
+  it.each(['', 'https://example.com/review'])('ใช้ข้อความที่ตั้งเองเมื่อ reviewUrl เป็น %s', (reviewUrl) => {
+    expect(buildReceiptModel(bill, { settings: { receiptFooter: 'แล้วพบกันนะคะ', reviewUrl } }).footer)
+      .toEqual({ message: 'แล้วพบกันนะคะ', reviewUrl });
+  });
   it('รักษาลำดับรายการและยอดที่บันทึกไว้', () => {
     const model = buildReceiptModel(bill);
     expect(model.lines).toEqual([

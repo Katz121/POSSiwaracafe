@@ -1,3 +1,5 @@
+import { QRCodeSVG } from 'qrcode.react';
+
 const money = (value) => `฿${(Number(value) || 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}`;
 
 export default function ReceiptSheet({ model }) {
@@ -30,7 +32,13 @@ export default function ReceiptSheet({ model }) {
       {(totals.vatIncluded || totals.vat !== 0) && <div className="receipt-row"><span>VAT {totals.vatPercentage}%</span><span className="receipt-number">{money(totals.vat)}</span></div>}
       <div className="receipt-row receipt-total"><span>ยอดสุทธิ</span><span className="receipt-number">{money(totals.total)}</span></div>
       <p className="receipt-center receipt-paid">{meta.paidLabel}</p>
-      <div className="receipt-center receipt-footer"><p>{footer.message}</p>{footer.reviewUrl && <p>{footer.reviewUrl}</p>}</div>
+      <div className="receipt-center receipt-footer">
+        {footer.reviewUrl ? <>
+          <p><strong>{footer.message}</strong></p>
+          {/* ใช้ SVG แทน canvas หรือรูป เพราะเรนเดอร์ทันทีแบบ synchronous จึงครบก่อน window.print() และคมชัดทุกความละเอียดเครื่องพิมพ์ */}
+          <QRCodeSVG className="receipt-qr" value={footer.reviewUrl} level="M" marginSize={2} bgColor="#ffffff" fgColor="#000000" />
+        </> : <p>{footer.message}</p>}
+      </div>
     </div>
   );
 }

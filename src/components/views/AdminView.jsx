@@ -870,11 +870,12 @@ export default function AdminView() {
             <h2 className="text-lg font-semibold">ใบเสร็จ</h2>
             {[
               ['shopName', 'ชื่อร้าน', 'ศิวรา คาเฟ่'], ['shopAddress', 'ที่อยู่'], ['shopPhone', 'โทรศัพท์'],
-              ['taxId', 'เลขผู้เสียภาษี'], ['receiptFooter', 'ข้อความท้ายใบเสร็จ', 'ขอบคุณที่อุดหนุนค่ะ'],
+              ['taxId', 'เลขผู้เสียภาษี'], ['receiptFooter', 'ข้อความเหนือ QR รีวิว', 'สแกนรีวิวร้านให้เราหน่อยนะคะ'],
             ].map(([field, label, placeholder]) => (
               <label key={field} className="block text-sm font-semibold">
                 {label}
                 <input type="text" placeholder={placeholder} value={settingsDraft[field]} onChange={(e) => setSettingsDraft({ ...settingsDraft, [field]: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 outline-none" />
+                {field === 'receiptFooter' && <span className="block mt-2 text-xs font-normal text-[var(--text-muted)]">QR สร้างจากลิงก์รีวิวในการ์ดด้านล่าง · ถ้าไม่ใส่ลิงก์ ใบเสร็จจะแสดงแค่ข้อความ</span>}
               </label>
             ))}
             <label className="block text-sm font-semibold">
