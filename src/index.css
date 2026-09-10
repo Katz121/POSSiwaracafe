@@ -507,3 +507,40 @@ html.dark .text-violet-700,
 html.dark .text-violet-600 { color: #c4b5fd !important; }
 html.dark .text-amber-700,
 html.dark .text-amber-600  { color: #fcd34d !important; }
+/* เก็บ layout ไว้ให้ Safari เตรียมพิมพ์ได้ แม้ใบเสร็จอยู่นอกจอ */
+.receipt-sheet {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  box-sizing: border-box;
+  width: 80mm;
+  padding: 4mm;
+  font-family: 'Sarabun', 'Noto Sans Thai', 'Sukhumvit Set', 'Helvetica Neue', sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #000;
+  background: #fff;
+  overflow-wrap: anywhere;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.receipt-sheet p { margin: 0; white-space: pre-wrap; }
+.receipt-58 { width: 58mm; font-size: 11px; }
+.receipt-center { text-align: center; }
+.receipt-shop-name { margin: 0; font-size: 17px; font-weight: 700; }
+.receipt-divider { border-top: 1px dashed #000; margin: 3mm 0; }
+.receipt-row { display: flex; justify-content: space-between; gap: 2mm; }
+.receipt-number { text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.receipt-item { margin-bottom: 2mm; break-inside: avoid; }
+.receipt-sheet .receipt-note { margin-left: 3mm; }
+.receipt-customer, .receipt-footer { margin-top: 3mm; }
+.receipt-total { font-size: 20px; font-weight: 700; margin-top: 2mm; }
+.receipt-paid { font-weight: 700; }
+
+@media print {
+  @page { margin: 0; }
+  body > #root { display: none !important; }
+  html, body { margin: 0 !important; padding: 0 !important; height: auto !important; overflow: visible !important; background: #fff !important; }
+  .receipt-sheet { position: static !important; left: auto; width: 80mm; padding: 4mm; color: #000; background: #fff; }
+  .receipt-58 { width: 58mm; font-size: 11px; }
+}

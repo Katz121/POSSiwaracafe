@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, Calendar, Search, Clock, Receipt, Wallet, CreditCard, Coffee, UserCheck, X, ChevronRight, QrCode, CheckSquare, Square, Users } from 'lucide-react';
+import { ChevronLeft, Calendar, Search, Clock, Receipt, Wallet, CreditCard, Coffee, UserCheck, X, ChevronRight, QrCode, CheckSquare, Square, Users, Printer } from 'lucide-react';
 import { doc, updateDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate, groupItemsByCategory } from '../../utils/calculations';
+import usePrintReceipt from '../../hooks/usePrintReceipt';
 import useDebounce from '../../hooks/useDebounce';
-import { Button, Badge, EmptyState, Spinner, Skeleton, ConfirmModal } from '../ui';
+import { Button, Badge, EmptyState, Spinner, Skeleton, ConfirmModal, useToast } from '../ui';
 import { DEFAULT_OWN_GLASS_DISCOUNT, VAT_PERCENTAGE } from '../../config/constants';
 import { summarizeMergedBills, validateMergedBills } from '../../utils/billMerge';
 
@@ -14,6 +15,7 @@ export default function BillsView() {
     orders,
     menu,
     members,
+    reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
     isSyncing,
     ownGlassDiscount,
     runDbAction,
@@ -21,6 +23,18 @@ export default function BillsView() {
     setEditingOrderId,
     setOrderToCancel
   } = useAppContext();
+
+  const toast = useToast();
+  const { printBill, receiptPortal, printUnavailable } = usePrintReceipt({
+    menu, settings: { reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth },
+  });
+  const handlePrintBill = () => {
+    // ร้านอาจเปิดจากหน้าจอหลัก และยังไม่ยืนยันข้อจำกัดของ iOS จึงลองพิมพ์ก่อนแนะนำทางเลือก
+    printBill(selectedBill);
+    if (printUnavailable) {
+      toast.info('ถ้าหน้าต่างพิมพ์ไม่ขึ้น ให้เปิดระบบผ่าน Safari แล้วกดพิมพ์อีกครั้ง');
+    }
+  };
 
   const OWN_GLASS_DISCOUNT = Number(ownGlassDiscount) || DEFAULT_OWN_GLASS_DISCOUNT;
 
@@ -106,6 +120,7 @@ export default function BillsView() {
 
   return (
     <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-[var(--text-primary)]">
+      {receiptPortal}
       {/* Responsive Header */}
       <header className="h-16 md:h-20 lg:h-24 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-3 md:px-6 lg:px-12 flex items-center justify-between shadow-sm z-[var(--z-nav)] gap-2">
         <div className="flex items-center gap-2 md:gap-4 text-emerald-600 cursor-pointer font-semibold min-w-0" onClick={() => handleViewChange('pos')}>
@@ -252,6 +267,7 @@ export default function BillsView() {
                   >
                     {selectedBill.isPaid ? <><Wallet size={16} /> <span className="hidden xl:inline">ยกเลิกชำระ</span></> : <><CreditCard size={16} /> <span className="hidden xl:inline">ชำระแล้ว</span></>}
                   </button>
+                  <button onClick={handlePrintBill} className="bg-blue-50 text-blue-600 px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-blue-600 hover:text-white transition-all border border-blue-100 active:scale-95 shadow-sm flex items-center gap-2"><Printer size={16} /> พิมพ์บิล</button>
                   <button onClick={() => { setEditingOrderId(selectedBill.id); handleViewChange('pos'); }} className="bg-blue-50 text-blue-600 px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-blue-600 hover:text-white transition-all border border-blue-100 active:scale-95 shadow-sm">แก้ไข</button>
                   <button onClick={() => setOrderToCancel(selectedBill.id)} className="bg-red-50 text-[var(--state-danger)] px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-red-600 hover:text-white transition-all border border-red-100 active:scale-95 shadow-sm">ลบ</button>
                   <button onClick={() => setSelectedBill(null)} className="bg-[var(--bg-tertiary)] text-[var(--text-muted)] px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-[var(--bg-tertiary)] border border-[var(--border-color)]">ปิด</button>
@@ -456,7 +472,8 @@ export default function BillsView() {
                   >
                     {selectedBill.isPaid ? <><Wallet size={16} /> ยกเลิกชำระ</> : <><CreditCard size={16} /> ชำระแล้ว</>}
                   </button>
-                  <button onClick={() => { setEditingOrderId(selectedBill.id); handleViewChange('pos'); }} className="py-3 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 active:scale-95 transition-all">
+                  <button onClick={handlePrintBill} className="py-3 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 active:scale-95 transition-all flex items-center justify-center gap-2"><Printer size={16} /> พิมพ์บิล</button>
+                  <button onClick={() => { setEditingOrderId(selectedBill.id); handleViewChange('pos'); }} className="col-span-2 py-3 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 active:scale-95 transition-all">
                     แก้ไขข้อมูล
                   </button>
                 </div>

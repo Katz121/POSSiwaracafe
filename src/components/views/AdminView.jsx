@@ -50,6 +50,7 @@ export default function AdminView() {
     geminiApiKey,
     startingCash,
     reviewUrl,
+    shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
     cakeSaleEnabled,
     cakeSaleCategories,
     cakeSalePercent,
@@ -107,6 +108,12 @@ export default function AdminView() {
     geminiApiKey: '',
     startingCash: DEFAULT_STARTING_CASH,
     reviewUrl: '',
+    shopName: '',
+    shopAddress: '',
+    shopPhone: '',
+    taxId: '',
+    receiptFooter: '',
+    receiptPaperWidth: 80,
     cakeSaleEnabled: false,
     cakeSaleCategories: [],
     cakeSalePercent: DEFAULT_CAKE_SALE_PERCENT,
@@ -161,6 +168,12 @@ export default function AdminView() {
       geminiApiKey: geminiApiKey || '',
       startingCash: STARTING_CASH,
       reviewUrl: reviewUrl || '',
+      shopName: shopName || '',
+      shopAddress: shopAddress || '',
+      shopPhone: shopPhone || '',
+      taxId: taxId || '',
+      receiptFooter: receiptFooter || '',
+      receiptPaperWidth: receiptPaperWidth || 80,
       cakeSaleEnabled: cakeSaleEnabled === true,
       cakeSaleCategories: Array.isArray(cakeSaleCategories) ? cakeSaleCategories : [],
       cakeSalePercent: Number(cakeSalePercent) || DEFAULT_CAKE_SALE_PERCENT,
@@ -171,7 +184,7 @@ export default function AdminView() {
       spendThreshold: Number(spendThreshold) || 0,
       spendDiscount: Number(spendDiscount) || 0
     });
-  }, [ADMIN_PIN, REDEEM_POINTS_THRESHOLD, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, geminiApiKey, STARTING_CASH, reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount]);
+  }, [ADMIN_PIN, REDEEM_POINTS_THRESHOLD, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, geminiApiKey, STARTING_CASH, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount]);
 
   // Handle deep-linking from other views
   useEffect(() => {
@@ -370,6 +383,12 @@ export default function AdminView() {
         ownGlassDiscount: Number(settingsDraft.ownGlassDiscount),
         startingCash: Number(settingsDraft.startingCash),
         reviewUrl: String(settingsDraft.reviewUrl || ''),
+        shopName: String(settingsDraft.shopName || ''),
+        shopAddress: String(settingsDraft.shopAddress || ''),
+        shopPhone: String(settingsDraft.shopPhone || ''),
+        taxId: String(settingsDraft.taxId || ''),
+        receiptFooter: String(settingsDraft.receiptFooter || ''),
+        receiptPaperWidth: Number(settingsDraft.receiptPaperWidth) === 58 ? 58 : 80,
         cakeSaleEnabled: settingsDraft.cakeSaleEnabled === true,
         cakeSaleCategories: Array.isArray(settingsDraft.cakeSaleCategories) ? settingsDraft.cakeSaleCategories : [],
         cakeSalePercent: Number(settingsDraft.cakeSalePercent) || 0,
@@ -846,6 +865,25 @@ export default function AdminView() {
               </div>
             );
           })()}
+
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-4">
+            <h2 className="text-lg font-semibold">ใบเสร็จ</h2>
+            {[
+              ['shopName', 'ชื่อร้าน', 'ศิวรา คาเฟ่'], ['shopAddress', 'ที่อยู่'], ['shopPhone', 'โทรศัพท์'],
+              ['taxId', 'เลขผู้เสียภาษี'], ['receiptFooter', 'ข้อความท้ายใบเสร็จ', 'ขอบคุณที่อุดหนุนค่ะ'],
+            ].map(([field, label, placeholder]) => (
+              <label key={field} className="block text-sm font-semibold">
+                {label}
+                <input type="text" placeholder={placeholder} value={settingsDraft[field]} onChange={(e) => setSettingsDraft({ ...settingsDraft, [field]: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 outline-none" />
+              </label>
+            ))}
+            <label className="block text-sm font-semibold">
+              ความกว้างกระดาษ
+              <select value={settingsDraft.receiptPaperWidth} onChange={(e) => setSettingsDraft({ ...settingsDraft, receiptPaperWidth: Number(e.target.value) === 58 ? 58 : 80 })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 outline-none">
+                <option value={80}>80 mm</option><option value={58}>58 mm</option>
+              </select>
+            </label>
+          </div>
 
           {/* Review Link Card */}
           <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">

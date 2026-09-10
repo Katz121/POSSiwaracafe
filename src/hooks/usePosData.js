@@ -35,6 +35,12 @@ export default function usePosData(user, appId) {
   const [startingCash, setStartingCash] = useState(DEFAULT_STARTING_CASH);
   const [quickExpenses, setQuickExpenses] = useState([]);
   const [reviewUrl, setReviewUrl] = useState('');
+  const [shopName, setShopName] = useState('');
+  const [shopAddress, setShopAddress] = useState('');
+  const [shopPhone, setShopPhone] = useState('');
+  const [taxId, setTaxId] = useState('');
+  const [receiptFooter, setReceiptFooter] = useState('');
+  const [receiptPaperWidth, setReceiptPaperWidth] = useState(80);
   const [cakeSaleEnabled, setCakeSaleEnabled] = useState(false);
   const [cakeSaleCategories, setCakeSaleCategories] = useState([]);
   const [cakeSalePercent, setCakeSalePercent] = useState(DEFAULT_CAKE_SALE_PERCENT);
@@ -125,6 +131,12 @@ export default function usePosData(user, appId) {
         if (data.geminiApiKey != null) setGeminiApiKey(String(data.geminiApiKey));
         if (data.startingCash != null) setStartingCash(Number(data.startingCash));
         if (data.reviewUrl != null) setReviewUrl(String(data.reviewUrl));
+        if (data.shopName != null) setShopName(String(data.shopName));
+        if (data.shopAddress != null) setShopAddress(String(data.shopAddress));
+        if (data.shopPhone != null) setShopPhone(String(data.shopPhone));
+        if (data.taxId != null) setTaxId(String(data.taxId));
+        if (data.receiptFooter != null) setReceiptFooter(String(data.receiptFooter));
+        if (data.receiptPaperWidth != null) setReceiptPaperWidth(Number(data.receiptPaperWidth) || 0);
         setCakeSaleEnabled(data.cakeSaleEnabled === true);
         if (Array.isArray(data.cakeSaleCategories)) setCakeSaleCategories(data.cakeSaleCategories);
         if (data.cakeSalePercent != null) setCakeSalePercent(Number(data.cakeSalePercent));
@@ -165,5 +177,5 @@ export default function usePosData(user, appId) {
     return () => clearTimeout(timeout);
   }, [menu, dynamicCategories, beanModifiers, settingsRaw, appId, isSyncing]);
 
-  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
+  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
 }
