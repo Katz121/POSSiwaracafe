@@ -517,17 +517,18 @@ async function handleWebhook(request, env) {
 // ---------------------------------------------------------------------------
 // สรุปยอดขายประจำวัน · ยิงเองตาม cron ใน wrangler.toml (ไม่ต้องเปิดคอมทิ้งไว้)
 //
-// อ่าน Firestore ผ่าน REST ด้วย Anonymous Auth ตัวเดียวกับที่แอปใช้ — กติกาใน
-// firestore.rules ต้องการแค่ `request.auth != null` เท่านั้น เลยไม่ต้องมี service account
-//
-// refresh token เก็บใน KV แล้วใช้ซ้ำ · ถ้า signUp ใหม่ทุกวันจะได้ผู้ใช้นิรนามงอกวันละคน
-// รกหน้า Firebase Auth เปล่าๆ
+// อ่าน/เขียน Firestore ผ่าน REST ด้วยบัญชีพนักงานของร้าน (secret BOT_EMAIL/BOT_PASSWORD)
+// refresh token เก็บใน KV แล้วใช้ซ้ำ ไม่ต้องล็อกอินด้วยรหัสผ่านทุกคำขอ
 // ---------------------------------------------------------------------------
-const FB_TOKEN_KEY = '__firebase_refresh_token';
+// ล็อกอินด้วยบัญชีพนักงาน (email/password) · ตั้งแต่ af88e93 rules ให้ stock/expenses/orders
+// เฉพาะ isStaff() ซึ่งเช็ค sign_in_provider == 'password' · anonymous แบบเดิมโดน 403 ทุกคำขอ
+// key ใหม่ ไม่ปนกับ refresh token ของผู้ใช้นิรนามตัวเก่า
+const FB_TOKEN_KEY = '__firebase_bot_refresh';
 
 async function getFirebaseIdToken(env) {
   const key = env.FIREBASE_API_KEY;
   if (!key) throw new Error('FIREBASE_API_KEY not set');
+  if (!env.BOT_EMAIL || !env.BOT_PASSWORD) throw new Error('BOT_EMAIL / BOT_PASSWORD not set');
 
   const saved = env.FOLLOWERS ? await env.FOLLOWERS.get(FB_TOKEN_KEY) : null;
   if (saved) {
@@ -537,15 +538,15 @@ async function getFirebaseIdToken(env) {
       body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: saved }),
     });
     if (res.ok) return (await res.json()).id_token;
-    // token ใช้ไม่ได้แล้ว (ผู้ใช้ถูกลบ / เพิกถอน) → ตกไปสมัครใหม่ข้างล่าง
+    // token ใช้ไม่ได้แล้ว (เปลี่ยนรหัส / เพิกถอน) → ล็อกอินใหม่ข้างล่าง
   }
 
-  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${key}`, {
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${key}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ returnSecureToken: true }),
+    body: JSON.stringify({ email: env.BOT_EMAIL, password: env.BOT_PASSWORD, returnSecureToken: true }),
   });
-  if (!res.ok) throw new Error(`Firebase anon sign-in failed (${res.status})`);
+  if (!res.ok) throw new Error(`Firebase staff sign-in failed (${res.status})`);
   const data = await res.json();
   if (env.FOLLOWERS && data.refreshToken) await env.FOLLOWERS.put(FB_TOKEN_KEY, data.refreshToken);
   return data.idToken;
