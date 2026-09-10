@@ -1,13 +1,12 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { DollarSign, Calendar, Trash2, Edit, BarChart3, RefreshCcw, Zap, X } from 'lucide-react';
-import { collection, doc, addDoc, deleteDoc, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
+import { collection, doc, deleteDoc, serverTimestamp, updateDoc, increment, writeBatch } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate } from '../../utils/calculations';
 import { Button, Input, Select, EmptyState, useToast } from '../ui';
-import { EXPENSE_CATEGORIES, STOCK_CATEGORIES, getStockCategory } from '../../config/constants';
-
-const isStockCategory = (category) => category === 'วัตถุดิบ' || STOCK_CATEGORIES.includes(category);
+import { EXPENSE_CATEGORIES, STOCK_CATEGORIES, getStockCategory, inferStockCategory, DEFAULT_MIN_QUANTITY } from '../../config/constants';
+import { isInventoryCategory, roundMoney, findAliasMatch, findStockCandidates, planStockIntake, buildExpenseRecord, normalizeName } from '../../utils/stockIntake';
 
 export default function ExpensesView() {
   const { expenses, orders, quickExpenses, runDbAction, callGeminiAPI, handleViewChange, setAdminTab, stock } = useAppContext();
@@ -40,14 +39,14 @@ export default function ExpensesView() {
     }
 
     const qty = Number(expense.quantity);
-    if (isStockCategory(expense.category) && qty <= 0) {
+    if (isInventoryCategory(expense.category) && qty <= 0) {
       errors.quantity = 'จำนวนต้องมากกว่า 0';
     }
 
     const price = Number(expense.pricePerUnit);
     const amount = Number(expense.amount) || (qty * price);
     const calculatedUnitCost = qty > 0 ? amount / qty : price;
-    if (isStockCategory(expense.category) && calculatedUnitCost <= 0) {
+    if (isInventoryCategory(expense.category) && calculatedUnitCost <= 0) {
       errors.pricePerUnit = 'ราคาต้องมากกว่า 0';
     }
 
@@ -57,106 +56,6 @@ export default function ExpensesView() {
 
     return errors;
   }, []);
-
-  // Helper 1: หาสต็อกที่ตรงกับชื่อ (case-insensitive, trim)
-  const findStockByName = useCallback((stock, expenseTitle) => {
-    const normalizedTitle = String(expenseTitle).trim().toLowerCase();
-    return stock.find(item =>
-      String(item.name).trim().toLowerCase() === normalizedTitle
-    ) || null;
-  }, []);
-
-  // Helper 2: คำนวณราคาเฉลี่ยแบบ weighted average
-  const calculateWeightedAverageUnitCost = useCallback((oldQuantity, oldUnitCost, newQuantity, newPricePerUnit) => {
-    const oldQty = Number(oldQuantity) || 0;
-    const oldCost = Number(oldUnitCost) || 0;
-    const newQty = Number(newQuantity) || 0;
-    const newPrice = Number(newPricePerUnit) || 0;
-
-    // Edge case: ถ้าสต็อกเดิมเป็น 0 ให้ใช้ราคาใหม่
-    if (oldQty === 0) return newPrice;
-
-    // สูตร: ((oldQty * oldCost) + (newQty * newPrice)) / (oldQty + newQty)
-    const totalCost = (oldQty * oldCost) + (newQty * newPrice);
-    const totalQuantity = oldQty + newQty;
-
-    return totalQuantity > 0 ? totalCost / totalQuantity : 0;
-  }, []);
-
-  // Helper 3: Sync expense ไปยัง stock
-  const syncExpenseToStock = useCallback(async (expense, stock, runDbAction) => {
-    // Guard: เฉพาะหมวด "วัตถุดิบ" เท่านั้น
-    if (!isStockCategory(expense.category)) return { success: false, action: 'skip' };
-
-    // Validation: ต้องมี title, quantity > 0, และ pricePerUnit
-    if (!expense.title || !expense.quantity || expense.quantity <= 0 || !expense.pricePerUnit) {
-      console.warn('Skipping stock sync - missing or invalid required fields:', expense);
-      return { success: false, action: 'skip', error: 'Invalid fields' };
-    }
-
-    const existingStock = findStockByName(stock, expense.title);
-
-    try {
-      if (existingStock) {
-        // อัพเดตสต็อกเดิม
-        const newQuantity = (Number(existingStock.quantity) || 0) + Number(expense.quantity);
-        const newUnitCost = calculateWeightedAverageUnitCost(
-          existingStock.quantity,
-          existingStock.unitCost,
-          expense.quantity,
-          expense.pricePerUnit
-        );
-
-        const ok = await runDbAction(async () => {
-          await updateDoc(
-            doc(db, 'artifacts', appId, 'public', 'data', 'stock', existingStock.id),
-            {
-              // Atomic add so a concurrent POS stock deduction isn't overwritten.
-              // (unitCost is a weighted average that must be computed from the
-              // read value, so it stays absolute — a rare, low-stakes race.)
-              quantity: increment(Number(expense.quantity)),
-              unitCost: newUnitCost,
-              unit: String(expense.unit || existingStock.unit)
-            }
-          );
-        }, 'อัพเดตสต็อกจากรายจ่ายไม่สำเร็จ');
-        if (!ok) return { success: false, action: 'error', error: 'db-write-failed' };
-
-        return {
-          success: true,
-          action: 'updated',
-          stockName: expense.title,
-          quantity: newQuantity,
-          unit: expense.unit || existingStock.unit
-        };
-      } else {
-        // สร้างสต็อกใหม่
-        const ok = await runDbAction(async () => {
-          await addDoc(
-            collection(db, 'artifacts', appId, 'public', 'data', 'stock'),
-            {
-              name: String(expense.title),
-              quantity: Number(expense.quantity),
-              unit: String(expense.unit || 'ชิ้น'),
-              minQuantity: 5, // ค่า default
-              unitCost: Number(expense.pricePerUnit)
-            }
-          );
-        }, 'สร้างสต็อกใหม่จากรายจ่ายไม่สำเร็จ');
-        if (!ok) return { success: false, action: 'error', error: 'db-write-failed' };
-
-        return {
-          success: true,
-          action: 'created',
-          stockName: expense.title,
-          quantity: expense.quantity,
-          unit: expense.unit || 'ชิ้น'
-        };
-      }
-    } catch (error) {
-      return { success: false, action: 'error', error: error.message };
-    }
-  }, [findStockByName, calculateWeightedAverageUnitCost]);
 
   // Keep names aligned with the stock master and existing expense entries.
   const expenseTitleSuggestions = useMemo(() => {
@@ -199,7 +98,8 @@ export default function ExpensesView() {
       suggestion => suggestion.toLocaleLowerCase() === typedTitle.trim().toLocaleLowerCase()
     );
     const title = matchedExpenseTitle || typedTitle;
-    const matchedStock = findStockByName(stock, title);
+    const exactMatches = findStockCandidates(stock, title, 1);
+    const matchedStock = (exactMatches.length > 0 && normalizeName(exactMatches[0].name) === normalizeName(title)) ? exactMatches[0] : null;
     setNewExpense({
       ...newExpense,
       title,
@@ -334,11 +234,9 @@ export default function ExpensesView() {
   const handleAddExpense = useCallback(async (e) => {
     e.preventDefault();
 
-    // Clear previous messages
     setSyncMessage('');
     setValidationErrors({});
 
-    // Validate input
     const errors = validateExpense(newExpense);
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
@@ -352,57 +250,127 @@ export default function ExpensesView() {
     setIsSyncing(true);
 
     try {
-      // เตรียมข้อมูลรายจ่าย
-      const expenseData = {
+      if (editingExpense) {
+        const expenseData = {
+          title: String(newExpense.title),
+          quantity: Number(newExpense.quantity) || 0,
+          unit: String(newExpense.unit || ''),
+          pricePerUnit: Number(newExpense.quantity) > 0
+            ? Number(finalAmount) / Number(newExpense.quantity)
+            : Number(newExpense.pricePerUnit) || 0,
+          amount: roundMoney(finalAmount),
+          category: String(newExpense.category),
+          date: expenseFilterDate
+        };
+
+        await runDbAction(async () => {
+          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', editingExpense.id), expenseData);
+        }, 'แก้ไขค่าใช้จ่ายไม่สำเร็จ');
+
+        toast.success('แก้ไขรายจ่ายสำเร็จ');
+        setEditingExpense(null);
+        setNewExpense({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
+        return;
+      }
+
+      // CREATE PATH
+      const line = {
         title: String(newExpense.title),
         quantity: Number(newExpense.quantity) || 0,
         unit: String(newExpense.unit || ''),
-        pricePerUnit: Number(newExpense.quantity) > 0
-          ? Number(finalAmount) / Number(newExpense.quantity)
-          : Number(newExpense.pricePerUnit) || 0,
         amount: Number(finalAmount),
-        category: String(newExpense.category),
-        date: expenseFilterDate,
-        createdAt: serverTimestamp()
+        category: String(newExpense.category)
       };
 
-      // Step 1: บันทึกรายจ่าย
-      await runDbAction(async () => {
-        if (editingExpense) {
-          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', editingExpense.id), expenseData);
+      let plan = null;
+      let targetStock = null;
+      let newStock = false;
+      let unitMismatch = false;
+
+      if (isInventoryCategory(line.category)) {
+        const aliasMatch = findAliasMatch(stock, { title: line.title });
+        if (aliasMatch) {
+          targetStock = aliasMatch.stock;
+          plan = planStockIntake(line, targetStock, aliasMatch.alias);
         } else {
-          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'), expenseData);
-        }
-      }, editingExpense ? 'แก้ไขค่าใช้จ่ายไม่สำเร็จ' : 'บันทึกค่าใช้จ่ายไม่สำเร็จ');
-
-      toast.success(editingExpense ? 'แก้ไขรายจ่ายสำเร็จ' : 'บันทึกรายจ่ายสำเร็จ');
-
-      // Step 2: Sync ไปยังสต็อก (ถ้าเป็นวัตถุดิบ)
-      if (!editingExpense && isStockCategory(newExpense.category)) {
-        const syncResult = await syncExpenseToStock(expenseData, stock, runDbAction);
-
-        if (syncResult?.success) {
-          if (syncResult.action === 'created') {
-            setSyncMessage(`✓ สร้างสต็อก "${syncResult.stockName}" ${syncResult.quantity} ${syncResult.unit} สำเร็จ`);
-          } else if (syncResult.action === 'updated') {
-            setSyncMessage(`✓ อัพเดตสต็อก "${syncResult.stockName}" เป็น ${syncResult.quantity} ${syncResult.unit} สำเร็จ`);
+          const candidates = findStockCandidates(stock, line.title, 1);
+          if (candidates.length > 0 && normalizeName(candidates[0].name) === normalizeName(line.title)) {
+            targetStock = candidates[0];
+            plan = planStockIntake(line, targetStock);
+          } else {
+            newStock = true;
           }
+        }
 
-          // Auto-hide message after 5 seconds (reset any previous timer)
-          clearTimeout(syncMessageTimerRef.current);
-          syncMessageTimerRef.current = setTimeout(() => setSyncMessage(''), 5000);
+        if (plan && !plan.ok && plan.reason === 'unit-mismatch') {
+          unitMismatch = true;
+          plan = null;
         }
       }
 
-      // Reset form
-      setEditingExpense(null);
-      setNewExpense({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
-    } catch {
-      toast.error('บันทึกรายจ่ายไม่สำเร็จ');
+      const expenseRecord = buildExpenseRecord(line, {
+        date: expenseFilterDate,
+        plan,
+        extra: { createdAt: serverTimestamp() }
+      });
+
+      let syncAction = null;
+
+      const ok = await runDbAction(async () => {
+        const batch = writeBatch(db);
+        const expenseRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'));
+        batch.set(expenseRef, expenseRecord);
+
+        if (plan && plan.ok && targetStock) {
+          const stockRef = doc(db, 'artifacts', appId, 'public', 'data', 'stock', targetStock.id);
+          batch.update(stockRef, {
+            quantity: increment(plan.inQty),
+            unitCost: plan.newUnitCost,
+            lastPurchaseAt: serverTimestamp(),
+            lastPurchaseUnitCost: plan.inUnitCost
+          });
+          syncAction = { action: 'updated', name: targetStock.name, qty: plan.newQuantity, unit: targetStock.unit };
+        } else if (newStock) {
+          const stockRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'stock'));
+          const cat = STOCK_CATEGORIES.includes(line.category) ? line.category : inferStockCategory(line.title);
+          batch.set(stockRef, {
+            name: line.title,
+            category: cat,
+            quantity: line.quantity,
+            unit: line.unit || 'ชิ้น',
+            minQuantity: DEFAULT_MIN_QUANTITY,
+            unitCost: line.quantity > 0 ? expenseRecord.pricePerUnit : 0
+          });
+          syncAction = { action: 'created', name: line.title, qty: line.quantity, unit: line.unit || 'ชิ้น' };
+        }
+
+        await batch.commit();
+      }, 'บันทึกค่าใช้จ่ายไม่สำเร็จ');
+
+      if (ok) {
+        toast.success('บันทึกรายจ่ายสำเร็จ');
+
+        if (unitMismatch) {
+          toast.warning(`หน่วยไม่ตรงกับสต็อก (${line.unit} / ${targetStock.unit}) ยังไม่ลงสต๊อก`);
+        } else if (syncAction) {
+          if (syncAction.action === 'created') {
+            setSyncMessage(`✓ สร้างสต็อก "${syncAction.name}" ${syncAction.qty} ${syncAction.unit} สำเร็จ`);
+          } else {
+            setSyncMessage(`✓ อัพเดตสต็อก "${syncAction.name}" เป็น ${syncAction.qty} ${syncAction.unit} สำเร็จ`);
+          }
+          clearTimeout(syncMessageTimerRef.current);
+          syncMessageTimerRef.current = setTimeout(() => setSyncMessage(''), 5000);
+        }
+
+        setNewExpense({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
+      }
+
+    } catch (e) {
+      toast.error('บันทึกรายจ่ายไม่สำเร็จ: ' + e.message);
     } finally {
       setIsSyncing(false);
     }
-  }, [newExpense, editingExpense, expenseFilterDate, stock, runDbAction, syncExpenseToStock, validateExpense, toast]);
+  }, [newExpense, editingExpense, expenseFilterDate, stock, runDbAction, validateExpense, toast]);
 
   return (
     <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-[var(--text-primary)]">
@@ -544,7 +512,7 @@ export default function ExpensesView() {
                     ))}
                   </div>
                 )}
-                {isStockCategory(newExpense.category) && expenseTitleSuggestions.length > 0 && (
+                {isInventoryCategory(newExpense.category) && expenseTitleSuggestions.length > 0 && (
                   <p className="text-emerald-600 text-xs md:text-sm font-bold ml-4 mt-1.5">
                     เลือกชื่อจากรายการแนะนำ เพื่อให้ชื่อวัตถุดิบตรงกับคลัง
                   </p>
@@ -568,7 +536,7 @@ export default function ExpensesView() {
                     }}
                     className={`w-full bg-[var(--bg-tertiary)] border rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner ${validationErrors.pricePerUnit ? 'border-red-300 bg-red-50' : 'border-[var(--border-color)]'}`}
                     aria-label="ราคาต่อหน่วย"
-                    readOnly={isStockCategory(newExpense.category) && Number(newExpense.quantity) > 0}
+                    readOnly={isInventoryCategory(newExpense.category) && Number(newExpense.quantity) > 0}
                   />
                   {validationErrors.pricePerUnit && (
                     <p className="text-red-500 text-xs md:text-sm font-bold ml-4 mt-1.5">{validationErrors.pricePerUnit}</p>
@@ -634,7 +602,7 @@ export default function ExpensesView() {
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
-                {isStockCategory(newExpense.category) && (
+                {isInventoryCategory(newExpense.category) && (
                   <div className="mt-3 p-3 md:p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 md:gap-3">
                     <div className="w-6 h-6 md:w-7 md:h-7 bg-emerald-500 rounded-full flex items-center justify-center shrink-0">
                       <span className="text-white text-sm md:text-base">✓</span>
