@@ -3,6 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { getFunctions } from 'firebase/functions';
 import {
   initializeFirestore,
+  memoryLocalCache,
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
@@ -45,7 +46,19 @@ export const functions = getFunctions(app, 'asia-southeast1');
 // degrade silently to memory cache — they do NOT throw here, so the customer QR
 // page can't white-screen. persistentMultipleTabManager keeps the cache
 // consistent when the POS is open in more than one tab.
+//
+// Customer routes (/order, /member) MUST stay out of that shared cache. Multi-tab
+// mode funnels every tab's listeners through ONE primary tab's connection, sent
+// with that tab's auth token. Staff sign in per tab (session persistence) while
+// customers are anonymous, so a customer tab open on the POS machine becomes the
+// primary and the staff tab's orders/stock listeners go out as anonymous — which
+// firestore.rules now rejects ("ไม่มีสิทธิ์เข้าถึงข้อมูล", new QR orders never
+// show up). The customer page reads the menu once, so memory cache costs nothing.
+const pathname = (typeof window !== 'undefined' ? window.location.pathname : '/').replace(/\/+$/, '') || '/';
+const isCustomerRoute = pathname === '/order' || pathname === '/member';
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  localCache: isCustomerRoute
+    ? memoryLocalCache()
+    : persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 });
 export const appId = 'siwara-pos-v1';
