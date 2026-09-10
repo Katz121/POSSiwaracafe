@@ -92,3 +92,50 @@ describe('trusted checkout pricing', () => {
     })).toThrow('points-not-eligible');
   });
 });
+
+describe('การรวมสูตรเมนูกับตัวเลือก', () => {
+  const beanMenu = new Map([
+    ['americano', { id: 'americano', name: 'อเมริกาโน่', category: 'กาแฟ', price: 60,
+      available: true, allowBeanModifier: true, modifierGroups: ['เมล็ดกาแฟ'],
+      stockLinks: [{ stockId: 'bean', usage: 20 }, { stockId: 'cup', usage: 1 }] }],
+  ]);
+  const darkRoast = new Map([
+    ['dark', { id: 'dark', name: 'คั่วเข้ม', group: 'เมล็ดกาแฟ', price: 60, available: true,
+      stockLinks: [{ stockId: 'bean', usage: 18 }] }],
+  ]);
+
+  it('สต็อกตัวเดียวกันต้องบวกกัน ไม่ใช่ทับกัน (เมนู 20 + ตัวเลือก 18 = 38)', () => {
+    const result = buildTrustedCheckout({
+      requestedItems: [{ id: 'americano', quantity: 1, modifierIds: ['dark'], sweetness: 100, milkType: null }],
+      menuById: beanMenu,
+      modifiersById: darkRoast,
+      settings: baseSettings,
+    });
+    const bean = result.items[0].stockLinks.find((l) => l.stockId === 'bean');
+    expect(bean.usage).toBe(38);
+  });
+
+  it('สต็อกคนละตัวต้องอยู่ครบ ไม่ถูกกลืนหาย', () => {
+    const result = buildTrustedCheckout({
+      requestedItems: [{ id: 'americano', quantity: 1, modifierIds: ['dark'], sweetness: 100, milkType: null }],
+      menuById: beanMenu,
+      modifiersById: darkRoast,
+      settings: baseSettings,
+    });
+    expect(result.items[0].stockLinks.map((l) => l.stockId).sort()).toEqual(['bean', 'cup']);
+    expect(result.items[0].stockLinks.find((l) => l.stockId === 'cup').usage).toBe(1);
+  });
+
+  it('ปริมาณที่เก็บเป็นสตริงต้องบวกได้ ไม่ใช่ต่อสตริง', () => {
+    const stringUsage = new Map([
+      ['dark', { ...darkRoast.get('dark'), stockLinks: [{ stockId: 'bean', usage: '18' }] }],
+    ]);
+    const result = buildTrustedCheckout({
+      requestedItems: [{ id: 'americano', quantity: 1, modifierIds: ['dark'], sweetness: 100, milkType: null }],
+      menuById: beanMenu,
+      modifiersById: stringUsage,
+      settings: baseSettings,
+    });
+    expect(result.items[0].stockLinks.find((l) => l.stockId === 'bean').usage).toBe(38);
+  });
+});

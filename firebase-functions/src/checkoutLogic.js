@@ -64,15 +64,26 @@ function computeModifierPrice(item, modifiers) {
   return roundUpTo5(total);
 }
 
+/**
+ * รวมสูตรของเมนูกับสูตรของตัวเลือกที่ลูกค้าเลือก
+ *
+ * **ต้องบวกที่ `usage` ไม่ใช่ `quantity`** · ของเดิมบวก `quantity` ซึ่งเป็นฟิลด์ที่
+ * ไม่มีอยู่ในลิงก์ เวลาที่เมนูกับตัวเลือกผูกสต็อกตัวเดียวกัน ปริมาณของตัวเลือกจึง
+ * หายไปเงียบๆ เมนูผูกเมล็ด 20 กรัม ตัวเลือกอีก 18 กรัม ควรได้ 38 แต่ได้ 20
+ * ทำให้ทั้งต้นทุนที่บันทึกและปริมาณที่ตัดออกจากสต็อกผิดพร้อมกัน
+ *
+ * ตรรกะนี้ต้องตรงกับ `src/utils/stockLinks.js` ฝั่งแอปเสมอ · แยกไฟล์กันเพราะ
+ * functions เป็นคนละแพ็กเกจ ถ้าแก้ที่หนึ่งต้องแก้อีกที่ด้วย
+ */
 function mergeStockLinks(itemLinks = [], modifierLinks = []) {
   const links = new Map();
   [...itemLinks, ...modifierLinks].forEach((link) => {
-    const key = link?.stockId || link?.id || link?.name;
+    const key = link?.stockId;
     if (!key) return;
     const previous = links.get(key);
     links.set(key, previous
-      ? { ...previous, quantity: number(previous.quantity) + number(link.quantity) }
-      : { ...link });
+      ? { ...previous, usage: previous.usage + number(link.usage) }
+      : { ...link, stockId: key, usage: number(link.usage) });
   });
   return [...links.values()];
 }
