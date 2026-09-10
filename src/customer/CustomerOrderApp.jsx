@@ -1400,25 +1400,32 @@ function CustomerOrderApp() {
       // No bundle and nothing cached — fall back to the 4 sources once so the
       // page still works (bundle not published yet, or the read above failed).
       try {
-        const [menuSnap, catsSnap, beansSnap, settingsSnap] = await Promise.all([
+        const [menuSnap, catsSnap, beansSnap] = await Promise.all([
           getDocs(collection(db, ...base, 'menu')),
           getDocs(collection(db, ...base, 'categories')),
           getDocs(collection(db, ...base, 'beanModifiers')),
-          getDoc(doc(db, ...base, 'config', 'settings')),
         ]);
         if (isStale()) return;
         setMenu(menuSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setCategories(catsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setBeanModifiers(beansSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        // Strip admin-only secrets (adminPin, geminiApiKey, startingCash) before
-        // they touch customer state — the published bundle already strips these,
-        // but this raw-doc fallback must too, otherwise a customer device would
-        // read AND (with offline persistence) cache the admin PIN to disk.
-        let settingsRaw = settingsSnap.exists() ? { ...settingsSnap.data() } : {};
+      } catch {
+        // Both paths failed — keep whatever defaults we have so the page renders.
+      }
+
+      // `config/settings` เปิดให้เฉพาะพนักงานอ่าน (มี adminPin กับ geminiApiKey อยู่)
+      // ลูกค้าจะถูกปฏิเสธเป็นปกติ จึงต้องอ่านแยกและกลืน error เอง
+      // ถ้าเอาไปรวมใน Promise.all ข้างบน การถูกปฏิเสธจะลากให้เมนูหายทั้งหน้า
+      // ค่าที่ลูกค้าต้องใช้อยู่ใน config/publicMenu อยู่แล้ว ทางนี้เป็นแค่ตาข่ายรอง
+      // สำหรับกรณีที่ยังไม่เคยเผยแพร่ bundle
+      try {
+        const settingsSnap = await getDoc(doc(db, ...base, 'config', 'settings'));
+        if (isStale()) return;
+        const settingsRaw = settingsSnap.exists() ? { ...settingsSnap.data() } : {};
         for (const key of SENSITIVE_SETTINGS_KEYS) delete settingsRaw[key];
         applySettings(settingsRaw);
       } catch {
-        // Both paths failed — keep whatever defaults we have so the page renders.
+        // ลูกค้าอ่านไม่ได้ตามที่ตั้งใจ · ใช้ค่าเริ่มต้นต่อไป เมนูยังสั่งได้
       }
     }
     if (!isStale()) setLoading(false);
@@ -1798,9 +1805,6 @@ function CustomerOrderApp() {
             phone: customerPhone.trim(),
             cart,
             totals,
-            usePoints,
-            member,
-            redeemPointsThreshold,
             vatIncluded: !!settings.vatEnabled,
             promotionTitle: comboDiscount > 0
               ? COMBO_PROMO_TITLE

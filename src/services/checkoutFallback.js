@@ -11,12 +11,13 @@
  * เฉพาะตอน callable ล่มจริงเท่านั้น (ดู `isBackendDown`) และทุกออเดอร์ที่ผ่านทางนี้
  * ถูกปั๊ม `trustedCheckout: false` ไว้ให้ร้านตรวจย้อนหลังได้
  *
- * firestore.rules อนุญาตอยู่แล้ว: `config/queue` เปิดให้ลูกค้า read+write เพื่อกดคิว
- * ในทรานแซกชัน และ `orders/{id}` เปิดให้ create ได้ถ้า status เป็น pending
+ * firestore.rules อนุญาตเส้นทางนี้ไว้พอดี: `config/queue` เปิดให้ลูกค้า read+write
+ * เพื่อกดคิวในทรานแซกชัน และ `orders/{id}` เปิดให้ create ได้ถ้า status เป็น pending
+ * แต่ **ห้ามแตะ `members`** เพราะเปิดให้เฉพาะพนักงานเขียน (ดูเหตุผลในทรานแซกชัน)
  */
 
 import {
-  collection, doc, getCountFromServer, increment, query, runTransaction, where,
+  collection, doc, getCountFromServer, query, runTransaction, where,
 } from 'firebase/firestore';
 import { notifyNewOrderToLine } from './lineNotify';
 
@@ -61,9 +62,6 @@ export async function submitCheckoutDirect(db, appId, {
   phone = '',
   cart,
   totals,
-  usePoints = false,
-  member = null,
-  redeemPointsThreshold = 100,
   vatIncluded = false,
   promotionTitle = '',
   promotionDiscountPercent = 0,
@@ -72,14 +70,9 @@ export async function submitCheckoutDirect(db, appId, {
   const queueRef = doc(db, ...base, 'config', 'queue');
   // id คงที่ต่อ requestId → กดส่งซ้ำจะไม่เกิดออเดอร์ซ้ำ
   const orderRef = doc(db, ...base, 'orders', `qr_${uid}_${requestId}`.slice(0, 120));
-  const memberRef = phone ? doc(db, ...base, 'members', phone) : null;
 
   const now = new Date();
   const total = Number(totals.total) || 0;
-  const redeemDeduct = usePoints && member && Number(member.points || 0) >= redeemPointsThreshold
-    ? redeemPointsThreshold
-    : 0;
-  const pointsToAdd = Math.floor(total / 10);
 
   const orderTime = bangkokTime(now);
 
@@ -118,17 +111,11 @@ export async function submitCheckoutDirect(db, appId, {
     });
     transaction.set(queueRef, { current: nextQueue + 1 }, { merge: true });
 
-    if (memberRef) {
-      const memberPayload = {
-        name: customerName,
-        phone,
-        lastOrderAt: now,
-        pendingReason: 'order',
-      };
-      if (pointsToAdd > 0) memberPayload.pendingPoints = increment(pointsToAdd);
-      if (redeemDeduct > 0) memberPayload.points = increment(-redeemDeduct);
-      transaction.set(memberRef, memberPayload, { merge: true });
-    }
+    // **จงใจไม่แตะเอกสารสมาชิกในเส้นทางนี้**
+    // firestore.rules เปิดให้เฉพาะพนักงานเขียน `members` เพราะถ้าลูกค้าเขียนได้
+    // ใครก็แก้แต้มตัวเองได้ · ถ้าเผลอเขียนตรงนี้ ทรานแซกชันจะถูกปฏิเสธทั้งก้อน
+    // แล้ว **ออเดอร์หายไปเลย** ซึ่งแย่กว่าการที่แต้มของบิลฉุกเฉินไม่ถูกบันทึก
+    // แต้มบิลนี้ให้ร้านมาปรับให้ทีหลังจากหน้าสมาชิก
 
     return nextQueue;
   });

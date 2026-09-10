@@ -4,13 +4,13 @@ import {
   ChevronDown, ChevronUp, Star, Eye, EyeOff, Edit, PackagePlus,
   Coffee, Link2, Plus, Upload, TrendingUp, Store, AlertTriangle, FolderCog, Clock, Languages
 } from 'lucide-react';
-import { doc, collection, addDoc, updateDoc, deleteDoc, writeBatch, increment, serverTimestamp } from 'firebase/firestore';
-import { computeMenuWaste, buildWasteExpenseTitle } from '../../utils/wastage';
+import { doc, collection, addDoc, updateDoc, deleteDoc, writeBatch, increment, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { computeMenuWaste, buildWasteExpenseTitle, usageFromPortions } from '../../utils/wastage';
 import { StockUsageInput } from '../ui';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate, compressImage } from '../../utils/calculations';
-import { getModifierGroups, STOCK_CATEGORIES, getStockCategory } from '../../config/constants';
+import { getModifierGroups, STOCK_CATEGORIES, getStockCategory, DEFAULT_STOCK_UNIT, DEFAULT_MIN_QUANTITY } from '../../config/constants';
 import { generateMenuImage } from '../../services/aiService';
 import { uploadImageToR2, isBase64Image } from '../../services/imageUpload';
 import { Badge, Button, Modal, Input, Select, EmptyState, useToast, ConfirmModal, InputModal, Skeleton, SearchSelect } from '../ui';
@@ -92,6 +92,51 @@ export default function MenuManageView() {
   const [wasteQuantity, setWasteQuantity] = useState('');
   const [savingWaste, setSavingWaste] = useState(false);
   const wasteLock = useRef(false);
+  const [cakeMenuId, setCakeMenuId] = useState(null);
+  const [cakeStock, setCakeStock] = useState({ name: '', unit: 'ก้อน', quantity: '0', unitCost: '', portions: '8' });
+  const [savingCakeStock, setSavingCakeStock] = useState(false);
+  const cakeStockLock = useRef(false);
+  const cakeMenu = menu.find(item => item.id === cakeMenuId);
+  const cakeUnit = cakeStock.unit.trim() || DEFAULT_STOCK_UNIT;
+  const cakeCost = Number(cakeStock.unitCost);
+  const cakePortions = Number(cakeStock.portions);
+  const validCakeCost = Number.isFinite(cakeCost) && cakeCost > 0;
+  const validCakePortions = Number.isSafeInteger(cakePortions) && cakePortions > 0;
+  const validCakeQuantity = Number.isFinite(Number(cakeStock.quantity)) && Number(cakeStock.quantity) >= 0;
+  const cakeUsage = validCakePortions ? usageFromPortions(cakePortions) : 0;
+  const validCakeStock = Boolean(cakeMenu && cakeStock.name.trim() && validCakeCost && validCakePortions && validCakeQuantity);
+  const duplicateCakeStock = stock.some(item => String(item.name).trim().toLocaleLowerCase('th-TH') === cakeStock.name.trim().toLocaleLowerCase('th-TH'));
+  const confirmCakeStock = async event => {
+    event.preventDefault();
+    // ใช้ ref เพราะการกดซ้ำอาจเกิดก่อน React อัปเดตสถานะปุ่ม
+    if (cakeStockLock.current || !validCakeStock) return;
+    cakeStockLock.current = true;
+    setSavingCakeStock(true);
+    try {
+      await runDbAction(async () => {
+        const stockRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'stock'));
+        const link = { stockId: stockRef.id, usage: cakeUsage };
+        // บันทึกพร้อมกันเพื่อไม่ให้เหลือสต็อกลอยเมื่อผูกเมนูไม่สำเร็จ
+        const batch = writeBatch(db);
+        batch.set(stockRef, {
+          name: cakeStock.name.trim(), quantity: Number(cakeStock.quantity), unit: cakeUnit,
+          minQuantity: DEFAULT_MIN_QUANTITY, unitCost: cakeCost, category: 'วัตถุดิบเบเกอรี่'
+        });
+        // ต่อท้ายบนฐานข้อมูลเพื่อรักษาลิงก์ที่อาจถูกเพิ่มจากเครื่องอื่นระหว่างเปิดฟอร์ม
+        batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'menu', cakeMenu.id), { stockLinks: arrayUnion(link) });
+        await batch.commit();
+        // ฟอร์มแก้ไขต้องเก็บลิงก์ใหม่ด้วย เพื่อไม่ให้การบันทึกครั้งถัดไปลบทิ้ง
+        const appendLink = item => item?.id === cakeMenu.id ? { ...item, stockLinks: [...(item.stockLinks || []), link] } : item;
+        setNewItem(appendLink);
+        setEditingItem(appendLink);
+        setCakeMenuId(null);
+        toast.success('สร้างสต็อกและผูกเมนูแล้ว · ไปเพิ่มจำนวนก้อนได้ที่หน้าคลังพัสดุ');
+      }, 'สร้างสต็อกและผูกเมนูไม่สำเร็จ');
+    } finally {
+      cakeStockLock.current = false;
+      setSavingCakeStock(false);
+    }
+  };
   const editorRef = useRef(null);
   const [stockFilter, setStockFilter] = useState('all');
   const stockById = useMemo(() => new Map(stock.map(item => [item.id, item])), [stock]);
@@ -993,7 +1038,12 @@ ${withDescription
                         })()}
                       </div>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-3">
+                      {!i.stockLinks?.length && <Button type="button" className="min-h-11" onClick={e => {
+                        e.stopPropagation();
+                        setCakeStock({ name: `${i.name} (ก้อน)`, unit: 'ก้อน', quantity: '0', unitCost: '', portions: '8' });
+                        setCakeMenuId(i.id);
+                      }}><PackagePlus size={20} /> สร้างสต็อกก้อน</Button>}
                       <Button type="button" title="บันทึกของเสีย" aria-label="บันทึกของเสีย" onClick={e => { e.stopPropagation(); setWasteMenuId(i.id); setWasteQuantity(''); }}><PackageX size={20} /> บันทึกของเสีย</Button>
                       <button onClick={() => toggleExcludeFromSale(i)} title={i.excludeFromSale ? 'ยกเว้นลด Happy Hour (กดเพื่อให้ร่วมลด)' : 'ร่วมลด Happy Hour (กดเพื่อยกเว้น เช่น เค้กใหม่)'} className={`p-4 rounded-2xl transition-all shadow-sm active:scale-90 ${i.excludeFromSale ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border border-[var(--border-color)]'}`}><Clock size={22} /></button>
                       <button onClick={() => toggleAvailability(i)} className={`p-4 rounded-2xl transition-all shadow-sm active:scale-90 ${i.available !== false ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border border-[var(--border-color)]'}`}>{i.available !== false ? <Eye size={22} /> : <EyeOff size={22} />}</button>
@@ -1456,6 +1506,22 @@ Return [] if no stock items match.`;
           {validWasteQuantity && waste.costed && <div aria-live="polite"><p>มูลค่าของเสีย ฿{waste.cost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p><p>จะตัดสต็อก:</p>{Object.entries(waste.usageByStock).map(([id, used]) => <p key={id}>{stockById.get(id)?.name} {used} {stockById.get(id)?.unit}</p>)}</div>}
           <Button disabled={!wasteMenu || !validWasteQuantity || !waste.costed || savingWaste} onClick={confirmWaste}>{savingWaste ? 'กำลังบันทึก...' : 'ยืนยันบันทึกของเสีย'}</Button>
         </div>
+      </Modal>
+      <Modal isOpen={cakeMenuId !== null} onClose={() => { if (!cakeStockLock.current) setCakeMenuId(null); }} title="สร้างสต็อกก้อน" size="md">
+        <form onSubmit={confirmCakeStock} className="space-y-4">
+          <p className="text-[var(--text-secondary)]">{cakeMenu?.name || 'เมนูนี้ถูกลบแล้ว'}</p>
+          <Input label="ชื่อสต็อก" required value={cakeStock.name} disabled={savingCakeStock} onChange={e => setCakeStock(prev => ({ ...prev, name: e.target.value }))} />
+          {duplicateCakeStock && <p role="alert" className="text-[var(--text-secondary)]">มีสต็อกชื่อนี้อยู่แล้ว · การยืนยันจะสร้างตัวใหม่ซ้ำชื่อ สามารถทำต่อได้หากต้องการแยกล็อต</p>}
+          <Input label="หน่วย" value={cakeStock.unit} placeholder={DEFAULT_STOCK_UNIT} hint={`หากเว้นว่างจะใช้หน่วย ${DEFAULT_STOCK_UNIT}`} disabled={savingCakeStock} onChange={e => setCakeStock(prev => ({ ...prev, unit: e.target.value }))} />
+          <Input label="จำนวนที่มีตอนนี้" type="number" min="0" step="any" value={cakeStock.quantity} hint="เว้นว่างได้ ระบบจะบันทึกเป็น 0" error={!validCakeQuantity ? 'จำนวนต้องเป็น 0 หรือมากกว่า' : undefined} disabled={savingCakeStock} onChange={e => setCakeStock(prev => ({ ...prev, quantity: e.target.value }))} />
+          <Input label="ต้นทุนต่อก้อน" required type="number" min="0" step="any" value={cakeStock.unitCost} hint="ต้องมากกว่า 0" error={cakeStock.unitCost !== '' && !validCakeCost ? 'ต้นทุนต้องมากกว่า 0' : undefined} disabled={savingCakeStock} onChange={e => setCakeStock(prev => ({ ...prev, unitCost: e.target.value }))} />
+          <Input label="1 ก้อนตัดได้กี่ชิ้น" required type="number" min="1" step="1" value={cakeStock.portions} error={!validCakePortions ? 'กรุณาระบุจำนวนเต็มมากกว่า 0' : undefined} disabled={savingCakeStock} onChange={e => setCakeStock(prev => ({ ...prev, portions: e.target.value }))} />
+          <div aria-live="polite" className="rounded-xl bg-[var(--bg-tertiary)] p-4 text-[var(--text-primary)]">
+            <p>ทุนต่อชิ้น = {validCakeCost && validCakePortions ? `฿${(cakeCost / cakePortions).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'กรอกต้นทุนและจำนวนชิ้นให้ครบ'}</p>
+            {validCakePortions && <p className="break-words">ระบบจะบันทึกเป็น usage = {cakeUsage} {cakeUnit}/ชิ้น</p>}
+          </div>
+          <Button type="submit" className="min-h-11 w-full" disabled={!validCakeStock || savingCakeStock}>{savingCakeStock ? 'กำลังบันทึก...' : 'ยืนยันสร้างสต็อกและผูกเมนู'}</Button>
+        </form>
       </Modal>
       {/* Delete Menu Confirm Modal */}
       <ConfirmModal

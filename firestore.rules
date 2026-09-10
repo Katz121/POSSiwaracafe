@@ -2,44 +2,22 @@
 // Siwara POS — Firestore Security Rules
 // =============================================================================
 //
-// SECURITY MODEL (read this before editing):
+// โมเดลความปลอดภัย (อ่านก่อนแก้)
 //
-//   Both staff (POS/admin UI) and customers (self-ordering at /order) sign in
-//   with Firebase Anonymous Auth. This means every browser tab that loads
-//   either app automatically gets a valid, anonymous Firebase token.
+//   พนักงานล็อกอินด้วย Email/Password (ดู `src/hooks/useStaffAuth.js`)
+//   ลูกค้าที่สแกน QR ล็อกอินแบบ Anonymous อัตโนมัติ
+//   สอง provider นี้แยกกันได้ที่ชั้น rules จึงใช้ `isStaff()` คุมสิทธิ์ได้จริง
 //
-//   CONSEQUENCE: at the Firestore rules layer, staff and customers are
-//   INDISTINGUISHABLE — both are `request.auth != null` with
-//   `request.auth.token.firebase.sign_in_provider == 'anonymous'`.
+//   ก่อนหน้านี้ rules ใช้ `request.auth != null` ทุกที่ ซึ่งแปลว่า **ลูกค้าที่
+//   สแกน QR มีสิทธิ์เท่าพนักงานทุกอย่าง** ตรวจแล้วพบว่าอ่าน `config/settings`
+//   ได้จริงและเห็นทั้ง `adminPin` กับ `geminiApiKey` รวมถึงลบเมนูทั้งร้าน
+//   แก้บิลคนอื่น และแก้แต้มสมาชิกได้
 //
-//   These rules therefore provide:
-//     ✓ Block unauthenticated / raw-HTTP access entirely (requires a token).
-//     ✓ Light validation on order creation (status, total, items fields).
-//     ✗ They do NOT cryptographically prevent a determined customer from
-//       writing to staff-only collections, because the anonymous token is
-//       issued to anyone who loads the page.
-//
-//   TO UPGRADE to true staff/customer separation later:
-//     1. Migrate staff login to Firebase Email/Password auth.
-//     2. Uncomment the STAFF-ONLY example rules below.
-//     3. Remove the blanket `request.auth != null` write grants from
-//        staff-only collections (stock, expenses, members, etc.).
-//
-// =============================================================================
-//
-// STAFF-ONLY write example (uncomment after migrating staff to email/password):
-//
-//   function isStaff() {
-//     return request.auth != null &&
-//            request.auth.token.firebase.sign_in_provider == 'password';
-//   }
-//
-//   // Then replace `request.auth != null` with `isStaff()` for any rule
-//   // that should be restricted to authenticated staff only.  Example:
-//   //
-//   //   match /expenses/{id} {
-//   //     allow read, write: if isStaff();
-//   //   }
+// หลักที่ใช้
+//   • ลูกค้าอ่านได้เฉพาะสิ่งที่ต้องใช้สั่งของ และเขียนได้เฉพาะทางที่จำเป็น
+//   • ข้อมูลภายในร้าน (สต็อก รายจ่าย สมาชิก การตั้งค่า บิลเก่า) พนักงานเท่านั้น
+//   • เส้นทางสำรองตอน Cloud Function ล่ม (ดู `src/services/checkoutFallback.js`)
+//     ต้องยังทำงานได้ ไม่งั้นปิดช่องโหว่แล้วลูกค้าสั่งของไม่ได้
 //
 // =============================================================================
 
@@ -48,86 +26,109 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Deny everything by default ──────────────────────────────────────────
+    // พนักงาน = ล็อกอินด้วยรหัสผ่าน · ลูกค้า QR = anonymous จึงไม่เข้าเงื่อนไขนี้
+    function isStaff() {
+      return request.auth != null
+             && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // ── ปิดทุกอย่างเป็นค่าเริ่มต้น ──────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // ── App data namespace ───────────────────────────────────────────────────
     match /artifacts/{appId}/public/data {
 
-      // ── Menu & catalogue (customers + staff need to read) ────────────────
+      // ── เมนูและแคตตาล็อก ────────────────────────────────────────────────
+      // ลูกค้าต้องอ่านได้เพื่อสั่งของ (และเป็นทางสำรองเมื่อ publicMenu หาย)
+      // แต่แก้ไขได้เฉพาะพนักงาน · ยกเว้น soldCount ที่หน้าลูกค้าบวกเองหลังสั่ง
+      // สำเร็จ (ดู `src/utils/menuSales.js`) จึงอนุญาตเฉพาะฟิลด์นั้นฟิลด์เดียว
       match /menu/{id} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null;
+        allow read: if signedIn();
+        allow write: if isStaff();
+        allow update: if signedIn()
+                      && request.resource.data.diff(resource.data)
+                           .affectedKeys().hasOnly(['soldCount']);
       }
 
       match /categories/{id} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null;
+        allow read: if signedIn();
+        allow write: if isStaff();
       }
 
       match /beanModifiers/{id} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null;
+        allow read: if signedIn();
+        allow write: if isStaff();
       }
 
-      // ── Config docs ──────────────────────────────────────────────────────
-      // config/settings — staff read+write; customers read (for display config)
+      // ── เอกสารตั้งค่า ────────────────────────────────────────────────────
+      // config/settings เก็บ adminPin กับ geminiApiKey จึงเป็นของพนักงานล้วน
+      // ลูกค้าใช้ config/publicMenu ที่มี settings ชุดปลอดภัยฝังมาให้แล้ว
+      // (ดู SENSITIVE_SETTINGS_KEYS ใน `src/utils/publicMenu.js`)
       match /config/settings {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null;
+        allow read, write: if isStaff();
       }
 
-      // config/publicMenu — staff (POS) publishes a single bundled snapshot of
-      // menu+categories+beanModifiers+settings; customers read this ONE doc
-      // instead of subscribing to the four source collections (cuts reads).
+      // publicMenu = สแนปช็อตรวม menu + categories + beanModifiers + settings
+      // ที่ตัดฟิลด์อ่อนไหวออกแล้ว · ลูกค้าอ่านได้ พนักงานเป็นคนเผยแพร่
       match /config/publicMenu {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null;
+        allow read: if signedIn();
+        allow write: if isStaff();
       }
 
-      // config/queue — both staff and customers read+write
-      // (customer self-order increments the queue counter in a transaction)
+      // config/queue — ลูกค้าต้องกดคิวเองได้ในเส้นทางสำรองตอน Cloud Function ล่ม
+      // เสี่ยงแค่เลขคิวเพี้ยน ซึ่งแก้ตามหลังได้ ต่างจากการปล่อยให้แก้เมนูหรือบิล
       match /config/queue {
-        allow read, write: if request.auth != null;
+        allow read, write: if signedIn();
       }
 
-      // ── Orders ────────────────────────────────────────────────────────────
-      // Any authenticated user (staff or customer) may CREATE an order,
-      // subject to light validation:
-      //   • status must be 'pending'  (not 'done' / 'cancelled' at creation)
-      //   • total must be a number ≥ 0
-      //   • items must be a list
+      // ── บิล ──────────────────────────────────────────────────────────────
+      // ลูกค้าสร้างบิลของตัวเองได้ (เส้นทางสำรอง) โดยต้องผ่านการตรวจเบื้องต้น
+      // แต่ **อ่านบิลคนอื่นไม่ได้** เพราะบิลมีชื่อและเบอร์โทรลูกค้าอยู่
+      // และแก้หรือลบบิลไม่ได้เลย ไม่งั้นตรวจตอนสร้างไปก็ไร้ความหมาย
       match /orders/{id} {
-        allow create: if request.auth != null
+        allow create: if signedIn()
                       && request.resource.data.status == 'pending'
                       && request.resource.data.total is number
                       && request.resource.data.total >= 0
                       && request.resource.data.items is list;
 
-        // Staff read, update (status changes), delete (cancel/void)
-        allow read, update, delete: if request.auth != null;
+        allow read, update, delete: if isStaff();
       }
 
-      // ── Staff-managed collections ─────────────────────────────────────────
-      // Note: guarded only by token presence today.
-      // Replace `request.auth != null` with `isStaff()` after email/password migration.
-
+      // ── ข้อมูลภายในร้าน · พนักงานเท่านั้น ────────────────────────────────
       match /stock/{id} {
-        allow read, write: if request.auth != null;
+        allow read, write: if isStaff();
       }
 
       match /expenses/{id} {
-        allow read, write: if request.auth != null;
+        allow read, write: if isStaff();
       }
 
+      // สมาชิกมีเบอร์โทรและประวัติการซื้อ · ลูกค้าเปิดดูบัตรของตัวเองได้ด้วย
+      // การรู้เบอร์ตัวเอง (get) แต่ห้ามไล่อ่านทั้งตาราง (list) และห้ามแก้แต้ม
       match /members/{id} {
-        allow read, write: if request.auth != null;
+        allow get: if signedIn();
+        allow list, write: if isStaff();
       }
 
       match /quickExpenses/{id} {
-        allow read, write: if request.auth != null;
+        allow read, write: if isStaff();
+      }
+
+      // เอกสารกันส่งซ้ำของ Cloud Function · ตัว function ใช้ Admin SDK จึงข้าม
+      // rules อยู่แล้ว · เปิดให้พนักงานอ่าน/ลบไว้เผื่อต้องตามเก็บกวาด
+      // ลูกค้าไม่ควรเห็น เพราะ id มี uid ของลูกค้าคนอื่นอยู่
+      match /checkoutRequests/{id} {
+        allow read, write: if isStaff();
+      }
+
+      match /financial_plans/{id} {
+        allow read, write: if isStaff();
       }
     }
   }
