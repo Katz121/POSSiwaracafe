@@ -351,15 +351,20 @@ html.dark {
 /* ============================================================
    TOUCH TARGETS
    ============================================================ */
-@media (hover: none) and (pointer: coarse) {
-  button, a, input, select {
-    min-height: 44px;
-  }
-  button {
-    position: relative;
-  }
-  .overflow-y-auto, .overflow-x-auto {
-    -webkit-overflow-scrolling: touch;
+/* In @layer base so Tailwind utilities (absolute/fixed/sticky, min-h-*) still win.
+   Unlayered, `position: relative` overrode every positioned button on iPad/phones
+   (new-order bell, sticky headers, floating cart, close buttons). */
+@layer base {
+  @media (hover: none) and (pointer: coarse) {
+    button, a, input, select {
+      min-height: 44px;
+    }
+    button {
+      position: relative;
+    }
+    .overflow-y-auto, .overflow-x-auto {
+      -webkit-overflow-scrolling: touch;
+    }
   }
 }
 
