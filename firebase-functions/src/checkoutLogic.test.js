@@ -139,3 +139,25 @@ describe('การรวมสูตรเมนูกับตัวเลื�
     expect(result.items[0].stockLinks.find((l) => l.stockId === 'bean').usage).toBe(38);
   });
 });
+
+describe('per-item sweetness toggle (sweetnessChoice)', () => {
+  const bottled = { id: 'poh', name: 'โพ้ สปาร์กลิงที', category: 'Italian Soda', price: 159, available: true, stockLinks: [], sweetnessChoice: false };
+  const sweetCake = { id: 'sweetcake', name: 'บิงซู', category: 'เค้ก', price: 90, available: true, stockLinks: [], sweetnessChoice: true };
+  const menuWithToggles = new Map([...menu, ['poh', bottled], ['sweetcake', sweetCake]]);
+  const run = (items) => buildTrustedCheckout({ requestedItems: items, menuById: menuWithToggles, modifiersById: noModifiers, settings: baseSettings });
+
+  it('accepts a drink with sweetness switched off and no sweetness sent', () => {
+    expect(run([{ id: 'poh', quantity: 1, sweetness: null, milkType: null }]).total).toBe(159);
+  });
+  it('rejects a sweetness value on an item that has sweetness switched off', () => {
+    expect(() => run([{ id: 'poh', quantity: 1, sweetness: 50, milkType: null }])).toThrow('invalid-sweetness');
+  });
+  it('requires a sweetness level on a cake-category item switched on', () => {
+    expect(run([{ id: 'sweetcake', quantity: 1, sweetness: 50, milkType: null }]).total).toBe(90);
+    expect(() => run([{ id: 'sweetcake', quantity: 1, sweetness: null, milkType: null }])).toThrow('invalid-sweetness');
+  });
+  it('keeps the old default for menus without the toggle', () => {
+    expect(() => run([{ id: 'latte', quantity: 1, sweetness: null, milkType: 'cow' }])).toThrow('invalid-sweetness');
+    expect(run([{ id: 'cake', quantity: 1, sweetness: null, milkType: null }]).total).toBe(100);
+  });
+});

@@ -28,6 +28,14 @@ export function isCakeCategory(category, settings) {
   return Array.isArray(categories) && categories.map(norm).includes(norm(category));
 }
 
+// Mirrors supportsSweetnessChoice in src/utils/promotions.js: the per-item
+// `sweetnessChoice` toggle wins (bottled drinks / snacks turn it off); menus saved
+// before the toggle keep the old rule (drinks yes, cake categories no).
+export function supportsSweetnessChoice(item, settings) {
+  if (typeof item?.sweetnessChoice === 'boolean') return item.sweetnessChoice;
+  return !isCakeCategory(item?.category, settings);
+}
+
 export function isCakeSaleActive(settings, now = new Date()) {
   if (!settings?.cakeSaleEnabled || number(settings.cakeSalePercent) <= 0) return false;
   const start = toMinutes(settings.cakeSaleStart);
@@ -145,9 +153,9 @@ export function buildTrustedCheckout({
       throw new Error('invalid-modifiers');
     }
 
-    const isCake = isCakeCategory(item.category, settings);
+    const askSweetness = supportsSweetnessChoice(item, settings);
     const sweetness = requested.sweetness == null ? null : Number(requested.sweetness);
-    if ((!isCake && !SWEETNESS_LEVELS.has(sweetness)) || (isCake && sweetness != null)) {
+    if ((askSweetness && !SWEETNESS_LEVELS.has(sweetness)) || (!askSweetness && sweetness != null)) {
       throw new Error('invalid-sweetness');
     }
     const milkType = requested.milkType || null;
