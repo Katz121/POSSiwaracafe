@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   PackageX, ClipboardList, RefreshCcw, Zap, CheckCircle2, Trash2,
   ChevronDown, ChevronUp, Star, Eye, EyeOff, Edit, PackagePlus,
-  Coffee, Link2, Plus, Upload, TrendingUp, Store, AlertTriangle, FolderCog, Clock, Languages
+  Coffee, Link2, Plus, Upload, TrendingUp, Store, AlertTriangle, FolderCog, Clock, Languages,
+  Candy, ImagePlus
 } from 'lucide-react';
 import { doc, collection, addDoc, updateDoc, deleteDoc, writeBatch, increment, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { computeMenuWaste, buildWasteExpenseTitle, usageFromPortions } from '../../utils/wastage';
@@ -13,6 +14,7 @@ import { getISODate, getOrderDate, compressImage } from '../../utils/calculation
 import { getModifierGroups, STOCK_CATEGORIES, getStockCategory, DEFAULT_STOCK_UNIT, DEFAULT_MIN_QUANTITY } from '../../config/constants';
 import { generateMenuImage } from '../../services/aiService';
 import { uploadImageToR2, isBase64Image } from '../../services/imageUpload';
+import { supportsSweetnessChoice } from '../../utils/promotions';
 import { Badge, Button, Modal, Input, Select, EmptyState, useToast, ConfirmModal, InputModal, Skeleton, SearchSelect } from '../ui';
 
 export default function MenuManageView() {
@@ -28,7 +30,8 @@ export default function MenuManageView() {
     runDbAction,
     callGeminiAPI,
     activePromotion,
-    setActivePromotion
+    setActivePromotion,
+    cakeSaleCategories
   } = useAppContext();
 
   const stockLinkGroups = useMemo(() => {
@@ -54,6 +57,7 @@ export default function MenuManageView() {
   const [editingItem, setEditingItem] = useState(null);
   const candidates = menu.filter(m => m.id !== editingItem?.id && m.stockLinks?.length > 0 && m.category === newItem.category);
   const [isUploading, setIsUploading] = useState(false);
+  const [isUploadingPoster, setIsUploadingPoster] = useState(false);
   const [isSuggestingStock, setIsSuggestingStock] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isMagicWriting, setIsMagicWriting] = useState(false);
@@ -409,6 +413,29 @@ export default function MenuManageView() {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  // Story poster (optional) — shown full-screen when a customer taps the menu on
+  // the QR page. Kept big enough to read its copy on a phone, so it MUST live on
+  // R2: a ~1080px base64 JPEG would blow the 1 MiB publicMenu bundle.
+  const handlePosterUpload = (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setIsUploadingPoster(true);
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
+        const compressed = await compressImage(reader.result, 1080, 1620, 0.85);
+        const posterImage = await uploadImageToR2(compressed);
+        setNewItem((prev) => ({ ...prev, posterImage }));
+      } catch (err) {
+        toast.error(err.message || 'อัปโหลดโปสเตอร์ไม่สำเร็จ');
+      } finally {
+        setIsUploadingPoster(false);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   // One-time migration: move existing inline base64 menu images to R2. Until this
@@ -1144,6 +1171,30 @@ ${withDescription
               </button>
             </div>
 
+            {/* Sweetness choice Toggle — off for bottled drinks / snacks. Shows the
+                effective value, so older menus without the flag display the old
+                default (drinks on, cake categories off) until saved. */}
+            {(() => {
+              const askSweetness = supportsSweetnessChoice(newItem, { cakeSaleCategories });
+              return (
+                <div className="flex items-center justify-between bg-orange-50/50 p-4 rounded-[var(--radius)] border border-orange-100">
+                  <div className="flex items-center gap-3">
+                    <Candy size={20} className="text-orange-500" />
+                    <span className="text-sm font-semibold text-[var(--text-primary)]">ให้เลือกระดับความหวาน</span>
+                    <span className="text-xs font-bold text-[var(--text-muted)]">(หน้าร้าน + QR)</span>
+                  </div>
+                  <button
+                    type="button"
+                    aria-pressed={askSweetness}
+                    onClick={() => setNewItem({ ...newItem, sweetnessChoice: !askSweetness })}
+                    className={`relative w-14 h-8 rounded-full transition-all ${askSweetness ? 'bg-orange-500' : 'bg-[var(--bg-tertiary)]'}`}
+                  >
+                    <div className={`absolute top-1 w-6 h-6 bg-[var(--bg-secondary)] rounded-full shadow-md transition-all ${askSweetness ? 'right-1' : 'left-1'}`}></div>
+                  </button>
+                </div>
+              );
+            })()}
+
             {/* Bean special add-on price (only when bean selection is on) */}
             {newItem.allowBeanModifier && (
               <div className="bg-amber-50/30 p-4 rounded-[var(--radius)] border border-amber-100">
@@ -1458,6 +1509,30 @@ Return [] if no stock items match.`;
                   >
                     {isGeneratingImage ? '✨ กำลังสร้างรูป...' : '✨ AI เจนรูปเมนู'}
                   </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Story poster (optional) — customer taps the menu on QR → full-screen */}
+            <div>
+              <label className="text-xs font-medium text-[var(--text-muted)]  tracking-[0.2em] block mb-2 ml-3 leading-none">โปสเตอร์เรื่องราว (ไม่บังคับ)</label>
+              <p className="text-xs text-[var(--text-muted)] mb-4 ml-3">ลูกค้าแตะเมนูในหน้า QR แล้วเห็นโปสเตอร์เต็มจอก่อนกดเพิ่มลงตะกร้า · ใช้ภาพแนวตั้ง</p>
+              <div className="flex items-center gap-8 text-[var(--text-primary)]">
+                <div className="w-28 lg:w-32 aspect-[2/3] bg-[var(--bg-secondary)] rounded-[var(--radius)] border-4 border-dashed border-[var(--border-color)] flex items-center justify-center overflow-hidden shadow-inner relative shrink-0">
+                  {isUploadingPoster && <div className="absolute inset-0 bg-[var(--bg-secondary)]/80 flex items-center justify-center z-[var(--z-nav)] text-emerald-500 leading-none"><RefreshCcw className="animate-spin" size={32} /></div>}
+                  {newItem.posterImage ? <img src={newItem.posterImage} className="w-full h-full object-cover" /> : <ImagePlus className="text-[var(--text-muted)]" size={32} />}
+                </div>
+                <div className="flex-1 flex flex-col gap-3">
+                  <label className="bg-emerald-50 text-emerald-600 px-6 py-6 rounded-[var(--radius)] text-center text-[12px] font-semibold cursor-pointer hover:bg-emerald-100 transition-all  tracking-[0.2em] border-2 border-emerald-100 shadow-sm active:scale-95 leading-none">{newItem.posterImage ? 'เปลี่ยนโปสเตอร์' : 'เลือกภาพโปสเตอร์'}<input type="file" accept="image/*" className="hidden" onChange={handlePosterUpload} disabled={isUploadingPoster} /></label>
+                  {newItem.posterImage && (
+                    <button
+                      type="button"
+                      onClick={() => setNewItem((prev) => ({ ...prev, posterImage: '' }))}
+                      className="bg-red-50 text-red-500 px-6 py-5 rounded-[var(--radius)] text-center text-[12px] font-semibold hover:bg-red-100 transition-all  tracking-[0.2em] border-2 border-red-100 shadow-sm active:scale-95 leading-none"
+                    >
+                      เอาโปสเตอร์ออก
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

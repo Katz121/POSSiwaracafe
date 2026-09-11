@@ -44,7 +44,7 @@ export const groupItemsByCategory = (items, menu = []) => {
 
 // --- Image Processing Utilities ---
 
-export const compressImage = (base64Str, maxWidth = 500, maxHeight = 500) => {
+export const compressImage = (base64Str, maxWidth = 500, maxHeight = 500, quality = 0.7) => {
   return new Promise((resolve) => {
     const img = new Image();
     img.src = base64Str;
@@ -61,7 +61,7 @@ export const compressImage = (base64Str, maxWidth = 500, maxHeight = 500) => {
       canvas.width = width; canvas.height = height;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', 0.7));
+      resolve(canvas.toDataURL('image/jpeg', quality));
     };
   });
 };

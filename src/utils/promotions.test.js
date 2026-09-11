@@ -11,4 +11,12 @@ describe('supportsSweetnessChoice', () => {
   it('shows sweetness for drinks', () => {
     expect(supportsSweetnessChoice({ category: 'เครื่องดื่ม' }, settings)).toBe(true);
   });
+
+  it('lets the per-item toggle turn sweetness off for a drink', () => {
+    expect(supportsSweetnessChoice({ category: 'เครื่องดื่ม', sweetnessChoice: false }, settings)).toBe(false);
+  });
+
+  it('lets the per-item toggle turn sweetness on for a cake-category item', () => {
+    expect(supportsSweetnessChoice({ category: 'เค้ก', sweetnessChoice: true }, settings)).toBe(true);
+  });
 });

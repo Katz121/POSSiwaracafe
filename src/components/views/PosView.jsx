@@ -10,7 +10,7 @@ import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getNameKey } from '../../utils/calculations';
 import { mergeStockLinks } from '../../utils/stockLinks';
-import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeCategory, isCakeSaleActive } from '../../utils/promotions';
+import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeCategory, isCakeSaleActive, supportsSweetnessChoice } from '../../utils/promotions';
 import { bumpMenuSoldCount } from '../../utils/menuSales';
 import useDebounce from '../../hooks/useDebounce';
 import { trackRecommendationsShown, trackRecommendationAccepted } from '../../services/upsellTracker';
@@ -311,7 +311,7 @@ export default function PosView() {
   const addToCart = (p) => {
     const pGroups = getModifierGroups(p);
     const hasOptions = beanModifiers.some(b => b.available !== false && pGroups.includes(b.group || 'เมล็ดกาแฟ'));
-    if (!isCakeCategory(p.category, saleSettings) || (p.allowBeanModifier && hasOptions)) {
+    if (supportsSweetnessChoice(p, saleSettings) || (p.allowBeanModifier && hasOptions)) {
       setPendingBeanSelections({});
       setPendingSweetness(100);
       setPendingMilkType('cow');
@@ -1246,7 +1246,7 @@ export default function PosView() {
           const allChosen = groups.every(g => pendingBeanSelections[g.name]);
           const chosenMods = groups.map(g => pendingBeanSelections[g.name]).filter(Boolean);
           const previewPrice = computeModifierPrice(pendingBeanItem, chosenMods);
-          const showSweetness = !isCakeCategory(pendingBeanItem.category, saleSettings);
+          const showSweetness = supportsSweetnessChoice(pendingBeanItem, saleSettings);
           const showMilkChoice = supportsMilkChoice(pendingBeanItem);
           const needsConfirmButton = showSweetness || multi;
 

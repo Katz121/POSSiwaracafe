@@ -50,9 +50,16 @@ export const isCakeCategory = (category, settings) => {
   return cats.map(norm).includes(norm(category));
 };
 
-/** Drinks can choose sweetness; cake-category items cannot. */
-export const supportsSweetnessChoice = (item, settings) =>
-  !isCakeCategory(item?.category, settings);
+/**
+ * Does this menu ask for a sweetness level? The per-item `sweetnessChoice`
+ * toggle (set in เมนู → แก้ไข) wins when present, e.g. bottled drinks and
+ * snacks turn it off. Items saved before the toggle existed fall back to the
+ * old rule: drinks yes, cake-category items no.
+ */
+export const supportsSweetnessChoice = (item, settings) => {
+  if (typeof item?.sweetnessChoice === 'boolean') return item.sweetnessChoice;
+  return !isCakeCategory(item?.category, settings);
+};
 
 /**
  * Effective pricing for a menu item given the current sale state.

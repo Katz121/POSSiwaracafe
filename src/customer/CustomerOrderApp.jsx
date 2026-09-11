@@ -19,6 +19,8 @@ import {
   RefreshCw,
   FileText,
   Star,
+  BookOpen,
+  Maximize2,
 } from 'lucide-react';
 import {
   signInAnonymously,
@@ -99,6 +101,7 @@ const TX = {
     chooseOption: 'เลือกตัวเลือก',
     total: 'รวม',
     addToCart: 'เพิ่มลงตะกร้า',
+    posterBadge: 'แตะดูเรื่องราว',
     chooseAllGroups: 'เลือกให้ครบทุกกลุ่ม',
     sweetness: 'ระดับความหวาน',
     milkType: 'ชนิดนม',
@@ -186,6 +189,7 @@ const TX = {
     chooseOption: 'Choose option',
     total: 'Total',
     addToCart: 'Add to cart',
+    posterBadge: 'Tap for the story',
     chooseAllGroups: 'Select all groups',
     sweetness: 'Sweetness level',
     milkType: 'Milk',
@@ -282,11 +286,14 @@ function LanguageToggle({ lang, onToggle }) {
 // ---------------------------------------------------------------------------
 // Sub-component: MenuItemCard
 // ---------------------------------------------------------------------------
-function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false, t, lang = 'th' }) {
+function MenuItemCard({ item, onAdd, onView, settingsData, isBestSeller = false, t, lang = 'th' }) {
   const hasImage = Boolean(item.image);
   const sale = getItemSalePrice(item, settingsData);
   // Coffee menus display prices rounded up to the nearest 5 baht.
   const dp = (p) => (item.allowBeanModifier ? roundUpTo5(p) : p);
+  // The thumbnail is cropped 4:3, so tapping it opens the full image + full
+  // description. Menus with a story poster open it from anywhere on the card.
+  const canView = Boolean(onView && (hasImage || item.posterImage));
 
   return (
     <motion.div
@@ -296,10 +303,13 @@ function MenuItemCard({ item, onAdd, settingsData, isBestSeller = false, t, lang
       exit={{ opacity: 0, scale: 0.95 }}
       whileTap={{ scale: 0.97 }}
 className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] overflow-hidden flex flex-col cursor-pointer active:shadow-inner"
-      onClick={() => onAdd(item)}
+      onClick={() => (item.posterImage && canView ? onView(item) : onAdd(item))}
     >
       {/* Image */}
-      <div className="relative w-full aspect-[4/3] bg-emerald-50 flex items-center justify-center overflow-hidden">
+      <div
+        className="relative w-full aspect-[4/3] bg-emerald-50 flex items-center justify-center overflow-hidden"
+        onClick={canView ? (e) => { e.stopPropagation(); onView(item); } : undefined}
+      >
         {hasImage ? (
           <img
             src={item.image}
@@ -325,6 +335,15 @@ className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1
         {sale.onSale && (
           <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
             Happy Hour -{sale.percent}%
+          </span>
+        )}
+        {item.posterImage ? (
+          <span className="absolute bottom-2 left-2 flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full">
+            <BookOpen size={12} /> {t('posterBadge')}
+          </span>
+        ) : canView && (
+          <span className="absolute bottom-2 right-2 w-7 h-7 flex items-center justify-center bg-black/45 backdrop-blur-sm text-white rounded-full" aria-hidden="true">
+            <Maximize2 size={14} />
           </span>
         )}
       </div>
@@ -360,9 +379,76 @@ className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1
 }
 
 // ---------------------------------------------------------------------------
+// Sub-component: MenuDetailSheet — full-screen view of one menu. Card thumbnails
+// are cropped 4:3 and descriptions clamped to 2 lines, so this shows the whole
+// picture (the story `posterImage` when the menu has one, e.g. Poh, else the
+// normal image) plus the full description. "Add to cart" continues into the
+// normal add flow (options modal etc.).
+// ---------------------------------------------------------------------------
+function MenuDetailSheet({ item, settingsData, onAdd, onClose, t, lang = 'th' }) {
+  const sale = item ? getItemSalePrice(item, settingsData) : null;
+  const dp = (p) => (item?.allowBeanModifier ? roundUpTo5(p) : p);
+  const description = item ? dispField(item, lang, 'description') : '';
+
+  return (
+    <AnimatePresence>
+      {item && (
+        <motion.div
+          key="menu-detail-sheet"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[60] bg-black/90 flex flex-col"
+          role="dialog"
+          aria-modal="true"
+          aria-label={dispField(item, lang)}
+        >
+          {/* Positioned by a wrapper: global CSS forces `button { position: relative }` */}
+          <div className="absolute top-3 right-3 z-10">
+            <button
+              onClick={onClose}
+              className="rounded-full bg-white/15 text-white flex items-center justify-center backdrop-blur-sm active:scale-95"
+              style={{ width: 44, height: 44 }}
+              aria-label={t('close')}
+            >
+              <X size={22} />
+            </button>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 pt-16" onClick={onClose}>
+            <div className="w-full max-w-md mx-auto" onClick={(e) => e.stopPropagation()}>
+              <motion.img
+                initial={{ scale: 0.96, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                src={item.posterImage || item.image}
+                alt={dispField(item, lang)}
+                className="w-full h-auto rounded-[var(--radius)] shadow-[var(--elev-2)]"
+              />
+              {description && (
+                <p className="mt-3 px-1 text-white/90 text-sm leading-relaxed whitespace-pre-line">{description}</p>
+              )}
+            </div>
+          </div>
+          <div className="shrink-0 bg-[var(--bg-secondary)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-[var(--text-primary)] text-sm leading-tight truncate">{dispField(item, lang)}</p>
+              <p className={`${sale.onSale ? 'text-red-500' : 'text-emerald-600'} font-bold text-base leading-tight`}>
+                {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(sale.price))}
+              </p>
+            </div>
+            <Button onClick={() => onAdd(item)} leftIcon={<Plus size={18} />} className="min-h-[44px] px-5">
+              {t('addToCart')}
+            </Button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Sub-component: HighlightRail — horizontal carousel of highlighted menu items
 // ---------------------------------------------------------------------------
-function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoScroll = false, t, lang = 'th' }) {
+function HighlightRail({ title, items, onAdd, onView, settingsData, bestSellerIds, autoScroll = false, t, lang = 'th' }) {
   const [paused, setPaused] = useState(false);
   if (!items || items.length === 0) return null;
 
@@ -371,6 +457,7 @@ function HighlightRail({ title, items, onAdd, settingsData, bestSellerIds, autoS
       <MenuItemCard
         item={item}
         onAdd={onAdd}
+        onView={onView}
         settingsData={settingsData}
         isBestSeller={bestSellerIds ? bestSellerIds.has(item.id) : true}
         t={t}
@@ -1306,6 +1393,7 @@ function CustomerOrderApp() {
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [beanModalOpen, setBeanModalOpen] = useState(false);
   const [pendingItem, setPendingItem] = useState(null);
+  const [detailItem, setDetailItem] = useState(null); // full-screen image/poster view
 
   // --- Cart & checkout state ---
   const [cart, setCart] = useState([]);
@@ -1733,6 +1821,12 @@ function CustomerOrderApp() {
     }
   }, [addToCart, beanModifiers, settingsData]);
 
+  // "Add to cart" inside the full-screen menu view continues into the normal flow.
+  const handleDetailAdd = useCallback((item) => {
+    setDetailItem(null);
+    handleMenuItemClick(item);
+  }, [handleMenuItemClick]);
+
   const handleBeanSelect = useCallback((item, modifiers, sweetness, milkType) => {
     addToCart(item, modifiers, sweetness, milkType);
     setBeanModalOpen(false);
@@ -2072,7 +2166,7 @@ function CustomerOrderApp() {
             <div className="flex gap-3 overflow-x-auto px-4 pb-1 snap-x">
               {cakeItems.map(item => (
                 <div key={item.id} className="w-48 flex-shrink-0 snap-start">
-                  <MenuItemCard item={item} onAdd={handleMenuItemClick} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} />
+                  <MenuItemCard item={item} onAdd={handleMenuItemClick} onView={setDetailItem} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} />
                 </div>
               ))}
             </div>
@@ -2082,6 +2176,7 @@ function CustomerOrderApp() {
               title={t('bestSellerRailTitle')}
               items={bestSellers}
               onAdd={handleMenuItemClick}
+              onView={setDetailItem}
               settingsData={settingsData}
               autoScroll
               t={t}
@@ -2093,6 +2188,7 @@ function CustomerOrderApp() {
               title={t('featuredRailTitle')}
               items={featuredItems}
               onAdd={handleMenuItemClick}
+              onView={setDetailItem}
               settingsData={settingsData}
               bestSellerIds={bestSellerIds}
               t={t}
@@ -2125,6 +2221,7 @@ function CustomerOrderApp() {
                     key={item.id}
                     item={item}
                     onAdd={handleMenuItemClick}
+                    onView={setDetailItem}
                     settingsData={settingsData}
                     isBestSeller={bestSellerIds.has(item.id)}
                     t={t}
@@ -2185,6 +2282,16 @@ function CustomerOrderApp() {
           lang={lang}
         />
       )}
+
+      {/* ---- Full-screen menu view (whole image / story poster + description) ---- */}
+      <MenuDetailSheet
+        item={detailItem}
+        settingsData={settingsData}
+        onAdd={handleDetailAdd}
+        onClose={() => setDetailItem(null)}
+        t={t}
+        lang={lang}
+      />
 
       {/* ---- Bean modifier modal ---- */}
       <BeanModifierModal
