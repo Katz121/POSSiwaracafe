@@ -37,11 +37,13 @@ import { buildCheckoutItems, shouldKeepRequestId, submitTrustedCheckout } from '
 import { isBackendDown, submitCheckoutDirect } from '../services/checkoutFallback';
 import { fetchPublicMenu, readCachedPublicMenu, writeCachedPublicMenu, SENSITIVE_SETTINGS_KEYS } from '../utils/publicMenu';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
-import { formatCurrency, VAT_RATE, roundUpTo5, getModifierGroups, isBaseModifier, computeModifierPrice, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH } from '../config/constants';
-import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory, supportsSweetnessChoice } from '../utils/promotions';
+import { formatCurrency, roundUpTo5, getModifierGroups, isBaseModifier, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH, normalizeThaiPhoneInput } from '../config/constants';
+import { getItemSalePrice, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory, supportsSweetnessChoice } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
 import { sortByFeaturedOrder } from '../utils/featuredOrder';
-import { mergeStockLinks } from '../utils/stockLinks';
+import { buildCartLine, calculateCartTotals, replaceCartLine, getCartCrossSell } from '../utils/customerCart';
+import { trackFunnelStep } from '../utils/qrFunnel';
+import { readCartDraft, restoreCartDraft, saveCartDraft, clearCartDraft, readLastSweetness, rememberSweetness } from '../utils/cartDraft';
 import { applyCustomerSEO } from '../utils/seo';
 
 // ---------------------------------------------------------------------------
@@ -62,6 +64,13 @@ const WELCOME_POPUP_ENABLED = false;
 
 const TX = {
   th: {
+    crossSell: (pct) => `ทานคู่กันลด ${pct}%`,
+    netAdd: (price) => `+ เพิ่ม · จ่ายเพิ่มสุทธิ ${price}`,
+    lastSweetness: (level) => `ล่าสุดคุณเลือก ${level}%`,
+    editOptions: 'แก้ตัวเลือก',
+    saveOptions: 'บันทึกตัวเลือก',
+    draftRestored: 'กู้ตะกร้าเดิมให้แล้ว',
+    draftDropped: 'บางรายการหมดแล้ว',
     appLoading: 'กำลังโหลดเมนู...',
     orderViaQr: 'สั่งออเดอร์ผ่าน QR',
     searchPlaceholder: 'ค้นหาเมนู...',
@@ -152,6 +161,13 @@ const TX = {
     submitFailedError: (code) => `สั่งออเดอร์ไม่สำเร็จ (${code}) — ลองใหม่อีกครั้ง`,
   },
   en: {
+    crossSell: (pct) => `Pair them for ${pct}% off`,
+    netAdd: (price) => `+ Add · Net extra ${price}`,
+    lastSweetness: (level) => `Last time: ${level}%`,
+    editOptions: 'Edit options',
+    saveOptions: 'Save options',
+    draftRestored: 'Your cart has been restored',
+    draftDropped: 'Some items are no longer available',
     appLoading: 'Loading menu...',
     orderViaQr: 'Order via QR',
     searchPlaceholder: 'Search menu...',
@@ -634,11 +650,12 @@ className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[61] mx-auto max-w-md bg-[
 // ---------------------------------------------------------------------------
 // Sub-component: BeanModifierModal — picker for bean/blend selection
 // ---------------------------------------------------------------------------
-function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, onClose, t, lang = 'th' }) {
+function BeanModifierModal({ isOpen, item, modifiers, settingsData, preset, editing = false, onSelect, onClose, t, lang = 'th' }) {
   // เลือกตัวเลือกต่อกลุ่ม (เช่น { 'ส้ม': mod, 'เมล็ดกาแฟ': mod })
   const [selections, setSelections] = useState({});
   const [sweetness, setSweetness] = useState(100);
   const [milkType, setMilkType] = useState('cow');
+  const [lastSweetness, setLastSweetness] = useState(null);
   // เคลียร์ตัวเลือกทุกครั้งที่เปิดเมนูใหม่ หรือเปิด modal ขึ้นมาใหม่ (แม้เป็นเมนูเดิม)
   // (ปรับ state ตอน render ตามแนวทาง React)
   const [lastItemId, setLastItemId] = useState(item?.id);
@@ -649,9 +666,11 @@ function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, on
     if (itemChanged) setLastItemId(item?.id);
     if (isOpen !== wasOpen) setWasOpen(isOpen);
     if (itemChanged || justOpened) {
-      setSelections({});
-      setSweetness(100);
-      setMilkType('cow');
+      const remembered = readLastSweetness();
+      setLastSweetness(remembered);
+      setSelections(Object.fromEntries(modifiers.filter((m) => preset?.modifierIds?.includes(m.id)).map((m) => [m.group || 'เมล็ดกาแฟ', m])));
+      setSweetness(preset?.sweetness ?? (item && supportsSweetnessChoice(item, settingsData) ? remembered : null) ?? 100);
+      setMilkType(preset?.milkType || 'cow');
     }
   }
 
@@ -676,10 +695,10 @@ function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, on
   const multi = groups.length > 1;
   const allChosen = groups.every((g) => selections[g.name]);
   const chosenMods = groups.map((g) => selections[g.name]).filter(Boolean);
-  const previewPrice = item ? computeModifierPrice(item, chosenMods) : 0;
+  const previewPrice = item ? buildCartLine(item, chosenMods, sweetness, milkType, settingsData).price : 0;
   const showSweetness = item && supportsSweetnessChoice(item, settingsData);
   const showMilkChoice = supportsMilkChoice(item);
-  const needsConfirmButton = showSweetness || multi;
+  const needsConfirmButton = showSweetness || showMilkChoice || multi || !!preset;
 
   return (
     <Modal
@@ -687,6 +706,7 @@ function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, on
       onClose={onClose}
       title={t('chooseOption')}
       size="sm"
+      className="[&_button]:min-w-[44px] [&_button]:min-h-[44px]"
       footer={
         needsConfirmButton ? (
           <div className="w-full space-y-2">
@@ -695,8 +715,8 @@ function BeanModifierModal({ isOpen, item, modifiers, settingsData, onSelect, on
               <span className="font-bold text-lg text-emerald-600">{formatCurrency(previewPrice)}</span>
             </div>
             <Button variant="primary" size="lg" fullWidth disabled={!allChosen} noUppercase
-              onClick={() => onSelect(item, chosenMods, sweetness, showMilkChoice ? milkType : null)}>
-              {allChosen ? t('addToCart') : t('chooseAllGroups')}
+              onClick={() => onSelect(item, chosenMods, preset && !showSweetness ? preset.sweetness ?? null : sweetness, showMilkChoice ? milkType : null)}>
+              {allChosen ? t(editing ? 'saveOptions' : 'addToCart') : t('chooseAllGroups')}
             </Button>
 <Button variant="ghost" fullWidth onClick={onClose} className="text-[var(--text-muted)]">{t('cancel')}</Button>
           </div>
@@ -734,7 +754,7 @@ className={`w-full flex items-center justify-between p-4 rounded-[var(--radius)]
                       const withThis = groups
                         .map((g) => (g.name === group.name ? mod : selections[g.name]))
                         .filter(Boolean);
-                      const priceIfChosen = computeModifierPrice(item, withThis);
+                      const priceIfChosen = buildCartLine(item, withThis, sweetness, milkType, settingsData).price;
                       const delta = priceIfChosen - previewPrice;
                       return (
                         <span className="flex flex-col items-end leading-tight">
@@ -767,6 +787,7 @@ className={`w-full flex items-center justify-between p-4 rounded-[var(--radius)]
                   </button>
                 ))}
               </div>
+              {lastSweetness != null && <p className="text-xs text-[var(--text-muted)]">{t('lastSweetness', lastSweetness)}</p>}
             </div>
           )}
           {showMilkChoice && (
@@ -791,7 +812,7 @@ className={`w-full flex items-center justify-between p-4 rounded-[var(--radius)]
 // ---------------------------------------------------------------------------
 // Sub-component: CartDrawer — slide-up drawer with cart contents
 // ---------------------------------------------------------------------------
-function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote, total, onProceed, t, lang = 'th' }) {
+function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote, onEditOptions, crossSell, comboPercent, onAdd, total, onProceed, t, lang = 'th' }) {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [noteValue, setNoteValue] = useState('');
 
@@ -824,7 +845,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--bg-secondary)] rounded-t-[var(--radius)] shadow-[var(--elev-3)] flex flex-col"
+            className="[&_button]:min-w-[44px] [&_button]:min-h-[44px] fixed bottom-0 left-0 right-0 md:mx-auto md:max-w-2xl z-50 bg-[var(--bg-secondary)] rounded-t-[var(--radius)] shadow-[var(--elev-3)] flex flex-col"
             style={{ maxHeight: '85vh' }}
           >
             {/* Handle */}
@@ -836,7 +857,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
               <h2 className="font-bold text-lg text-[var(--text-primary)]">{t('cartTitle')}</h2>
               <button
                 onClick={onClose}
-                className="w-9 h-9 rounded-[var(--radius-sm)] flex items-center justify-center bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)] transition-colors"
+                className="w-11 h-11 rounded-[var(--radius-sm)] flex items-center justify-center bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)] transition-colors"
               >
                 <X size={18} />
               </button>
@@ -858,9 +879,9 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                   const defaultOptionNote = [cartItem.beanModifier, cartItem.milkLabel, sweetnessNote].filter(Boolean).join(' ');
                   return (
                     <div key={id} className="bg-[var(--bg-tertiary)] rounded-[var(--radius)] p-3 space-y-2">
-                      <div className="flex items-start gap-3">
+                      <div className="flex flex-wrap items-start gap-3">
                         {/* Name & modifier */}
-                        <div className="flex-1 min-w-0">
+                        <div className="w-full sm:w-auto sm:flex-1 min-w-0">
                           <p className="font-semibold text-sm text-[var(--text-primary)] leading-tight">{dispField(cartItem, lang)}</p>
                           {cartItem.beanModifier && cartItem.beanModifier !== '' && (
                             <p className="text-xs text-emerald-600 font-medium">{cartItem.beanModifier}</p>
@@ -880,7 +901,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <button
                             onClick={() => onUpdateQty(id, cartItem.quantity - 1)}
-                            className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--border-color)] flex items-center justify-center text-[var(--text-primary)] hover:bg-red-100 hover:text-[var(--state-danger)] transition-colors"
+                            className="w-11 h-11 rounded-[var(--radius-sm)] bg-[var(--border-color)] flex items-center justify-center text-[var(--text-primary)] hover:bg-red-100 hover:text-[var(--state-danger)] transition-colors"
                           >
                             <Minus size={14} />
                           </button>
@@ -889,7 +910,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                           </span>
                           <button
                             onClick={() => onUpdateQty(id, cartItem.quantity + 1)}
-                            className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--accent-emerald)] flex items-center justify-center text-white hover:bg-[var(--accent-emerald-dark)] transition-colors"
+                            className="w-11 h-11 rounded-[var(--radius-sm)] bg-[var(--accent-emerald)] flex items-center justify-center text-white hover:bg-[var(--accent-emerald-dark)] transition-colors"
                           >
                             <Plus size={14} />
                           </button>
@@ -898,13 +919,16 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                         {/* Remove */}
                         <button
                           onClick={() => onRemove(id)}
-                          className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--state-danger)] hover:bg-red-50 transition-colors flex-shrink-0"
+                          className="w-11 h-11 rounded-[var(--radius-sm)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--state-danger)] hover:bg-red-50 transition-colors flex-shrink-0"
                         >
                           <X size={16} />
                         </button>
                       </div>
 
                       {/* Note */}
+                      {(cartItem.modifierIds?.length > 0 || cartItem.sweetness != null || cartItem.milkType) && (
+                        <button type="button" onClick={() => onEditOptions(cartItem)} className="min-h-[44px] min-w-[44px] text-xs font-semibold text-[var(--accent-emerald)]">{t('editOptions')}</button>
+                      )}
                       {editingNoteId === id ? (
                         <div className="flex gap-2">
                           <input
@@ -918,7 +942,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                           />
                           <button
                             onClick={() => saveNote(id)}
-                            className="w-8 h-8 bg-[var(--accent-emerald)] rounded-[var(--radius-sm)] flex items-center justify-center text-white flex-shrink-0"
+                            className="w-11 h-11 bg-[var(--accent-emerald)] rounded-[var(--radius-sm)] flex items-center justify-center text-white flex-shrink-0"
                           >
                             <Check size={14} />
                           </button>
@@ -926,7 +950,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                       ) : (
                         <button
                           onClick={() => startEditNote(id, cartItem.note)}
-                          className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--accent-emerald)] transition-colors"
+                          className="min-h-[44px] min-w-[44px] flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--accent-emerald)] transition-colors"
                         >
                           <FileText size={12} />
                           <span>{cartItem.note && cartItem.note !== defaultOptionNote ? cartItem.note : t('addNote')}</span>
@@ -935,6 +959,19 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                     </div>
                   );
                 })
+              )}
+              {crossSell.length > 0 && (
+                <section className="space-y-2" aria-label={t('crossSell', comboPercent)}>
+                  <p className="text-sm font-semibold text-[var(--accent-emerald)]">{t('crossSell', comboPercent)}</p>
+                  <div className="flex gap-3 overflow-x-auto pb-2">
+                    {crossSell.map(({ item, extra }) => (
+                      <button key={item.id} type="button" onClick={() => onAdd(item)} className="min-h-[44px] w-64 shrink-0 flex items-center gap-3 p-2 text-left rounded-[var(--radius-sm)] bg-[var(--bg-tertiary)]">
+                        {item.image ? <img src={item.image} alt="" className="w-12 h-12 rounded-[var(--radius-sm)] object-cover" /> : <Coffee size={24} className="shrink-0 text-[var(--text-muted)]" />}
+                        <span className="min-w-0 text-sm text-[var(--text-primary)]"><span className="block break-words">{dispField(item, lang)}</span><span className="block text-xs text-[var(--accent-emerald)]">{t('netAdd', formatCurrency(extra))}</span></span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
               )}
             </div>
 
@@ -1138,8 +1175,9 @@ function CheckoutStep({
                 placeholder={t('phonePlaceholder')}
                 value={customerPhone}
                 // Keep digits only: "081 234 5678" / "081-234-5678" still becomes a
-                // full 10-digit number instead of being cut off by maxLength.
-                onChange={(e) => onPhoneChange(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                // full 10-digit number instead of being cut off by maxLength, and a
+                // phone-autofilled "+66 81 234 5678" becomes 0812345678.
+                onChange={(e) => onPhoneChange(normalizeThaiPhoneInput(e.target.value))}
                 inputMode="numeric"
                 autoComplete="tel"
               />
@@ -1433,6 +1471,15 @@ function CustomerOrderApp() {
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [beanModalOpen, setBeanModalOpen] = useState(false);
   const [pendingItem, setPendingItem] = useState(null);
+  const [editingLine, setEditingLine] = useState(null);
+  const [draftNotice, setDraftNotice] = useState(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [menuReady, setMenuReady] = useState(false);
+  const [suggestedLine, setSuggestedLine] = useState(null);
+  const draftRestoredRef = useRef(false);
+  const cakeRailRef = useRef(null);
+  const menuGridRef = useRef(null);
+  const [scrollTarget, setScrollTarget] = useState(null);
   const [detailItem, setDetailItem] = useState(null); // full-screen image/poster view
 
   // --- Cart & checkout state ---
@@ -1447,6 +1494,12 @@ function CustomerOrderApp() {
   // Keep the same key across ambiguous network retries so the backend returns
   // the original order instead of charging points / incrementing queue twice.
   const checkoutRequestIdRef = useRef(null);
+  // What the current requestId was issued for. The backend treats a repeated
+  // requestId as "same order" and returns the existing one, so if the cart or
+  // customer changed since (e.g. restored draft, then edited) a new id is needed
+  // — otherwise the new items would silently never reach the kitchen.
+  const requestSignatureRef = useRef(null);
+  const lastSuccessAtRef = useRef(0);
 
   // ---------------------------------------------------------------------------
   // Anonymous sign-in
@@ -1512,6 +1565,7 @@ function CustomerOrderApp() {
     // 2) Refresh from the single bundle doc (1 read). When we already painted
     //    from a stale cache this happens in the background with no spinner.
     let bundle = null;
+    let sourceMenuReady = false;
     try {
       bundle = await fetchPublicMenu(db, appId);
     } catch {
@@ -1534,6 +1588,7 @@ function CustomerOrderApp() {
           getDocs(collection(db, ...base, 'beanModifiers')),
         ]);
         if (isStale()) return;
+        sourceMenuReady = true;
         setMenu(menuSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setCategories(catsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setBeanModifiers(beansSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -1556,7 +1611,10 @@ function CustomerOrderApp() {
         // ลูกค้าอ่านไม่ได้ตามที่ตั้งใจ · ใช้ค่าเริ่มต้นต่อไป เมนูยังสั่งได้
       }
     }
-    if (!isStale()) setLoading(false);
+    if (!isStale()) {
+      setLoading(false);
+      setMenuReady(!!bundle || !!cached || sourceMenuReady);
+    }
   }, [applyBundle, applySettings]);
 
   // Invalidate any in-flight load() run (unmount / effect re-run).
@@ -1620,6 +1678,42 @@ function CustomerOrderApp() {
   ), [availableMenu, settingsData]);
 
   const showHighlights = activeCategory === 'ทั้งหมด' && searchQuery.trim() === '';
+
+  useEffect(() => {
+    if (!scrollTarget) return;
+    (scrollTarget === 'cake' ? cakeRailRef.current : menuGridRef.current)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setScrollTarget(null);
+  }, [scrollTarget, activeCategory, searchQuery]);
+
+  useEffect(() => {
+    if (!menuReady || loading || !authed || draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    const draft = readCartDraft();
+    if (draft) {
+      const restored = restoreCartDraft(draft, menu, beanModifiers, settingsData);
+      setCart((current) => [...restored.cart, ...current]);
+      checkoutRequestIdRef.current = restored.cart.length ? draft.checkoutRequestId : null;
+      requestSignatureRef.current = restored.cart.length ? draft.requestSignature || null : null;
+      if (draft.cart.length) setDraftNotice(restored.dropped ? 'dropped' : 'restored');
+    }
+    setDraftReady(true);
+  }, [menuReady, loading, authed, menu, beanModifiers, settingsData]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    if (view === 'success' || !cart.length) {
+      clearCartDraft();
+      checkoutRequestIdRef.current = null;
+    } else {
+      saveCartDraft({ cart, checkoutRequestId: checkoutRequestIdRef.current, requestSignature: requestSignatureRef.current });
+    }
+  }, [draftReady, cart, customerName, customerPhone, view]);
+
+  useEffect(() => {
+    if (!draftNotice) return;
+    const timer = setTimeout(() => setDraftNotice(null), 5000);
+    return () => clearTimeout(timer);
+  }, [draftNotice]);
 
   // Welcome popup items = ขายดี first, then แนะนำ (deduped). Showcase only.
   // Skipped entirely while the popup feature flag is off.
@@ -1738,38 +1832,7 @@ function CustomerOrderApp() {
   // Memoised in one pass — these figures were previously recomputed several
   // times per render (grid, banners, cart bar, drawer, checkout all read them).
   const totals = useMemo(() => {
-    const subtotal = cart.reduce((s, i) => s + Number(i.price) * Number(i.quantity), 0);
-    // Both the combo "set" promo (see getComboDiscount) and the spend-threshold promo
-    // discount the whole cart as one bundle (cake + drink together). The only exception is
-    // while Happy Hour is running: cakes already carry a per-item discount in their price,
-    // so the spend promo falls back to the non-cake (drinks) portion to avoid double-discount.
-    const nonCakeSubtotal = cart.reduce(
-      (s, i) => (isCakeCategory(i.category, settingsData) ? s : s + Number(i.price) * Number(i.quantity)),
-      0,
-    );
-    const combo = getComboDiscount(cart, settingsData);
-    const rawComboDiscount = combo.applies ? combo.amount : 0;
-    const pointsDiscount = (pointsEligible && usePoints) ? redeemDiscountValue : 0;
-    // Spend-threshold discount: order ≥ X → get Y% off (0 = disabled)
-    const spendThreshold = Number(settingsData.spendThreshold) || 0;
-    const spendDiscountPercent = Number(settingsData.spendDiscount) || 0; // a % off once the threshold is reached
-    const spendActive = spendThreshold > 0 && spendDiscountPercent > 0;
-    const spendBase = isCakeSaleActive(settingsData) ? nonCakeSubtotal : subtotal;
-    const rawSpendDiscount = (spendActive && subtotal >= spendThreshold) ? Math.round(spendBase * spendDiscountPercent / 100) : 0;
-    const spendRemaining = (spendActive && subtotal > 0 && subtotal < spendThreshold) ? (spendThreshold - subtotal) : 0;
-    // Combo and spend-threshold do NOT stack — keep only the bigger of the two so the
-    // order-level discount can't balloon. Happy-hour is already in item prices; points
-    // (a redeemed member reward) still stacks. These effective values also drive the UI.
-    const comboWins = rawComboDiscount >= rawSpendDiscount;
-    const comboDiscount = comboWins ? rawComboDiscount : 0;
-    const spendDiscount = comboWins ? 0 : rawSpendDiscount;
-    const discount = Math.min(subtotal, comboDiscount + pointsDiscount + spendDiscount);
-    const vat = settings.vatEnabled ? Math.round(Math.max(0, subtotal - discount) * VAT_RATE) : 0;
-    const total = Math.max(0, subtotal - discount + vat);
-    return {
-      subtotal, combo, pointsDiscount, spendThreshold, spendDiscountPercent,
-      spendActive, spendRemaining, comboDiscount, spendDiscount, discount, vat, total,
-    };
+    return calculateCartTotals(cart, settingsData, pointsEligible, usePoints, redeemDiscountValue, settings.vatEnabled);
     // `nowTick` is a deliberate extra dep: getComboDiscount/isCakeSaleActive read the
     // wall clock, so totals must refresh as the Happy Hour window opens/closes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1779,75 +1842,42 @@ function CustomerOrderApp() {
     spendActive, spendRemaining, comboDiscount, spendDiscount, vat, total,
   } = totals;
 
+  const crossSell = useMemo(
+    () => getCartCrossSell(cart, cakeItems, beanModifiers, settingsData, pointsEligible, usePoints, redeemDiscountValue, settings.vatEnabled, readLastSweetness() ?? 100),
+    // nowTick: combo/Happy Hour depend on the clock, same as `totals`
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cart, cakeItems, beanModifiers, settingsData, pointsEligible, usePoints, redeemDiscountValue, settings.vatEnabled, nowTick],
+  );
+
+  const navigateCombo = () => {
+    setSearchQuery('');
+    if (!combo.hasCake && showHighlights && cakeItems.length) {
+      setScrollTarget('cake');
+    } else {
+      setActiveCategory(!combo.hasCake ? cakeItems[0]?.category || settingsData.cakeSaleCategories?.[0] || 'ทั้งหมด' : 'ทั้งหมด');
+      setShowAllItems(true);
+      setScrollTarget('menu');
+    }
+  };
+
   // ---------------------------------------------------------------------------
   // Cart operations
   // ---------------------------------------------------------------------------
+  // Anonymous funnel counters (see utils/qrFunnel.js) · each step once per session,
+  // fire-and-forget so a failed write can never affect ordering.
+  useEffect(() => { if (menuReady) trackFunnelStep(db, appId, 'view'); }, [menuReady]);
+  useEffect(() => { if (cartDrawerOpen) trackFunnelStep(db, appId, 'cart'); }, [cartDrawerOpen]);
+  useEffect(() => {
+    if (view === 'checkout') trackFunnelStep(db, appId, 'checkout');
+    if (view === 'success') trackFunnelStep(db, appId, 'order');
+  }, [view]);
+
   const addToCart = useCallback((item, modifier = null, sweetness = null, milkType = null) => {
-    // modifier อาจเป็นตัวเดียวหรือเป็นลิสต์ (หนึ่งตัวต่อกลุ่ม เช่น ส้ม + เมล็ดกาแฟ)
-    const mods = (Array.isArray(modifier) ? modifier : [modifier]).filter(Boolean);
-    const modifierName = mods.map(m => `#${m.name}`).join(' ');
-    const sweetnessKey = sweetness == null ? '' : `-sweet-${sweetness}`;
-    const milkKey = milkType ? `-milk-${milkType}` : '';
-    const modifierKey = mods.length ? `-${mods.map(m => m.id).join('-')}` : '';
-    const cartId = `${item.id}${modifierKey}${sweetnessKey}${milkKey}`;
-    const stockLinks = mods.reduce((acc, m) => mergeStockLinks(acc, m.stockLinks || []), item.stockLinks || []);
-
-    // For modifier path keep original pricing; for plain items apply sale if active
-    let finalPrice;
-    let saleFields = {};
-    if (mods.length) {
-      // ราคารวมแบบบวกเพิ่ม: ฐาน = ราคาเมนู, ตัวเลือกที่ไม่ใช่เบสบวกส่วนต่างของมัน
-      // (ส้มสด +20, เมล็ดพรีเมียมต่างหาก). กลุ่มเดียวยังเท่ากับสูตร max เดิม.
-      finalPrice = computeModifierPrice(item, mods);
-    } else {
-      const sale = getItemSalePrice(item, settingsData);
-      finalPrice = sale.price;
-      if (sale.onSale) {
-        saleFields = {
-          originalPrice: sale.originalPrice,
-        };
-      }
-      // Coffee menus: round the charged price up to the nearest 5 baht.
-      if (item.allowBeanModifier) finalPrice = roundUpTo5(finalPrice);
-    }
-
+    const line = buildCartLine(item, modifier, sweetness, milkType, settingsData);
+    trackFunnelStep(db, appId, 'add'); // once per session · never blocks
     setCart((prev) => {
-      const existing = prev.find((c) => (c.cartId || c.id) === cartId);
-      if (existing) {
-        return prev.map((c) =>
-          (c.cartId || c.id) === cartId
-            ? { ...c, quantity: c.quantity + 1 }
-            : c,
-        );
-      }
-
-      // Build note: for sale items append the sale tag
-      const sweetnessNote = sweetness == null ? '' : `หวาน ${sweetness}%`;
-      const milkLabel = MILK_OPTIONS.find(option => option.value === milkType)?.label || '';
-      let note = [modifierName, milkLabel, sweetnessNote].filter(Boolean).join(' ');
-      if (!mods.length && saleFields.originalPrice !== undefined) {
-        const sale = getItemSalePrice(item, settingsData);
-        const tag = cakeSaleNoteTag(sale.percent);
-        note = note ? `${note} ${tag}` : tag;
-      }
-
-      return [
-        ...prev,
-        {
-          ...item,
-          cartId,
-          price: finalPrice,
-          ...saleFields,
-          beanModifier: modifierName,
-          modifierIds: mods.map((modifier) => modifier.id),
-          sweetness,
-          milkType,
-          milkLabel,
-          stockLinks,
-          quantity: 1,
-          note,
-        },
-      ];
+      const existing = prev.find((c) => (c.cartId || c.id) === line.cartId);
+      return existing ? prev.map((c) => c === existing ? { ...c, quantity: c.quantity + 1 } : c) : [...prev, line];
     });
   }, [settingsData]);
 
@@ -1855,7 +1885,9 @@ function CustomerOrderApp() {
     // Only offer options from this menu's group(s) that are in stock (not hidden)
     const groups = getModifierGroups(item);
     const availableBeans = beanModifiers.filter((b) => b.available !== false && groups.includes(b.group || 'เมล็ดกาแฟ'));
-    if (supportsSweetnessChoice(item, settingsData) || (item.allowBeanModifier && availableBeans.length > 0)) {
+    setEditingLine(null);
+    setSuggestedLine(null);
+    if (supportsSweetnessChoice(item, settingsData) || supportsMilkChoice(item) || (item.allowBeanModifier && availableBeans.length > 0)) {
       setPendingItem(item);
       setBeanModalOpen(true);
     } else {
@@ -1870,10 +1902,17 @@ function CustomerOrderApp() {
   }, [handleMenuItemClick]);
 
   const handleBeanSelect = useCallback((item, modifiers, sweetness, milkType) => {
-    addToCart(item, modifiers, sweetness, milkType);
+    if (supportsSweetnessChoice(item, settingsData)) rememberSweetness(sweetness);
+    if (editingLine) {
+      const line = buildCartLine(item, modifiers, sweetness, milkType, settingsData);
+      const newId = `edit-${crypto.randomUUID()}`;
+      setCart((prev) => replaceCartLine(prev, editingLine.cartId || editingLine.id, line, newId));
+      setCartDrawerOpen(true);
+    } else addToCart(item, modifiers, sweetness, milkType);
+    setEditingLine(null);
     setBeanModalOpen(false);
     setPendingItem(null);
-  }, [addToCart]);
+  }, [addToCart, editingLine, settingsData]);
 
   const updateQty = useCallback((cartId, newQty) => {
     if (newQty <= 0) {
@@ -1910,8 +1949,12 @@ function CustomerOrderApp() {
 
     try {
       const phone = customerPhone.trim();
+      const signature = JSON.stringify([customerName.trim(), phone, usePoints, buildCheckoutItems(cart)]);
+      if (requestSignatureRef.current !== signature) checkoutRequestIdRef.current = null;
       const requestId = checkoutRequestIdRef.current || crypto.randomUUID();
       checkoutRequestIdRef.current = requestId;
+      requestSignatureRef.current = signature;
+      saveCartDraft({ cart, checkoutRequestId: requestId, requestSignature: signature });
       const result = await submitTrustedCheckout(functions, {
         requestId,
         customerName: customerName.trim(),
@@ -1924,7 +1967,10 @@ function CustomerOrderApp() {
       bumpMenuSoldCount(cart);
 
       setSuccessQueue({ number: result.queueNumber || 0, pending: result.pendingCount || 0 });
+      lastSuccessAtRef.current = Date.now();
+      requestSignatureRef.current = null;
       checkoutRequestIdRef.current = null;
+      clearCartDraft();
       setView('success');
     } catch (err) {
       console.error('[QR order submit] failed:', err);
@@ -1949,7 +1995,10 @@ function CustomerOrderApp() {
           });
           bumpMenuSoldCount(cart);
           setSuccessQueue({ number: fallback.queueNumber || 0, pending: fallback.pendingCount || 0 });
+          lastSuccessAtRef.current = Date.now();
+          requestSignatureRef.current = null;
           checkoutRequestIdRef.current = null;
+          clearCartDraft();
           setView('success');
           return;
         } catch (fallbackErr) {
@@ -1958,6 +2007,7 @@ function CustomerOrderApp() {
       }
 
       if (!shouldKeepRequestId(code)) checkoutRequestIdRef.current = null;
+      saveCartDraft({ cart, checkoutRequestId: checkoutRequestIdRef.current, requestSignature: requestSignatureRef.current });
       setSubmitError(t('submitFailedError', code));
     } finally {
       setSubmitting(false);
@@ -1969,9 +2019,17 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   // "สั่งเพิ่ม" keeps the name + phone so a second round (a friend's drink,
   // another cake) doesn't mean typing everything again; both stay editable at
-  // checkout. Points are re-chosen per order.
+  // checkout. Only within 10 minutes of the last order, so on a shared device
+  // the next customer doesn't inherit someone's phone (and points). Points are
+  // re-chosen per order.
+  const REORDER_KEEP_MS = 10 * 60 * 1000;
   const handleReset = () => {
     setCart([]);
+    if (Date.now() - lastSuccessAtRef.current > REORDER_KEEP_MS) {
+      setCustomerName('');
+      setCustomerPhone('');
+    }
+    requestSignatureRef.current = null;
     setUsePoints(false);
     setSubmitError('');
     setSuccessQueue(null);
@@ -2110,6 +2168,7 @@ function CustomerOrderApp() {
       </header>
 
       {/* ---- Happy Hour banner (only when a cake is actually available) ---- */}
+      {draftNotice && <p role="status" className="mx-4 mt-3 text-sm text-[var(--accent-emerald)]">{t('draftRestored')}{draftNotice === 'dropped' ? ` · ${t('draftDropped')}` : ''}</p>}
       <AnimatePresence>
         {happyHourActive && (
           <motion.div
@@ -2133,19 +2192,22 @@ function CustomerOrderApp() {
       {/* ---- Combo nudge banner ---- */}
       <AnimatePresence>
         {combo.enabled && combo.percent > 0 && (combo.hasCake !== combo.hasDrink) && !happyHourActive && !(spendActive && subtotal >= spendThreshold) && (
-          <motion.div
+          <motion.button
             key="combo-nudge"
+            type="button"
+            onClick={navigateCombo}
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="mx-4 mt-3 bg-[var(--accent-emerald-light)] border border-[var(--border-color)] rounded-[var(--radius)] px-4 py-3 flex items-center gap-2"
+            className="mx-4 mt-3 min-h-[44px] text-left bg-[var(--accent-emerald-light)] border border-[var(--border-color)] rounded-[var(--radius)] px-4 py-3 flex items-center gap-2"
           >
             <span className="text-emerald-700 font-semibold text-sm">
               {combo.hasCake
                 ? t('comboNudgeCake', combo.percent)
                 : t('comboNudgeDrink', combo.percent)}
             </span>
-          </motion.div>
+            <span aria-hidden="true" className="text-[var(--text-muted)]">›</span>
+          </motion.button>
         )}
         {comboDiscount > 0 && (
           <motion.div
@@ -2201,7 +2263,7 @@ function CustomerOrderApp() {
               แถบขายดี/แนะนำ ใช้หัวข้อ text-sm การ์ด w-40 · เค้กขยับขึ้นแค่หนึ่งขั้น
               (หัวข้อ text-base การ์ด w-48) ไม่ใส่กรอบหนาหรือเงา เพราะกล่องใหญ่ที่มี
               เค้กใบเดียวอ่านแล้วเหมือนโฆษณาแทรก ไม่ใช่ส่วนหนึ่งของเมนู */}
-          {cakeItems.length > 0 && <section aria-label={t('cakeRailTitle')}>
+          {cakeItems.length > 0 && <section ref={cakeRailRef} className="scroll-mt-56" aria-label={t('cakeRailTitle')}>
             <div className="px-4 mb-2">
               <h2 className="text-base font-bold text-[var(--text-primary)]">🍰 {t('cakeRailTitle')}</h2>
               <p className="text-xs text-[var(--text-muted)]">{t('cakeRailSubtitle')}</p>
@@ -2242,7 +2304,7 @@ function CustomerOrderApp() {
       )}
 
       {/* ---- Menu grid ---- */}
-      <main className="px-4 py-4 pb-32">
+      <main ref={menuGridRef} className="px-4 py-4 pb-32 scroll-mt-56">
         {showHighlights && (cakeItems.length > 0 || bestSellers.length > 0 || featuredItems.length > 0) && (
           <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3 px-0.5">{t('allMenuHeading')}</h2>
         )}
@@ -2299,6 +2361,20 @@ function CustomerOrderApp() {
 
       {/* ---- Cart drawer ---- */}
       <CartDrawer
+        crossSell={crossSell}
+        comboPercent={combo.percent}
+        onAdd={(item) => {
+          handleMenuItemClick(item);
+          setSuggestedLine(crossSell.find((candidate) => candidate.item.id === item.id)?.line || null);
+        }}
+        onEditOptions={(line) => {
+          const item = availableMenu.find((candidate) => candidate.id === line.id);
+          if (!item) return;
+          setEditingLine(line);
+          setPendingItem(item);
+          setCartDrawerOpen(false);
+          setBeanModalOpen(true);
+        }}
         isOpen={cartDrawerOpen}
         cart={cart}
         total={total}
@@ -2338,12 +2414,16 @@ function CustomerOrderApp() {
 
       {/* ---- Bean modifier modal ---- */}
       <BeanModifierModal
+        preset={editingLine || suggestedLine}
+        editing={!!editingLine}
         isOpen={beanModalOpen}
         item={pendingItem}
         modifiers={beanModifiers.filter((b) => b.available !== false && getModifierGroups(pendingItem).includes(b.group || 'เมล็ดกาแฟ'))}
         settingsData={settingsData}
         onSelect={handleBeanSelect}
         onClose={() => {
+          if (editingLine) setCartDrawerOpen(true);
+          setEditingLine(null);
           setBeanModalOpen(false);
           setPendingItem(null);
         }}

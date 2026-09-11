@@ -13,8 +13,9 @@ import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate } from '../../utils/calculations';
 import { seedDatabase } from '../../utils/seedData';
 import { recomputeAllSoldCounts } from '../../utils/menuSales';
+import QrFunnelCard from '../QrFunnelCard';
 import { getUpsellStats, clearUpsellStats, exportUpsellStats } from '../../services/upsellTracker';
-import { Button, Modal, Input, Tabs, Card, Badge, Spinner, ConfirmModal, SearchSelect, useToast } from '../ui';
+import { Button, Modal, Input, Tabs, Card, Badge, Spinner, ConfirmModal, SearchSelect, useToast, ErrorBoundary } from '../ui';
 import {
   DEFAULT_ADMIN_PIN,
   DEFAULT_REDEEM_POINTS_THRESHOLD,
@@ -865,6 +866,9 @@ export default function AdminView() {
               </div>
             );
           })()}
+
+          {/* isolated: a problem in the stats card must not take down the admin page */}
+          <ErrorBoundary><QrFunnelCard /></ErrorBoundary>
 
           <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-4">
             <h2 className="text-lg font-semibold">ใบเสร็จ</h2>

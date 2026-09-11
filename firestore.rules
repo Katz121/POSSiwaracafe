@@ -60,6 +60,36 @@ service cloud.firestore {
         allow write: if isStaff();
       }
 
+      // ── ตัวนับ funnel หน้า QR (ดู `src/utils/qrFunnel.js`) ──────────────────
+      // ตัวเลขรวมรายวันเท่านั้น ไม่มีชื่อ/เบอร์/รายการสั่ง · ลูกค้าบวกได้ครั้งละ +1
+      // ที่ขั้นเดียวจากรายชื่อที่กำหนด · อ่านได้เฉพาะพนักงาน
+      function funnelSteps() {
+        return ['view', 'add', 'cart', 'checkout', 'order'];
+      }
+      // affectedKeys() เป็น Set (ไม่มี toList/index) จึงตรวจทีละขั้นว่า "ถ้าขั้นนี้
+      // เปลี่ยน ต้องเพิ่มขึ้น 1 พอดี" · รวมกับ size() == 1 = บวกได้ขั้นเดียวครั้งละ +1
+      function funnelStepOk(changed, before, k) {
+        return !(k in changed) || request.resource.data[k] == before.get(k, 0) + 1;
+      }
+      function funnelPlusOne(before) {
+        let changed = request.resource.data.diff(before).affectedKeys();
+        return changed.size() == 1
+               && changed.hasOnly(funnelSteps())
+               && request.resource.data.keys().hasOnly(funnelSteps())
+               && funnelStepOk(changed, before, 'view')
+               && funnelStepOk(changed, before, 'add')
+               && funnelStepOk(changed, before, 'cart')
+               && funnelStepOk(changed, before, 'checkout')
+               && funnelStepOk(changed, before, 'order');
+      }
+      match /qrFunnel/{day} {
+        allow read, delete: if isStaff();
+        allow create: if signedIn()
+                      && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                      && funnelPlusOne({});
+        allow update: if signedIn() && funnelPlusOne(resource.data);
+      }
+
       match /beanModifiers/{id} {
         allow read: if signedIn();
         allow write: if isStaff();

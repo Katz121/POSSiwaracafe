@@ -23,6 +23,14 @@ export const POINTS_PER_BAHT = 10;                   // ทุก X บาท �
 export const MEMBER_MIN_PHONE_LENGTH = 9;
 export const ALLOW_NAME_ONLY_MEMBERS = false;
 
+// ช่องเบอร์ในหน้า QR: เก็บเฉพาะตัวเลข 10 หลัก · "081 234 5678" / "081-234-5678"
+// ใช้ได้ และ "+66 81 234 5678" (autofill ของมือถือ) แปลงเป็น 0812345678
+export const normalizeThaiPhoneInput = (value) => {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('66') && digits.length >= 11) digits = `0${digits.slice(2)}`;
+  return digits.slice(0, 10);
+};
+
 // ==================== TAX ====================
 export const VAT_RATE = 0.07;                        // อัตรา VAT 7%
 export const VAT_PERCENTAGE = 7;                     // สำหรับแสดงผล
