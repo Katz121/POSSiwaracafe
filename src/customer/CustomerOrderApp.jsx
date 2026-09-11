@@ -40,6 +40,7 @@ import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
 import { formatCurrency, VAT_RATE, roundUpTo5, getModifierGroups, isBaseModifier, computeModifierPrice, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH } from '../config/constants';
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory, supportsSweetnessChoice } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
+import { sortByFeaturedOrder } from '../utils/featuredOrder';
 import { mergeStockLinks } from '../utils/stockLinks';
 import { applyCustomerSEO } from '../utils/seo';
 
@@ -398,7 +399,7 @@ function MenuDetailSheet({ item, settingsData, onAdd, onClose, t, lang = 'th' })
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[60] bg-black/90 flex flex-col"
+          className="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center"
           role="dialog"
           aria-modal="true"
           aria-label={dispField(item, lang)}
@@ -414,30 +415,34 @@ function MenuDetailSheet({ item, settingsData, onAdd, onClose, t, lang = 'th' })
               <X size={22} />
             </button>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto p-3 pt-16" onClick={onClose}>
-            <div className="w-full max-w-md mx-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="flex-1 w-full min-h-0 overflow-y-auto p-3 pt-16 flex flex-col items-center" onClick={onClose}>
+            <div className="w-full md:max-w-2xl flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
               <motion.img
                 initial={{ scale: 0.96, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 src={item.posterImage || item.image}
                 alt={dispField(item, lang)}
-                className="w-full h-auto rounded-[var(--radius)] shadow-[var(--elev-2)]"
+                className="max-w-full max-h-[75vh] w-auto h-auto rounded-[var(--radius)] shadow-[var(--elev-2)] object-contain"
               />
               {description && (
-                <p className="mt-3 px-1 text-white/90 text-sm leading-relaxed whitespace-pre-line">{description}</p>
+                <div className="w-full mt-4 px-1">
+                  <p className="text-white/90 text-sm md:text-base leading-relaxed whitespace-pre-line text-center">{description}</p>
+                </div>
               )}
             </div>
           </div>
-          <div className="shrink-0 bg-[var(--bg-secondary)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex items-center gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-[var(--text-primary)] text-sm leading-tight truncate">{dispField(item, lang)}</p>
-              <p className={`${sale.onSale ? 'text-red-500' : 'text-emerald-600'} font-bold text-base leading-tight`}>
-                {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(sale.price))}
-              </p>
+          <div className="shrink-0 w-full bg-[var(--bg-secondary)] flex justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="w-full md:max-w-2xl px-4 pt-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-[var(--text-primary)] text-sm md:text-base leading-tight truncate">{dispField(item, lang)}</p>
+                <p className={`${sale.onSale ? 'text-red-500' : 'text-emerald-600'} font-bold text-base md:text-lg leading-tight`}>
+                  {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(sale.price))}
+                </p>
+              </div>
+              <Button onClick={() => onAdd(item)} leftIcon={<Plus size={18} />} className="min-h-[44px] px-5 md:px-8">
+                {t('addToCart')}
+              </Button>
             </div>
-            <Button onClick={() => onAdd(item)} leftIcon={<Plus size={18} />} className="min-h-[44px] px-5">
-              {t('addToCart')}
-            </Button>
           </div>
         </motion.div>
       )}
@@ -1027,175 +1032,178 @@ function CheckoutStep({
               <h1 className="font-bold text-[var(--text-primary)] text-lg">{t('confirmOrder')}</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4 pb-40">
-        {/* Order items summary */}
-              <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] overflow-hidden">
-                <div className="px-4 py-3 border-b border-[var(--border-color)]">
-                  <h2 className="font-bold text-[var(--text-primary)]">{t('orderedItems')}</h2>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {cart.map((cartItem) => {
-              const id = cartItem.cartId || cartItem.id;
-              const sweetnessNote = cartItem.sweetness == null ? '' : `หวาน ${cartItem.sweetness}%`;
-              const defaultOptionNote = [cartItem.beanModifier, cartItem.milkLabel, sweetnessNote].filter(Boolean).join(' ');
-              return (
-                <div key={id} className="px-4 py-3 flex items-center justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm text-[var(--text-primary)] leading-tight">{dispField(cartItem, lang)}</p>
-                    {cartItem.beanModifier && cartItem.beanModifier !== '' && (
-                      <p className="text-xs text-emerald-600">{cartItem.beanModifier}</p>
-                    )}
-                    {cartItem.sweetness != null && (
-                      <p className="text-xs text-orange-500">{t('sweetness')}: {cartItem.sweetness}%</p>
-                    )}
-                    {cartItem.milkLabel && (
-                      <p className="text-xs text-sky-600">{t('milkType')}: {milkLabelForLanguage(cartItem.milkType, lang) || cartItem.milkLabel}</p>
-                    )}
-                    {cartItem.note && cartItem.note !== defaultOptionNote && (
-                    <p className="text-xs text-[var(--text-muted)]">{cartItem.note}</p>
-                    )}
+      <div className="flex-1 overflow-y-auto px-4 py-5 pb-40 w-full flex flex-col items-center">
+        <div className="w-full md:max-w-2xl space-y-4">
+          {/* Order items summary */}
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] overflow-hidden">
+            <div className="px-4 py-3 border-b border-[var(--border-color)]">
+              <h2 className="font-bold text-[var(--text-primary)]">{t('orderedItems')}</h2>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {cart.map((cartItem) => {
+                const id = cartItem.cartId || cartItem.id;
+                const sweetnessNote = cartItem.sweetness == null ? '' : `หวาน ${cartItem.sweetness}%`;
+                const defaultOptionNote = [cartItem.beanModifier, cartItem.milkLabel, sweetnessNote].filter(Boolean).join(' ');
+                return (
+                  <div key={id} className="px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-[var(--text-primary)] leading-tight">{dispField(cartItem, lang)}</p>
+                      {cartItem.beanModifier && cartItem.beanModifier !== '' && (
+                        <p className="text-xs text-emerald-600">{cartItem.beanModifier}</p>
+                      )}
+                      {cartItem.sweetness != null && (
+                        <p className="text-xs text-orange-500">{t('sweetness')}: {cartItem.sweetness}%</p>
+                      )}
+                      {cartItem.milkLabel && (
+                        <p className="text-xs text-sky-600">{t('milkType')}: {milkLabelForLanguage(cartItem.milkType, lang) || cartItem.milkLabel}</p>
+                      )}
+                      {cartItem.note && cartItem.note !== defaultOptionNote && (
+                      <p className="text-xs text-[var(--text-muted)]">{cartItem.note}</p>
+                      )}
+                    </div>
+                      <span className="text-sm text-[var(--text-secondary)] flex-shrink-0 num">x{cartItem.quantity}</span>
+                      <span className="font-semibold text-sm text-[var(--text-primary)] flex-shrink-0 num">
+                      {formatCurrency(Number(cartItem.price) * Number(cartItem.quantity))}
+                    </span>
                   </div>
-                    <span className="text-sm text-[var(--text-secondary)] flex-shrink-0 num">x{cartItem.quantity}</span>
-                    <span className="font-semibold text-sm text-[var(--text-primary)] flex-shrink-0 num">
-                    {formatCurrency(Number(cartItem.price) * Number(cartItem.quantity))}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        {/* Totals */}
-              <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 space-y-2">
-                <div className="flex justify-between text-sm text-[var(--text-secondary)]">
-            <span>{t('itemsPrice')}</span>
-            <span>{formatCurrency(subtotal)}</span>
-          </div>
-          {comboDiscount > 0 && (
-            <div className="flex justify-between text-sm text-red-500">
-              <span>{t('comboDiscountLabel')}</span>
-              <span>-{formatCurrency(comboDiscount)}</span>
+          {/* Totals */}
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 space-y-2">
+            <div className="flex justify-between text-sm text-[var(--text-secondary)]">
+              <span>{t('itemsPrice')}</span>
+              <span>{formatCurrency(subtotal)}</span>
             </div>
-          )}
-          {pointsDiscount > 0 && (
-            <div className="flex justify-between text-sm text-emerald-600">
-              <span>{t('pointsDiscountLabel')}</span>
-              <span>-{formatCurrency(pointsDiscount)}</span>
-            </div>
-          )}
-          {spendDiscount > 0 && (
-            <div className="flex justify-between text-sm text-amber-600">
-              <span>{t('spendDiscountLabel')}</span>
-              <span>-{formatCurrency(spendDiscount)}</span>
-            </div>
-          )}
-          {vatEnabled && (
-                <div className="flex justify-between text-sm text-[var(--text-secondary)]">
-              <span>{t('vatLabel')}</span>
-              <span>{formatCurrency(vat)}</span>
-            </div>
-          )}
-                <div className="flex justify-between font-bold text-base text-[var(--text-primary)] pt-2 border-t border-[var(--border-color)]">
-            <span>{t('grandTotal')}</span>
-            <span className="text-emerald-600">{formatCurrency(total)}</span>
-          </div>
-        </div>
-
-        {/* Customer name input */}
-              <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 space-y-4">
-          <Input
-            label={t('yourName')}
-            placeholder={t('namePlaceholder')}
-            value={customerName}
-            onChange={(e) => onNameChange(e.target.value)}
-            maxLength={60}
-            autoFocus
-          />
-                <p className="text-xs text-[var(--text-muted)] -mt-2">{t('nameHint')}</p>
-
-          {/* Phone input for membership */}
-          <div>
-            <Input
-              label={t('phoneLabel')}
-              placeholder={t('phonePlaceholder')}
-              value={customerPhone}
-              onChange={(e) => onPhoneChange(e.target.value)}
-              inputMode="numeric"
-              maxLength={10}
-            />
-            {/* Member status line + points progress */}
-            {member ? (
-              <div className="mt-1.5 space-y-0.5">
-                <p className="text-xs text-emerald-600 font-medium">
-                  {t('memberStatus', member.name || t('defaultCustomerName'), memberPoints)}
-                </p>
-                <p className="text-xs text-amber-600 font-bold">
-                  {memberPoints >= redeemPointsThreshold
-                    ? t('pointsReady', redeemDiscountValue)
-                    : t('pointsRemaining', redeemPointsThreshold - memberPoints, redeemDiscountValue)}
-                </p>
+            {comboDiscount > 0 && (
+              <div className="flex justify-between text-sm text-red-500">
+                <span>{t('comboDiscountLabel')}</span>
+                <span>-{formatCurrency(comboDiscount)}</span>
               </div>
-            ) : customerPhone.length >= MEMBER_MIN_PHONE_LENGTH ? (
-              <p className="text-xs text-[var(--text-secondary)] mt-1.5">
-                {t('newPhoneHint')}
-              </p>
-            ) : (
-              <p className="text-xs text-[var(--text-muted)] mt-1.5">
-                {t('noPhoneHint')}
-              </p>
+            )}
+            {pointsDiscount > 0 && (
+              <div className="flex justify-between text-sm text-emerald-600">
+                <span>{t('pointsDiscountLabel')}</span>
+                <span>-{formatCurrency(pointsDiscount)}</span>
+              </div>
+            )}
+            {spendDiscount > 0 && (
+              <div className="flex justify-between text-sm text-amber-600">
+                <span>{t('spendDiscountLabel')}</span>
+                <span>-{formatCurrency(spendDiscount)}</span>
+              </div>
+            )}
+            {vatEnabled && (
+                  <div className="flex justify-between text-sm text-[var(--text-secondary)]">
+                <span>{t('vatLabel')}</span>
+                <span>{formatCurrency(vat)}</span>
+              </div>
+            )}
+                  <div className="flex justify-between font-bold text-base text-[var(--text-primary)] pt-2 border-t border-[var(--border-color)]">
+              <span>{t('grandTotal')}</span>
+              <span className="text-emerald-600">{formatCurrency(total)}</span>
+            </div>
+          </div>
+
+          {/* Customer name input */}
+          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 space-y-4">
+            <Input
+              label={t('yourName')}
+              placeholder={t('namePlaceholder')}
+              value={customerName}
+              onChange={(e) => onNameChange(e.target.value)}
+              maxLength={60}
+              autoFocus
+            />
+                  <p className="text-xs text-[var(--text-muted)] -mt-2">{t('nameHint')}</p>
+
+            {/* Phone input for membership */}
+            <div>
+              <Input
+                label={t('phoneLabel')}
+                placeholder={t('phonePlaceholder')}
+                value={customerPhone}
+                onChange={(e) => onPhoneChange(e.target.value)}
+                inputMode="numeric"
+                maxLength={10}
+              />
+              {/* Member status line + points progress */}
+              {member ? (
+                <div className="mt-1.5 space-y-0.5">
+                  <p className="text-xs text-emerald-600 font-medium">
+                    {t('memberStatus', member.name || t('defaultCustomerName'), memberPoints)}
+                  </p>
+                  <p className="text-xs text-amber-600 font-bold">
+                    {memberPoints >= redeemPointsThreshold
+                      ? t('pointsReady', redeemDiscountValue)
+                      : t('pointsRemaining', redeemPointsThreshold - memberPoints, redeemDiscountValue)}
+                  </p>
+                </div>
+              ) : customerPhone.length >= MEMBER_MIN_PHONE_LENGTH ? (
+                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                  {t('newPhoneHint')}
+                </p>
+              ) : (
+                <p className="text-xs text-[var(--text-muted)] mt-1.5">
+                  {t('noPhoneHint')}
+                </p>
+              )}
+            </div>
+
+            {/* Points redemption toggle */}
+            {pointsEligible && (
+              <motion.button
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                type="button"
+                onClick={onTogglePoints}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-[var(--radius)] border-2 transition-all ${
+                  usePoints
+                    ? 'bg-emerald-50 border-emerald-400'
+                : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] hover:border-[var(--accent-emerald)]'
+                }`}
+                style={{ minHeight: 44 }}
+              >
+              <span className={`text-sm font-semibold ${usePoints ? 'text-[var(--accent-emerald-dark)]' : 'text-[var(--text-primary)]'}`}>
+                  {t('usePointsToggle', redeemPointsThreshold, redeemDiscountValue)}
+                </span>
+                <div
+                  className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${
+                usePoints ? 'bg-[var(--accent-emerald)]' : 'bg-[var(--border-color)]'
+                  }`}
+                >
+                  <div
+                className={`absolute top-0.5 w-5 h-5 bg-[var(--bg-secondary)] rounded-full shadow-[var(--elev-1)] transition-transform ${
+                      usePoints ? 'translate-x-5' : 'translate-x-0.5'
+                    }`}
+                  />
+                </div>
+              </motion.button>
             )}
           </div>
 
-          {/* Points redemption toggle */}
-          {pointsEligible && (
-            <motion.button
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              type="button"
-              onClick={onTogglePoints}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-[var(--radius)] border-2 transition-all ${
-                usePoints
-                  ? 'bg-emerald-50 border-emerald-400'
-              : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] hover:border-[var(--accent-emerald)]'
-              }`}
-              style={{ minHeight: 44 }}
-            >
-            <span className={`text-sm font-semibold ${usePoints ? 'text-[var(--accent-emerald-dark)]' : 'text-[var(--text-primary)]'}`}>
-                {t('usePointsToggle', redeemPointsThreshold, redeemDiscountValue)}
-              </span>
-              <div
-                className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${
-              usePoints ? 'bg-[var(--accent-emerald)]' : 'bg-[var(--border-color)]'
-                }`}
+          {/* Error message */}
+          <AnimatePresence>
+            {submitError && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+              className="bg-red-50 border border-[var(--state-danger)] rounded-[var(--radius)] px-4 py-3 flex items-center gap-2 text-[var(--state-danger)]"
               >
-                <div
-              className={`absolute top-0.5 w-5 h-5 bg-[var(--bg-secondary)] rounded-full shadow-[var(--elev-1)] transition-transform ${
-                    usePoints ? 'translate-x-5' : 'translate-x-0.5'
-                  }`}
-                />
-              </div>
-            </motion.button>
-          )}
+                <AlertCircle size={16} />
+                <span className="text-sm font-medium">{submitError}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-
-        {/* Error message */}
-        <AnimatePresence>
-          {submitError && (
-            <motion.div
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-            className="bg-red-50 border border-[var(--state-danger)] rounded-[var(--radius)] px-4 py-3 flex items-center gap-2 text-[var(--state-danger)]"
-            >
-              <AlertCircle size={16} />
-              <span className="text-sm font-medium">{submitError}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       {/* Submit button (fixed) */}
-              <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] px-4 py-4 shadow-[var(--elev-3)]">
+      <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] shadow-[var(--elev-3)] flex justify-center">
+        <div className="w-full md:max-w-2xl px-4 py-4">
         <Button
           variant="primary"
           size="lg"
@@ -1206,6 +1214,7 @@ function CheckoutStep({
         >
           {submitting ? t('submitting') : t('submitOrder')}
         </Button>
+        </div>
       </div>
     </motion.div>
   );
@@ -1389,7 +1398,19 @@ function CustomerOrderApp() {
   // customer expands to the full list on demand. Resets when the view changes.
   const [showAllItems, setShowAllItems] = useState(false);
   useEffect(() => { setShowAllItems(false); }, [activeCategory, searchQuery]);
-  const MENU_PREVIEW_COUNT = 8;
+  const [previewCount, setPreviewCount] = useState(8);
+  useEffect(() => {
+    const updatePreviewCount = () => {
+      const w = window.innerWidth;
+      if (w >= 1280) setPreviewCount(15);      // 5 cols * 3 rows
+      else if (w >= 1024) setPreviewCount(12); // 4 cols * 3 rows
+      else if (w >= 768) setPreviewCount(12);  // 3 cols * 4 rows
+      else setPreviewCount(8);                 // 2 cols * 4 rows
+    };
+    updatePreviewCount();
+    window.addEventListener('resize', updatePreviewCount);
+    return () => window.removeEventListener('resize', updatePreviewCount);
+  }, []);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [beanModalOpen, setBeanModalOpen] = useState(false);
   const [pendingItem, setPendingItem] = useState(null);
@@ -1567,7 +1588,7 @@ function CustomerOrderApp() {
     [availableMenu],
   );
   const featuredItems = useMemo(
-    () => availableMenu.filter((m) => m.isFeatured),
+    () => sortByFeaturedOrder(availableMenu.filter((m) => m.isFeatured)),
     [availableMenu],
   );
   const bestSellerIds = useMemo(() => new Set(bestSellers.map((m) => m.id)), [bestSellers]);
@@ -2213,10 +2234,10 @@ function CustomerOrderApp() {
           <>
             <motion.div
               layout
-              className="grid grid-cols-2 gap-3"
+              className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"
             >
               <AnimatePresence>
-                {(showAllItems || searchQuery.trim() ? filteredMenu : filteredMenu.slice(0, MENU_PREVIEW_COUNT)).map((item) => (
+                {(showAllItems || searchQuery.trim() ? filteredMenu : filteredMenu.slice(0, previewCount)).map((item) => (
                   <MenuItemCard
                     key={item.id}
                     item={item}
@@ -2230,12 +2251,12 @@ function CustomerOrderApp() {
                 ))}
               </AnimatePresence>
             </motion.div>
-            {!showAllItems && !searchQuery.trim() && filteredMenu.length > MENU_PREVIEW_COUNT && (
+            {!showAllItems && !searchQuery.trim() && filteredMenu.length > previewCount && (
               <button
                 onClick={() => setShowAllItems(true)}
             className="mt-4 w-full py-3 rounded-[var(--radius-sm)] border-2 border-[var(--border-color)] text-[var(--accent-emerald)] font-bold text-sm bg-[var(--bg-secondary)] hover:bg-[var(--accent-emerald-light)] transition-colors active:scale-[0.98] min-h-[44px]"
               >
-                {t('viewAllMenu', filteredMenu.length - MENU_PREVIEW_COUNT)}
+                {t('viewAllMenu', filteredMenu.length - previewCount)}
               </button>
             )}
           </>

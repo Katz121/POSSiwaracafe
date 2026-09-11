@@ -11,6 +11,7 @@ import { useAppContext } from '../../context/AppContext';
 import { getISODate, getNameKey } from '../../utils/calculations';
 import { mergeStockLinks } from '../../utils/stockLinks';
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeCategory, isCakeSaleActive, supportsSweetnessChoice } from '../../utils/promotions';
+import { sortByFeaturedOrder } from '../../utils/featuredOrder';
 import { bumpMenuSoldCount } from '../../utils/menuSales';
 import useDebounce from '../../hooks/useDebounce';
 import { trackRecommendationsShown, trackRecommendationAccepted } from '../../services/upsellTracker';
@@ -189,10 +190,12 @@ export default function PosView() {
     if (search) {
       return menu.filter(i => i.available !== false && String(i.name || '').toLowerCase().includes(search));
     }
-    return menu.filter(i => {
+    const items = menu.filter(i => {
       const categoryMatch = activeCategory === 'แนะนำ' ? i.isFeatured : (i.category === activeCategory);
       return categoryMatch && i.available !== false;
     });
+    // แท็บแนะนำเรียงตามที่ตั้งไว้ใน เมนู → จัดลำดับแนะนำ
+    return activeCategory === 'แนะนำ' ? sortByFeaturedOrder(items) : items;
   }, [activeCategory, debouncedSearchTerm, menu]);
 
   const totalPages = Math.ceil(filteredMenu.length / itemsPerPage);
@@ -271,7 +274,7 @@ export default function PosView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run only when editingOrderId changes; toast/setEditingOrderId are stable
   }, [editingOrderId]);
 
-  const featuredItems = useMemo(() => menu.filter(i => i.isFeatured && i.available !== false), [menu]);
+  const featuredItems = useMemo(() => sortByFeaturedOrder(menu.filter(i => i.isFeatured && i.available !== false)), [menu]);
   const cartRef = useRef(cart);
   cartRef.current = cart;
   const featuredItemsRef = useRef(featuredItems);

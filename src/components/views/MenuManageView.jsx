@@ -3,7 +3,7 @@ import {
   PackageX, ClipboardList, RefreshCcw, Zap, CheckCircle2, Trash2,
   ChevronDown, ChevronUp, Star, Eye, EyeOff, Edit, PackagePlus,
   Coffee, Link2, Plus, Upload, TrendingUp, Store, AlertTriangle, FolderCog, Clock, Languages,
-  Candy, ImagePlus
+  Candy, ImagePlus, ArrowUp, ArrowDown, ListOrdered
 } from 'lucide-react';
 import { doc, collection, addDoc, updateDoc, deleteDoc, writeBatch, increment, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { computeMenuWaste, buildWasteExpenseTitle, usageFromPortions } from '../../utils/wastage';
@@ -15,6 +15,7 @@ import { getModifierGroups, STOCK_CATEGORIES, getStockCategory, DEFAULT_STOCK_UN
 import { generateMenuImage } from '../../services/aiService';
 import { uploadImageToR2, isBase64Image } from '../../services/imageUpload';
 import { supportsSweetnessChoice } from '../../utils/promotions';
+import { sortByFeaturedOrder, moveItem, featuredOrderUpdates } from '../../utils/featuredOrder';
 import { Badge, Button, Modal, Input, Select, EmptyState, useToast, ConfirmModal, InputModal, Skeleton, SearchSelect } from '../ui';
 
 export default function MenuManageView() {
@@ -194,6 +195,25 @@ export default function MenuManageView() {
     await runDbAction(async () => {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menu', item.id), { [field]: !item[field] });
     }, 'อัปเดตเมนูไม่สำเร็จ');
+  };
+
+  // จัดลำดับเมนูแนะนำ (featuredOrder) · ใช้ทั้งแถบ "เมนูแนะนำ" หน้า QR และแท็บ "แนะนำ" หน้าร้าน
+  const [featuredDraft, setFeaturedDraft] = useState(null); // null = ปิด modal
+  const [savingFeaturedOrder, setSavingFeaturedOrder] = useState(false);
+  const openFeaturedOrder = () => setFeaturedDraft(sortByFeaturedOrder(menu.filter(m => m.isFeatured === true)));
+  const saveFeaturedOrder = async () => {
+    const updates = featuredOrderUpdates(featuredDraft || []);
+    if (updates.length === 0) { setFeaturedDraft(null); return; }
+    setSavingFeaturedOrder(true);
+    try {
+      await runDbAction(async () => {
+        const batch = writeBatch(db);
+        updates.forEach(({ id, featuredOrder }) => batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'menu', id), { featuredOrder }));
+        await batch.commit();
+        toast.success('บันทึกลำดับเมนูแนะนำแล้ว');
+        setFeaturedDraft(null);
+      }, 'บันทึกลำดับไม่สำเร็จ');
+    } finally { setSavingFeaturedOrder(false); }
   };
 
   // Memoized groupedMenu
@@ -1016,6 +1036,7 @@ ${withDescription
           </div>
           <div className="px-6 py-3 flex flex-wrap gap-2" role="group" aria-label="กรองเมนูไฮไลต์">
             {[['all', 'ทุกไฮไลต์', stockFilteredMenu.length], ['featured', 'แนะนำ', stockFilteredMenu.filter(item => item.isFeatured === true || item.recommended === true).length], ['pinned', 'ปักหมุดขายดี', stockFilteredMenu.filter(item => item.isPinnedBest === true).length]].map(([value, label, count]) => <Button key={value} type="button" className="min-h-11" variant={highlightFilter === value ? 'primary' : 'secondary'} aria-pressed={highlightFilter === value} onClick={() => setHighlightFilter(value)}>{label} {count}</Button>)}
+            <Button type="button" className="min-h-11" variant="outline" leftIcon={<ListOrdered size={16} />} onClick={openFeaturedOrder}>จัดลำดับแนะนำ</Button>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-gray-50 scrollbar-hide px-6">
             {!isSyncing && menu.length > 0 && filteredMenu.length === 0 && <EmptyState icon={ClipboardList} title="ไม่มีเมนูที่ตรงกับตัวกรอง" />}
@@ -1572,6 +1593,37 @@ Return [] if no stock items match.`;
         </div>
       </div>
 
+      <Modal isOpen={featuredDraft !== null} onClose={() => { if (!savingFeaturedOrder) setFeaturedDraft(null); }} title="จัดลำดับเมนูแนะนำ" size="md">
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--text-secondary)]">ลำดับนี้ใช้กับแถบ "เมนูแนะนำ" ในหน้า QR และแท็บ "แนะนำ" หน้าร้าน · กดลูกศรเพื่อเลื่อนขึ้นลง</p>
+          {featuredDraft?.length === 0 && <EmptyState icon={Star} title="ยังไม่มีเมนูแนะนำ" description="กดดาวที่เมนูเพื่อเพิ่มเป็นเมนูแนะนำก่อน" />}
+          <ol className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {(featuredDraft || []).map((item, idx) => (
+              <li key={item.id} className="flex items-center gap-3 p-2 rounded-[var(--radius-sm)] border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+                <span className="num w-7 text-center text-sm font-bold text-[var(--text-muted)]">{idx + 1}</span>
+                <div className="w-12 h-12 rounded-[var(--radius-sm)] overflow-hidden bg-[var(--bg-tertiary)] shrink-0 flex items-center justify-center">
+                  {item.image ? <img src={item.image} alt="" className="w-full h-full object-cover" /> : <Coffee size={18} className="text-[var(--text-muted)]" />}
+                </div>
+                <span className="flex-1 min-w-0 text-sm font-semibold text-[var(--text-primary)] line-clamp-2">{item.name}</span>
+                <button type="button" aria-label={`เลื่อน ${item.name} ขึ้น`} disabled={idx === 0 || savingFeaturedOrder}
+                  onClick={() => setFeaturedDraft(d => moveItem(d, idx, idx - 1))}
+                  className="w-11 h-11 shrink-0 rounded-[var(--radius-sm)] flex items-center justify-center bg-[var(--bg-tertiary)] text-[var(--text-primary)] disabled:opacity-30 active:scale-95">
+                  <ArrowUp size={18} />
+                </button>
+                <button type="button" aria-label={`เลื่อน ${item.name} ลง`} disabled={idx === featuredDraft.length - 1 || savingFeaturedOrder}
+                  onClick={() => setFeaturedDraft(d => moveItem(d, idx, idx + 1))}
+                  className="w-11 h-11 shrink-0 rounded-[var(--radius-sm)] flex items-center justify-center bg-[var(--bg-tertiary)] text-[var(--text-primary)] disabled:opacity-30 active:scale-95">
+                  <ArrowDown size={18} />
+                </button>
+              </li>
+            ))}
+          </ol>
+          <div className="flex gap-2">
+            <Button variant="secondary" fullWidth disabled={savingFeaturedOrder} onClick={() => setFeaturedDraft(null)}>ยกเลิก</Button>
+            <Button fullWidth loading={savingFeaturedOrder} disabled={!featuredDraft?.length} onClick={saveFeaturedOrder}>บันทึกลำดับ</Button>
+          </div>
+        </div>
+      </Modal>
       <Modal isOpen={wasteMenuId !== null} onClose={() => { if (!savingWaste) setWasteMenuId(null); }} title="บันทึกของเสีย" size="md">
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">{wasteMenu?.name || 'เมนูนี้ถูกลบแล้ว'}</h3>
