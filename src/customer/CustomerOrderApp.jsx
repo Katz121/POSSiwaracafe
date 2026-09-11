@@ -137,6 +137,8 @@ const TX = {
     close: 'ปิด',
     orderOf: 'ออเดอร์ของ',
     queueBefore: 'มีคิวก่อนหน้า · คิวของคุณ',
+    yourQueue: 'เลขคิวของคุณ',
+    ordersAhead: (n) => `มี ${n} ออเดอร์ก่อนหน้าคุณ`,
     preparingDrink: 'กำลังทำเครื่องดื่มของคุณ ☕',
     payAtCounter: 'กรุณาชำระเงินที่เคาน์เตอร์',
     staffWillCall: 'พนักงานจะเรียกชื่อเมื่อเครื่องดื่มพร้อม',
@@ -225,6 +227,8 @@ const TX = {
     close: 'Close',
     orderOf: 'Order for',
     queueBefore: 'People ahead of you · your number',
+    yourQueue: 'Your queue number',
+    ordersAhead: (n) => `${n} order${n > 1 ? 's' : ''} ahead of you`,
     preparingDrink: 'Preparing your drink ☕',
     payAtCounter: 'Please pay at the counter',
     staffWillCall: "Staff will call your name when it's ready",
@@ -370,9 +374,16 @@ className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1
               {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(item.price))}
             </span>
           )}
-<div className="w-9 h-9 bg-[var(--accent-emerald)] rounded-full flex items-center justify-center shadow-[var(--elev-1)]">
+          {/* "+" always adds — even on story-poster menus where the card itself
+              opens the poster first (e.g. Poh). */}
+          <button
+            type="button"
+            aria-label={`${t('addToCart')} ${dispField(item, lang)}`}
+            onClick={(e) => { e.stopPropagation(); onAdd(item); }}
+            className="w-11 h-11 -m-1 bg-[var(--accent-emerald)] rounded-full flex items-center justify-center shadow-[var(--elev-1)] active:scale-95"
+          >
             <Plus size={18} className="text-white" />
-          </div>
+          </button>
         </div>
       </div>
     </motion.div>
@@ -901,6 +912,7 @@ function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote
                             value={noteValue}
                             onChange={(e) => setNoteValue(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter') saveNote(id); }}
+                            onBlur={() => saveNote(id)} // tapping elsewhere / "proceed" must not drop the note
                             placeholder={t('notePlaceholder')}
                             className="flex-1 text-xs border border-[var(--border-color)] rounded-[var(--radius-sm)] px-3 py-1.5 bg-[var(--bg-secondary)] focus:outline-none focus:border-[var(--accent-emerald)]"
                           />
@@ -1125,9 +1137,11 @@ function CheckoutStep({
                 label={t('phoneLabel')}
                 placeholder={t('phonePlaceholder')}
                 value={customerPhone}
-                onChange={(e) => onPhoneChange(e.target.value)}
+                // Keep digits only: "081 234 5678" / "081-234-5678" still becomes a
+                // full 10-digit number instead of being cut off by maxLength.
+                onChange={(e) => onPhoneChange(e.target.value.replace(/\D/g, '').slice(0, 10))}
                 inputMode="numeric"
-                maxLength={10}
+                autoComplete="tel"
               />
               {/* Member status line + points progress */}
               {member ? (
@@ -1285,13 +1299,18 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, t }) {
               <p className="text-[var(--text-secondary)] font-medium text-sm">{t('orderOf')}</p>
               <h1 className="font-bold text-3xl text-[var(--text-primary)]">{customerName}</h1>
 
-        {queueNumber > 1 ? (
-            <div className="bg-[var(--accent-emerald)] text-white rounded-[var(--radius)] px-4 py-4 inline-block shadow-[var(--elev-1)] my-4">
-            <p className="text-sm font-medium opacity-80 mb-1">{t('queueBefore')}</p>
-              <p className="text-5xl font-bold tracking-tight num">#{queueNumber}</p>
+        {/* Big number = the real queue ticket (same number staff see). The
+            line under it is how many orders are ahead (pending includes ours). */}
+        {queueNumber?.number > 0 && (
+            <div className="bg-[var(--accent-emerald)] text-white rounded-[var(--radius)] px-5 py-4 inline-block shadow-[var(--elev-1)] my-4">
+            <p className="text-sm font-medium opacity-80 mb-1">{t('yourQueue')}</p>
+              <p className="text-5xl font-bold tracking-tight num">#{queueNumber.number}</p>
           </div>
+        )}
+        {queueNumber?.pending > 1 ? (
+              <p className="text-[var(--text-secondary)] font-semibold text-base">{t('ordersAhead', queueNumber.pending - 1)}</p>
         ) : (
-              <p className="text-[var(--accent-emerald)] font-bold text-2xl leading-relaxed mt-4">
+              <p className="text-[var(--accent-emerald)] font-bold text-2xl leading-relaxed mt-2">
             {t('preparingDrink')}
           </p>
         )}
@@ -1561,8 +1580,10 @@ function CustomerOrderApp() {
 
   const filteredMenu = useMemo(() => availableMenu
     .filter((item) => {
-      const matchCat = activeCategory === 'ทั้งหมด' || item.category === activeCategory;
       const q = searchQuery.trim().toLowerCase();
+      // A search looks through the whole menu, even if a category chip is
+      // still selected — otherwise "not found" really means "wrong tab".
+      const matchCat = q !== '' || activeCategory === 'ทั้งหมด' || item.category === activeCategory;
       const matchSearch = q === '' ||
         item.name.toLowerCase().includes(q) ||
         (item.description || '').toLowerCase().includes(q) ||
@@ -1902,7 +1923,7 @@ function CustomerOrderApp() {
       // --- Best-selling counter (best-effort; never blocks the order) ---
       bumpMenuSoldCount(cart);
 
-      setSuccessQueue(result.pendingCount || 0);
+      setSuccessQueue({ number: result.queueNumber || 0, pending: result.pendingCount || 0 });
       checkoutRequestIdRef.current = null;
       setView('success');
     } catch (err) {
@@ -1927,7 +1948,7 @@ function CustomerOrderApp() {
             promotionDiscountPercent: comboDiscount > 0 ? (combo.percent || 0) : spendDiscountPercent,
           });
           bumpMenuSoldCount(cart);
-          setSuccessQueue(fallback.pendingCount || 0);
+          setSuccessQueue({ number: fallback.queueNumber || 0, pending: fallback.pendingCount || 0 });
           checkoutRequestIdRef.current = null;
           setView('success');
           return;
@@ -1946,10 +1967,11 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   // Reset to order again
   // ---------------------------------------------------------------------------
+  // "สั่งเพิ่ม" keeps the name + phone so a second round (a friend's drink,
+  // another cake) doesn't mean typing everything again; both stay editable at
+  // checkout. Points are re-chosen per order.
   const handleReset = () => {
     setCart([]);
-    setCustomerName('');
-    setCustomerPhone('');
     setUsePoints(false);
     setSubmitError('');
     setSuccessQueue(null);
