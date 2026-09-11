@@ -7,6 +7,11 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    // /api/* are Cloudflare Pages Functions (image upload → R2 etc.) and only
+    // exist on the deployed site; forward them there so uploads work in dev.
+    proxy: {
+      '/api': { target: 'https://possiwaracafe.pages.dev', changeOrigin: true, secure: true },
+    },
   },
   build: {
     rollupOptions: {
