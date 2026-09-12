@@ -97,7 +97,7 @@ export default function App() {
 
   // Data States from hook
   const {
-    isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter,
+    isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo,
     pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
     comboEnabled, comboPercent, spendThreshold, spendDiscount
@@ -385,10 +385,10 @@ export default function App() {
   // Split context into 3 parts for performance — consumers only re-render when their part changes
   const dataValue = useMemo(() => ({
     user, orders, menu, stock, expenses, members,
-    dynamicCategories, beanModifiers, quickExpenses, queueCounter,
+    dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo,
     isSyncing, alertsData,
   }), [user, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers,
-    quickExpenses, queueCounter, isSyncing, alertsData]);
+    quickExpenses, queueCounter, queueInfo, isSyncing, alertsData]);
 
   const configValue = useMemo(() => ({
     pinEnabled, vatEnabled, adminPin,

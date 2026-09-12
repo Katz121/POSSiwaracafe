@@ -19,6 +19,7 @@
 import {
   collection, doc, getCountFromServer, query, runTransaction, where,
 } from 'firebase/firestore';
+import { nextQueueNumber } from '../utils/queueDay';
 import { notifyNewOrderToLine } from './lineNotify';
 
 /** โค้ด error ที่แปลว่า "backend ล่ม" ไม่ใช่ "ข้อมูลลูกค้าผิด" */
@@ -82,7 +83,9 @@ export async function submitCheckoutDirect(db, appId, {
     if (existing.exists()) return Number(existing.data().queueNumber) || 0;
 
     const queueSnapshot = await transaction.get(queueRef);
-    const nextQueue = queueSnapshot.exists() ? Number(queueSnapshot.data().current) || 1 : 1;
+    // เลขคิวเริ่ม 1 ใหม่ทุกวันทำการ (10:00) · ดู utils/queueDay.js
+    const queue = nextQueueNumber(queueSnapshot.exists() ? queueSnapshot.data() : null, now);
+    const nextQueue = queue.number;
 
     transaction.set(orderRef, {
       queueNumber: nextQueue,
@@ -109,7 +112,7 @@ export async function submitCheckoutDirect(db, appId, {
       // ปั๊มไว้ให้ร้านรู้ว่าออเดอร์นี้ไม่ได้ผ่านการตรวจราคาฝั่งเซิร์ฟเวอร์
       trustedCheckout: false,
     });
-    transaction.set(queueRef, { current: nextQueue + 1 }, { merge: true });
+    transaction.set(queueRef, { current: nextQueue + 1, day: queue.day }, { merge: true });
 
     // **จงใจไม่แตะเอกสารสมาชิกในเส้นทางนี้**
     // firestore.rules เปิดให้เฉพาะพนักงานเขียน `members` เพราะถ้าลูกค้าเขียนได้

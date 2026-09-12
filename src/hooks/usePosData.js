@@ -1,7 +1,8 @@
-﻿import { useEffect, useState, useRef } from 'react';
+﻿import { useEffect, useState, useRef, useMemo } from 'react';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { publishPublicMenu } from '../utils/publicMenu';
+import { nextQueueNumber, queueDayKey } from '../utils/queueDay';
 import {
   DEFAULT_ADMIN_PIN,
   DEFAULT_REDEEM_POINTS_THRESHOLD,
@@ -24,7 +25,13 @@ export default function usePosData(user, appId) {
   const [members, setMembers] = useState([]);
   const [dynamicCategories, setDynamicCategories] = useState([]);
   const [beanModifiers, setBeanModifiers] = useState([]);
-  const [queueCounter, setQueueCounter] = useState(1);
+  // config/queue raw doc · the number shown/used restarts at 1 every business
+  // day (10:00 Bangkok), re-evaluated each minute so an open POS rolls over too.
+  const [queueDoc, setQueueDoc] = useState(null);
+  const [queueTick, setQueueTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setQueueTick((n) => n + 1), 60 * 1000); return () => clearInterval(t); }, []);
+  const queueInfo = useMemo(() => nextQueueNumber(queueDoc), [queueDoc, queueTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const queueCounter = queueInfo.number;
   const [pinEnabled, setPinEnabled] = useState(true);
   const [vatEnabled, setVatEnabled] = useState(true);
   const [adminPin, setAdminPin] = useState(DEFAULT_ADMIN_PIN);
@@ -114,8 +121,8 @@ export default function usePosData(user, appId) {
     const unsubQuickExp = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'quickExpenses'), (s) => setQuickExpenses(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
 
     const unsubQueue = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue'), (d) => {
-      if (d.exists()) setQueueCounter(d.data().current || 1);
-      else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue'), { current: 1 });
+      if (d.exists()) setQueueDoc(d.data());
+      else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue'), { current: 1, day: queueDayKey() });
     }, handleSnapshotError);
 
     const unsubSettings = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), (d) => {
@@ -177,5 +184,5 @@ export default function usePosData(user, appId) {
     return () => clearTimeout(timeout);
   }, [menu, dynamicCategories, beanModifiers, settingsRaw, appId, isSyncing]);
 
-  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
+  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
 }

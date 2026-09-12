@@ -147,6 +147,9 @@ const TX = {
     orderOf: 'ออเดอร์ของ',
     queueBefore: 'มีคิวก่อนหน้า · คิวของคุณ',
     yourQueue: 'เลขคิวของคุณ',
+    kitchenPosition: 'ลำดับของคุณในครัว',
+    positionN: (n) => `ที่ ${n}`,
+    orderNumber: (n) => `เลขออเดอร์ #${n} · แจ้งพนักงานได้`,
     ordersAhead: (n) => `มี ${n} ออเดอร์ก่อนหน้าคุณ`,
     preparingDrink: 'กำลังทำเครื่องดื่มของคุณ ☕',
     payAtCounter: 'กรุณาชำระเงินที่เคาน์เตอร์',
@@ -244,6 +247,9 @@ const TX = {
     orderOf: 'Order for',
     queueBefore: 'People ahead of you · your number',
     yourQueue: 'Your queue number',
+    kitchenPosition: 'Your place in the kitchen line',
+    positionN: (n) => `No. ${n}`,
+    orderNumber: (n) => `Order #${n} · show this to staff`,
     ordersAhead: (n) => `${n} order${n > 1 ? 's' : ''} ahead of you`,
     preparingDrink: 'Preparing your drink ☕',
     payAtCounter: 'Please pay at the counter',
@@ -1337,20 +1343,24 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, t }) {
               <p className="text-[var(--text-secondary)] font-medium text-sm">{t('orderOf')}</p>
               <h1 className="font-bold text-3xl text-[var(--text-primary)]">{customerName}</h1>
 
-        {/* Big number = the real queue ticket (same number staff see). The
-            line under it is how many orders are ahead (pending includes ours). */}
-        {queueNumber?.number > 0 && (
-            <div className="bg-[var(--accent-emerald)] text-white rounded-[var(--radius)] px-5 py-4 inline-block shadow-[var(--elev-1)] my-4">
-            <p className="text-sm font-medium opacity-80 mb-1">{t('yourQueue')}</p>
-              <p className="text-5xl font-bold tracking-tight num">#{queueNumber.number}</p>
-          </div>
-        )}
+        {/* Big number = position in today's kitchen line (pending orders of this
+            business day, ours included) — what the customer actually cares about.
+            The order/ticket number (same one on the kitchen screen and receipt,
+            restarts every day at 10:00) is shown small so staff can match it. */}
         {queueNumber?.pending > 1 ? (
-              <p className="text-[var(--text-secondary)] font-semibold text-base">{t('ordersAhead', queueNumber.pending - 1)}</p>
+            <div className="bg-[var(--accent-emerald)] text-white rounded-[var(--radius)] px-5 py-4 inline-block shadow-[var(--elev-1)] my-4">
+            <p className="text-sm font-medium opacity-80 mb-1">{t('kitchenPosition')}</p>
+              {/* Thai tone marks sit above the line box — give them room */}
+              <p className="text-5xl font-bold tracking-tight num leading-[1.3] pt-1">{t('positionN', queueNumber.pending)}</p>
+              <p className="text-sm font-medium opacity-90 mt-1">{t('ordersAhead', queueNumber.pending - 1)}</p>
+          </div>
         ) : (
-              <p className="text-[var(--accent-emerald)] font-bold text-2xl leading-relaxed mt-2">
+              <p className="text-[var(--accent-emerald)] font-bold text-2xl leading-relaxed mt-4">
             {t('preparingDrink')}
           </p>
+        )}
+        {queueNumber?.number > 0 && (
+              <p className="text-[var(--text-muted)] text-sm">{t('orderNumber', queueNumber.number)}</p>
         )}
               <p className="text-[var(--text-secondary)] font-semibold text-base leading-relaxed">
           {t('payAtCounter')}

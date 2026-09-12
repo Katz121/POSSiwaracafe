@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { nextQueueNumber, queueDayStart, countPendingSince } from './queueDay.js';
 import { defineSecret } from 'firebase-functions/params';
 import { buildTrustedCheckout } from './checkoutLogic.js';
 import { notifyShopOrder } from './shopNotification.js';
@@ -109,7 +110,9 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
         now,
       });
 
-      const queueNumber = queueSnapshot.exists ? Number(queueSnapshot.data().current) || 1 : 1;
+      // Queue restarts at 1 every business day (10:00 Bangkok) — see queueDay.js
+      const queue = nextQueueNumber(queueSnapshot.exists ? queueSnapshot.data() : null, now);
+      const queueNumber = queue.number;
       const createdAt = Timestamp.fromDate(now);
       const date = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -143,11 +146,14 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
       const response = {
         orderId: orderRef.id,
         queueNumber,
-        pendingCount: pendingSnapshot.size + 1,
+        // Position in today's kitchen line (this order included). Only pending
+        // orders from the current business day count, so an old order nobody
+        // closed can't make a customer think there are dozens ahead of them.
+        pendingCount: countPendingSince(pendingSnapshot.docs, queueDayStart(now)) + 1,
         total: checkout.total,
       };
 
-      transaction.set(queueRef, { current: queueNumber + 1 }, { merge: true });
+      transaction.set(queueRef, { current: queueNumber + 1, day: queue.day }, { merge: true });
       transaction.create(orderRef, orderData);
       if (memberRef) {
         const memberPayload = {

@@ -12,6 +12,7 @@ import { getISODate, getNameKey } from '../../utils/calculations';
 import { mergeStockLinks } from '../../utils/stockLinks';
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeCategory, isCakeSaleActive, supportsSweetnessChoice } from '../../utils/promotions';
 import { sortByFeaturedOrder } from '../../utils/featuredOrder';
+import { queueDayKey } from '../../utils/queueDay';
 import { bumpMenuSoldCount } from '../../utils/menuSales';
 import useDebounce from '../../hooks/useDebounce';
 import { trackRecommendationsShown, trackRecommendationAccepted } from '../../services/upsellTracker';
@@ -42,6 +43,7 @@ export default function PosView() {
     beanModifiers,
     dynamicCategories,
     queueCounter,
+    queueInfo,
     isSyncing,
     vatEnabled,
     redeemPointsThreshold,
@@ -557,7 +559,9 @@ export default function PosView() {
         });
         batch.set(orderRef, orderData);
         // Atomic increment — prevents duplicate queue numbers when POS and QR checkout race.
-        batch.update(queueRef, { current: increment(1) });
+        // First order of a new business day (10:00) restarts the count: this sale is #1.
+        if (queueInfo?.sameDay === false) batch.set(queueRef, { current: 2, day: queueInfo.day });
+        else batch.set(queueRef, { current: increment(1), day: queueInfo?.day ?? queueDayKey() }, { merge: true });
         await batch.commit();
         // Best-selling counter (best-effort; never blocks the sale)
         bumpMenuSoldCount(cart);

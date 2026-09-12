@@ -14,6 +14,7 @@ import { getISODate, getOrderDate } from '../../utils/calculations';
 import { seedDatabase } from '../../utils/seedData';
 import { recomputeAllSoldCounts } from '../../utils/menuSales';
 import QrFunnelCard from '../QrFunnelCard';
+import { queueDayKey } from '../../utils/queueDay';
 import { getUpsellStats, clearUpsellStats, exportUpsellStats } from '../../services/upsellTracker';
 import { Button, Modal, Input, Tabs, Card, Badge, Spinner, ConfirmModal, SearchSelect, useToast, ErrorBoundary } from '../ui';
 import {
@@ -308,7 +309,7 @@ export default function AdminView() {
     await runDbAction(async () => {
       const pendingOrders = orders.filter(o => o.status !== 'completed' && getOrderDate(o) === getISODate());
       for (const order of pendingOrders) { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id)); }
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue'), { current: 1 });
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue'), { current: 1, day: queueDayKey() }, { merge: true });
     }, 'ล้างออเดอร์ไม่สำเร็จ');
   };
 
