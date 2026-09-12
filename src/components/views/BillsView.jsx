@@ -203,6 +203,9 @@ export default function BillsView() {
                   <div className={`w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 rounded-xl md:rounded-2xl flex items-center justify-center font-semibold text-base md:text-lg lg:text-xl shrink-0 ${selectedBill?.id === bill.id ? 'bg-emerald-500 text-white shadow-[var(--elev-2)] shadow-emerald-500/20' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] shadow-sm'}`}>{Number(bill.queueNumber)}</div>
                   <div className="min-w-0">
                     <p className="font-semibold text-[var(--text-primary)] text-sm md:text-base mb-1 md:mb-2 tracking-tighter truncate">#{String(bill.id).slice(-6).toUpperCase()}</p>
+                    {(bill.memberNickname || bill.customerName) && (
+                      <p className="text-xs md:text-sm font-semibold text-emerald-700 truncate -mt-0.5 mb-1">{bill.memberNickname || bill.customerName}</p>
+                    )}
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-xs md:text-xs font-bold text-[var(--text-muted)] flex items-center gap-1 md:gap-2"><Clock size={10} className="md:w-3 md:h-3" /> {String(bill.time)} น.</p>
                       {bill.source === 'qr' && (
@@ -213,7 +216,7 @@ export default function BillsView() {
                     </div>
                   </div>
                 </div>
-                <div className="text-right flex flex-col items-end gap-1 md:gap-2">
+                <div className="text-right flex flex-col items-end gap-1 md:gap-2 shrink-0 whitespace-nowrap pl-2">
                   <p className="num text-right font-semibold text-emerald-600 text-base md:text-lg lg:text-xl">฿{Number(bill.total || 0).toLocaleString()}</p>
                   <span className={`text-[8px] md:text-xs font-semibold px-2 md:px-3 py-0.5 md:py-1 rounded-full border ${bill.isPaid ? 'bg-[var(--state-ok)]/10 text-[var(--state-ok)] border-[var(--state-ok)]/20' : 'bg-[var(--state-warn)]/10 text-[var(--state-warn)] border-[var(--state-warn)]/20'}`}>{bill.isPaid ? 'จ่ายแล้ว' : 'ค้างชำระ'}</span>
                 </div>
@@ -241,7 +244,7 @@ export default function BillsView() {
         <div className={`flex-1 bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[var(--radius)] shadow-[var(--elev-3)] border border-[var(--border-color)] overflow-hidden flex-col shadow-emerald-500/5 hidden lg:flex`}>
           {selectedBill ? (
             <div className="flex flex-col h-full animate-in fade-in">
-              <div className="p-6 lg:p-6 border-b border-gray-50 flex flex-col xl:flex-row justify-between items-start gap-4">
+              <div className="p-6 lg:p-6 border-b border-gray-50 flex flex-col 2xl:flex-row justify-between items-start gap-4">
                 <div className="min-w-0">
                   <h2 className="text-xl lg:text-2xl xl:text-3xl font-semibold text-[var(--text-primary)] tracking-tighter flex items-center gap-3 lg:gap-4">
                     <Receipt className="text-emerald-500 shrink-0" size={28} /> <span className="truncate">บิล #{String(selectedBill.id).slice(-8).toUpperCase()}</span>
@@ -253,25 +256,6 @@ export default function BillsView() {
                   </h2>
                   <p className="text-xs lg:text-sm font-bold text-[var(--text-muted)] mt-2 lg:mt-3 tracking-wider lg:tracking-widest">วันที่ {new Date(selectedHistoryDate).toLocaleDateString('th-TH', { dateStyle: 'long' })} • {String(selectedBill.time)} น.</p>
 
-                  {(selectedBill.memberPhone || selectedBill.memberNickname) && (
-                    <div className="mt-4 lg:mt-5 p-4 lg:p-4 bg-emerald-50 rounded-2xl lg:rounded-3xl border border-emerald-100 flex items-center gap-3 lg:gap-4 animate-in slide-in-from-top duration-300">
-                      <div className="w-10 h-10 lg:w-12 lg:h-12 bg-[var(--bg-secondary)] rounded-xl lg:rounded-2xl flex items-center justify-center text-emerald-500 shadow-sm border border-emerald-100/50 shrink-0">
-                        <UserCheck size={20} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs lg:text-xs font-semibold text-emerald-600 tracking-wider lg:tracking-[0.2em] mb-1">ข้อมูลลูกค้าสมาชิก</p>
-                        <p className="text-sm lg:text-lg font-semibold text-[var(--text-primary)] truncate">
-                          {selectedBill.memberNickname || members.find(m => m.phone === selectedBill.memberPhone)?.name || 'ลูกค้าทั่วไป'}
-                          {selectedBill.memberPhone && <span className="ml-2 lg:ml-3 text-emerald-600 font-bold opacity-70 tracking-tighter">({selectedBill.memberPhone})</span>}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  {selectedBill.bringOwnGlass && (
-                    <div className="mt-3 p-2.5 lg:p-3 bg-blue-50 text-blue-600 rounded-xl lg:rounded-2xl border border-blue-100 text-xs lg:text-xs font-semibold flex items-center gap-2 w-fit">
-                      <Coffee size={14} /> ส่วนลดนำแก้วมาเอง (-฿{OWN_GLASS_DISCOUNT})
-                    </div>
-                  )}
                 </div>
                 <div className="flex flex-wrap gap-2 lg:gap-4 shrink-0">
                   <button
@@ -284,7 +268,7 @@ export default function BillsView() {
                     }}
                     className={`px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold transition-all border active:scale-95 shadow-sm flex items-center gap-2 ${selectedBill.isPaid ? 'bg-orange-50 text-orange-600 border-orange-100 hover:bg-orange-600 hover:text-white' : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-600 hover:text-white'}`}
                   >
-                    {selectedBill.isPaid ? <><Wallet size={16} /> <span className="hidden xl:inline">ยกเลิกชำระ</span></> : <><CreditCard size={16} /> <span className="hidden xl:inline">ชำระแล้ว</span></>}
+                    {selectedBill.isPaid ? <><Wallet size={16} /> <span>ยกเลิกชำระ</span></> : <><CreditCard size={16} /> <span>ชำระแล้ว</span></>}
                   </button>
                   <button onClick={handlePrintBill} className="bg-blue-50 text-blue-600 px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-blue-600 hover:text-white transition-all border border-blue-100 active:scale-95 shadow-sm flex items-center gap-2"><Printer size={16} /> พิมพ์บิล</button>
                   <button onClick={handleOpenReceiptPdf} disabled={generating} className="disabled:opacity-50 disabled:cursor-not-allowed bg-blue-50 text-blue-600 px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-blue-600 hover:text-white transition-all border border-blue-100 active:scale-95 shadow-sm flex items-center gap-2"><FileText size={16} /> {generating ? 'กำลังสร้าง...' : 'PDF'}</button>
@@ -293,6 +277,32 @@ export default function BillsView() {
                   <button onClick={() => setSelectedBill(null)} className="bg-[var(--bg-tertiary)] text-[var(--text-muted)] px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-[var(--bg-tertiary)] border border-[var(--border-color)]">ปิด</button>
                 </div>
               </div>
+              {/* Customer info gets its own full-width row: next to the 6 action
+                  buttons (xl+, e.g. iPad Pro landscape) it was squeezed until the
+                  name was cut off. */}
+              {(selectedBill.memberPhone || selectedBill.memberNickname || selectedBill.bringOwnGlass) && (
+                <div className="px-6 pt-4 flex flex-wrap items-stretch gap-3">
+                  {(selectedBill.memberPhone || selectedBill.memberNickname) && (
+                    <div className="flex-1 min-w-[16rem] p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center gap-4 animate-in slide-in-from-top duration-300">
+                      <div className="w-12 h-12 bg-[var(--bg-secondary)] rounded-2xl flex items-center justify-center text-emerald-500 shadow-sm border border-emerald-100/50 shrink-0">
+                        <UserCheck size={22} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-emerald-600 mb-0.5">ข้อมูลลูกค้าสมาชิก</p>
+                        <p className="text-lg font-semibold text-[var(--text-primary)] leading-snug break-words">
+                          {selectedBill.memberNickname || members.find(m => m.phone === selectedBill.memberPhone)?.name || 'ลูกค้าทั่วไป'}
+                        </p>
+                        {selectedBill.memberPhone && <p className="num text-sm font-semibold text-emerald-700">{selectedBill.memberPhone}</p>}
+                      </div>
+                    </div>
+                  )}
+                  {selectedBill.bringOwnGlass && (
+                    <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 text-xs font-semibold flex items-center gap-2 self-center">
+                      <Coffee size={14} /> ส่วนลดนำแก้วมาเอง (-฿{OWN_GLASS_DISCOUNT})
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex-1 overflow-y-auto p-6 lg:p-12 scrollbar-hide">
                 <div className="max-w-3xl mx-auto space-y-8 lg:space-y-12">
                   <div>
@@ -407,10 +417,11 @@ export default function BillsView() {
                       <UserCheck size={20} />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold text-emerald-600 tracking-wider">สมาชิก</p>
-                      <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                      <p className="text-xs font-semibold text-emerald-600">สมาชิก</p>
+                      <p className="text-base font-semibold text-[var(--text-primary)] leading-snug break-words">
                         {selectedBill.memberNickname || members.find(m => m.phone === selectedBill.memberPhone)?.name || 'ลูกค้าทั่วไป'}
                       </p>
+                      {selectedBill.memberPhone && <p className="num text-sm font-semibold text-emerald-700">{selectedBill.memberPhone}</p>}
                     </div>
                   </div>
                 )}
