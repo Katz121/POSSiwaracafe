@@ -1,6 +1,6 @@
 ﻿import React, { useState, useCallback, useMemo, useRef, useEffect, lazy, Suspense } from 'react';
 import {
-  User, ChefHat, FileText, Package, DollarSign, ClipboardList, Users,
+  User, ChefHat, FileText, Package, DollarSign, ClipboardList, Users, BookOpen,
   PieChart, LayoutDashboard, Lock, Trash2, Moon, Sun, MoreHorizontal,
   Coffee, Sparkles, LogOut, TrendingUp
 } from 'lucide-react';
@@ -50,6 +50,7 @@ const StockView = lazy(() => import('./components/views/StockView'));
 const ProfitabilityView = lazy(() => import('./components/views/ProfitabilityView'));
 const ExpensesView = lazy(() => import('./components/views/ExpensesView'));
 const MenuManageView = lazy(() => import('./components/views/MenuManageView'));
+const RecipesView = lazy(() => import('./components/views/RecipesView'));
 const MembersView = lazy(() => import('./components/views/MembersView'));
 const AdminView = lazy(() => import('./components/views/AdminView'));
 const FinancialView = lazy(() => import('./components/views/FinancialView'));
@@ -97,7 +98,7 @@ export default function App() {
 
   // Data States from hook
   const {
-    isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo,
+    isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes,
     pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
     comboEnabled, comboPercent, spendThreshold, spendDiscount
@@ -385,10 +386,10 @@ export default function App() {
   // Split context into 3 parts for performance — consumers only re-render when their part changes
   const dataValue = useMemo(() => ({
     user, orders, menu, stock, expenses, members,
-    dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo,
+    dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes,
     isSyncing, alertsData,
   }), [user, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers,
-    quickExpenses, queueCounter, queueInfo, isSyncing, alertsData]);
+    quickExpenses, queueCounter, queueInfo, recipes, isSyncing, alertsData]);
 
   const configValue = useMemo(() => ({
     pinEnabled, vatEnabled, adminPin,
@@ -597,6 +598,7 @@ export default function App() {
             {view === 'profitability' && <ProfitabilityView />}
             {view === 'expenses' && <ExpensesView />}
             {view === 'menu_manage' && <MenuManageView />}
+            {view === 'recipes' && <RecipesView />}
             {view === 'members_manage' && <MembersView />}
             {view === 'admin' && <AdminView />}
             {view === 'financial' && <FinancialView />}
@@ -713,7 +715,7 @@ export default function App() {
                   'flex items-center gap-1 px-3 md:px-4 lg:px-5 py-2 md:py-3',
                   'rounded-[var(--radius-sm)] text-[11px] md:text-xs font-medium leading-none shrink-0',
                   'transition-all duration-300',
-                  ['expenses', 'menu_manage', 'members_manage', 'financial', 'admin', 'category_summary', 'sales_history'].includes(view)
+                  ['expenses', 'menu_manage', 'recipes', 'members_manage', 'financial', 'admin', 'category_summary', 'sales_history'].includes(view)
                     ? 'bg-emerald-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.42)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--accent-emerald)] hover:bg-black/5 active:scale-95',
                 ].join(' ')}
@@ -734,6 +736,7 @@ export default function App() {
                       { key: 'sales_history',    icon: TrendingUp,     label: 'ประวัติการขาย' },
                       { key: 'expenses',         icon: DollarSign,    label: 'รายจ่าย'      },
                       { key: 'menu_manage',       icon: ClipboardList, label: 'จัดการเมนู'   },
+                      { key: 'recipes',           icon: BookOpen,      label: 'สูตรเมนู'     },
                       { key: 'members_manage',    icon: Users,         label: 'สมาชิก'       },
                       { key: 'category_summary',  icon: PieChart,      label: 'ยอดขายหมวด'  },
                       { key: 'financial',         icon: DollarSign,    label: 'การเงิน'      },

@@ -28,6 +28,8 @@ export default function usePosData(user, appId) {
   // config/queue raw doc · the number shown/used restarts at 1 every business
   // day (10:00 Bangkok), re-evaluated each minute so an open POS rolls over too.
   const [queueDoc, setQueueDoc] = useState(null);
+  // recipes/{menuId} → { text, menuName, updatedAt } · staff-only (see firestore.rules)
+  const [recipes, setRecipes] = useState({});
   const [queueTick, setQueueTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setQueueTick((n) => n + 1), 60 * 1000); return () => clearInterval(t); }, []);
   const queueInfo = useMemo(() => nextQueueNumber(queueDoc), [queueDoc, queueTick]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -120,6 +122,10 @@ export default function usePosData(user, appId) {
     const unsubBeans = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'beanModifiers'), (s) => setBeanModifiers(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
     const unsubQuickExp = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'quickExpenses'), (s) => setQuickExpenses(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
 
+    const unsubRecipes = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'recipes'), (s) => {
+      setRecipes(Object.fromEntries(s.docs.map((d) => [d.id, d.data()])));
+    }, handleSnapshotError);
+
     const unsubQueue = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue'), (d) => {
       if (d.exists()) setQueueDoc(d.data());
       else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue'), { current: 1, day: queueDayKey() });
@@ -156,7 +162,7 @@ export default function usePosData(user, appId) {
       }
     }, handleSnapshotError);
 
-    return () => { unsubCats(); unsubMenu(); unsubStock(); unsubOrders(); unsubExp(); unsubMem(); unsubBeans(); unsubQuickExp(); unsubQueue(); unsubSettings(); };
+    return () => { unsubCats(); unsubMenu(); unsubStock(); unsubOrders(); unsubExp(); unsubMem(); unsubBeans(); unsubQuickExp(); unsubRecipes(); unsubQueue(); unsubSettings(); };
   }, [userId, appId]);
 
   // (Re)publish the single-doc customer menu bundle whenever the source data changes.
@@ -184,5 +190,5 @@ export default function usePosData(user, appId) {
     return () => clearTimeout(timeout);
   }, [menu, dynamicCategories, beanModifiers, settingsRaw, appId, isSyncing]);
 
-  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
+  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
 }

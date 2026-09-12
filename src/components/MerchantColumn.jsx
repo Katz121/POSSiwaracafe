@@ -1,8 +1,12 @@
-﻿import React from 'react';
+﻿import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Edit3, Utensils, CloudOff } from 'lucide-react';
+import { Clock, Edit3, Utensils, CloudOff, BookOpen } from 'lucide-react';
+import { useAppContext } from '../context/AppContext';
+import RecipeSheet from './RecipeSheet';
 
 export default function MerchantColumn({ title, color, status, orders, onUpdate, onCancel, onEdit }) {
+  const { recipes = {} } = useAppContext();
+  const [recipeItem, setRecipeItem] = useState(null); // order line whose recipe is open
   const filtered = (orders || [])
     .filter(o => o.status === status)
     .sort((a, b) => (Number(a.queueNumber) || 0) - (Number(b.queueNumber) || 0));
@@ -11,6 +15,20 @@ export default function MerchantColumn({ title, color, status, orders, onUpdate,
   const statusLabelMap = { pending: 'เริ่มปรุง', preparing: 'เสร็จแล้ว', ready: 'ส่งงาน/เช็คบิล' };
 
   return (
+    <>
+    <RecipeSheet
+      isOpen={!!recipeItem}
+      onClose={() => setRecipeItem(null)}
+      menuName={recipeItem?.name}
+      recipe={recipeItem ? recipes[recipeItem.id] : null}
+    >
+      {recipeItem && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="num px-3 py-1 rounded-full bg-emerald-500 text-white text-sm font-bold">x{Number(recipeItem.quantity)}</span>
+          {recipeItem.note && <span className="px-3 py-1 rounded-full bg-orange-50 text-orange-600 border border-orange-100 text-sm font-semibold">📍 {String(recipeItem.note)}</span>}
+        </div>
+      )}
+    </RecipeSheet>
     <div className="w-80 lg:w-96 shrink-0 flex flex-col gap-4 bg-[#111827]/50 rounded-[var(--radius)] p-4 border border-[#1f2937] shadow-[var(--elev-1)]">
       <div className="flex items-center justify-between px-4 py-2 border-b border-[#1f2937]/50 pb-4 text-[#9ca3af]">
         <div className="flex items-center gap-2 text-xs font-medium tracking-widest">
@@ -46,7 +64,12 @@ export default function MerchantColumn({ title, color, status, orders, onUpdate,
               {(order.items || []).map((item, idx) => (
                 <div key={idx} className="flex flex-col border-b border-[#374151]/50 pb-3 last:border-0 leading-tight">
                   <div className="flex justify-between items-start text-base">
-                    <span className="font-semibold flex-1 pr-2">{String(item.name)}</span>
+                    {/* tap the menu name → its recipe (สูตรเมนู) */}
+                    <button type="button" onClick={() => setRecipeItem(item)} aria-label={`ดูสูตร ${String(item.name)}`}
+                      className="font-semibold flex-1 pr-2 text-left min-h-[44px] -my-2 flex items-center gap-2 hover:text-emerald-400 active:text-emerald-300">
+                      <span>{String(item.name)}</span>
+                      <BookOpen size={14} className={`shrink-0 ${String(recipes[item.id]?.text || '').trim() ? 'text-emerald-400' : 'text-[#4b5563]'}`} aria-hidden="true" />
+                    </button>
                     <span className="num text-emerald-400 font-bold ml-3 shrink-0 text-lg">x{Number(item.quantity)}</span>
                   </div>
                   {item.note && <p className="text-xs text-orange-400 font-bold mt-2 bg-orange-400/5 p-2 rounded-lg border border-orange-400/10">📍 {String(item.note)}</p>}
@@ -76,5 +99,6 @@ export default function MerchantColumn({ title, color, status, orders, onUpdate,
         </AnimatePresence>
       </div>
     </div>
+    </>
   );
 }
