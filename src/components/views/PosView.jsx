@@ -14,6 +14,7 @@ import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE,
 import { sortByFeaturedOrder } from '../../utils/featuredOrder';
 import { queueDayKey } from '../../utils/queueDay';
 import { bumpMenuSoldCount } from '../../utils/menuSales';
+import { withInFlightGuard } from '../../utils/pointsActions';
 import useDebounce from '../../hooks/useDebounce';
 import { trackRecommendationsShown, trackRecommendationAccepted } from '../../services/upsellTracker';
 import { Button, Modal, EmptyState, useToast, Skeleton } from '../ui';
@@ -281,6 +282,8 @@ export default function PosView() {
   cartRef.current = cart;
   const featuredItemsRef = useRef(featuredItems);
   featuredItemsRef.current = featuredItems;
+  const checkoutInFlight = useRef(new Set());
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const handleCheckoutRef = useRef(null);
   const handleClearCartRef = useRef(null);
 
@@ -432,7 +435,7 @@ export default function PosView() {
   };
   handleClearCartRef.current = handleClearCart;
 
-  const handleCheckout = async () => {
+  const handleCheckout = () => withInFlightGuard(checkoutInFlight.current, ['checkout'], async () => {
     if (cart.length === 0) return;
     if (!user) {
       toast.error('ไม่พบข้อมูลผู้ใช้งาน - กรุณารีเฟรชหน้าจอหรือตรวจสอบอินเทอร์เน็ต');
@@ -569,7 +572,7 @@ export default function PosView() {
       setCart([]); setIsPaid(false); setMemberPhone(''); setMemberNickname(''); setUsePoints(false); setBringOwnGlass(false); setReviewDiscount(false);
       toast.success(editingOrderId ? 'แก้ไขออเดอร์สำเร็จ' : `บันทึกออเดอร์ #${queueCounter} สำเร็จ`);
     }, 'บันทึกออเดอร์ไม่สำเร็จ');
-  };
+  }, ids => setCheckoutBusy(ids.size > 0));
 
   handleCheckoutRef.current = handleCheckout;
 
@@ -916,7 +919,7 @@ export default function PosView() {
         </button>
       </div>
 
-      <button onClick={onConfirm} disabled={cart.length === 0}
+      <button onClick={onConfirm} disabled={cart.length === 0 || checkoutBusy}
         className="w-full h-14 rounded-[var(--radius-sm)] text-[15px] font-semibold flex items-center justify-center gap-2 bg-[var(--accent-emerald)] text-white active:scale-[0.98] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ boxShadow: cart.length === 0 ? 'none' : '0 8px 24px -8px var(--accent-emerald)' }}>
         <CheckCircle size={18} strokeWidth={2.5} />

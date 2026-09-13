@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Users, Search, User, UserMinus, UserX, Phone, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X, Calculator, GitMerge, AlertTriangle, ChevronDown } from 'lucide-react';
-import { doc, setDoc, deleteDoc, updateDoc, writeBatch, serverTimestamp, increment, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, updateDoc, writeBatch, serverTimestamp, increment, arrayUnion, runTransaction } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getNameKey } from '../../utils/calculations';
+import { settlePendingPoints, withInFlightGuard } from '../../utils/pointsActions';
 import useDebounce from '../../hooks/useDebounce';
 import { Button, Modal, Input, Select, EmptyState, useToast, ConfirmModal, InputModal, Skeleton } from '../ui';
 import { DEFAULT_REDEEM_POINTS_THRESHOLD } from '../../config/constants';
@@ -28,6 +29,12 @@ export default function MembersView() {
   } = useAppContext();
 
   const toast = useToast();
+  const pointsInFlight = useRef(new Set());
+  const [busyMembers, setBusyMembers] = useState(new Set());
+  const withMembers = (targets, action) => withInFlightGuard(
+    pointsInFlight.current, targets.filter(Boolean).map(resolveMemberId), action, setBusyMembers
+  );
+  const memberBusy = member => !!member && busyMembers.has(resolveMemberId(member));
 
   const REDEEM_POINTS_THRESHOLD = Number(redeemPointsThreshold) || DEFAULT_REDEEM_POINTS_THRESHOLD;
 
@@ -304,70 +311,62 @@ export default function MembersView() {
   };
   const historyEntry = (delta, reason) => ({ delta: Number(delta), reason, at: new Date().toISOString() });
 
-  const approvePending = async (member) => {
-    const pending = Number(member.pendingPoints || 0);
-    if (pending <= 0) return;
+  const settlePending = (member, approve) => withMembers([member], async () => {
+    let pending = 0;
     const ok = await runDbAction(async () => {
-      const id = resolveMemberId(member);
-      if (!id) return;
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', id), {
-        points: increment(pending),
-        pendingPoints: 0,
-        pendingReason: '',
-        pointsHistory: arrayUnion(historyEntry(pending, member.pendingReason || 'review'))
-      }, { merge: true });
-    }, 'อนุมัติแต้มไม่สำเร็จ');
-    if (ok) toast.success(`อนุมัติ +${pending} แต้มให้ ${member.name} แล้ว`);
-    else toast.error('อนุมัติแต้มไม่สำเร็จ');
-  };
-
-  const rejectPending = async (member) => {
-    const pending = Number(member.pendingPoints || 0);
-    const ok = await runDbAction(async () => {
-      const id = resolveMemberId(member);
-      if (!id) return;
-      const payload = { pendingPoints: 0 };
-      // Record the rejection so the reconciliation tool treats these declined
-      // points as settled and never resurfaces them as a "missing" gap.
-      if (pending > 0) {
-        payload.pointsHistory = arrayUnion({ delta: 0, reason: 'rejected', amount: pending, at: new Date().toISOString() });
-      }
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', id), payload, { merge: true });
-    }, 'ปฏิเสธไม่สำเร็จ');
-    if (ok) toast.info('ปฏิเสธคำขอแต้มแล้ว');
-    else toast.error('ปฏิเสธไม่สำเร็จ');
-  };
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'members', resolveMemberId(member));
+      pending = await settlePendingPoints(db, ref, approve);
+    }, approve ? 'อนุมัติแต้มไม่สำเร็จ' : 'ปฏิเสธไม่สำเร็จ');
+    if (!ok) toast.error(approve ? 'อนุมัติแต้มไม่สำเร็จ' : 'ปฏิเสธไม่สำเร็จ');
+    else if (!pending) toast.info(approve ? 'อนุมัติไปแล้ว' : 'ดำเนินการคำขอแต้มไปแล้ว');
+    else if (approve) toast.success(`อนุมัติ +${pending} แต้มให้ ${member.name} แล้ว`);
+    else toast.info('ปฏิเสธคำขอแต้มแล้ว');
+  });
+  const approvePending = member => settlePending(member, true);
+  const rejectPending = member => settlePending(member, false);
 
   // Reconciliation: credit a member's missing earn into pendingPoints so it goes
   // through the normal approval gate. Never writes straight to the balance. The
   // owner confirms per person (this runs from a ConfirmModal). For name-only
   // customers with no doc yet, setDoc(merge) creates the doc keyed by name.
-  const creditGap = async (member) => {
-    const gap = Number(member?.earnGap || 0);
+  const creditGap = (member) => withMembers([member], async () => {
+    let gap = Number(member?.earnGap || 0);
     if (gap < 1) return;
     const ok = await runDbAction(async () => {
       const id = resolveMemberId(member);
       if (!id) return;
-      const payload = {
-        name: member.name || 'ลูกค้าทั่วไป',
-        pendingPoints: increment(gap),
-        pendingReason: 'recalc',
-      };
-      const phone = String(member.phone || '').trim();
-      if (phone) payload.phone = phone;
-      if (String(member.id || '').startsWith('name-only:')) payload.createdAt = serverTimestamp();
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', id), payload, { merge: true });
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'members', id);
+      const cutoff = Date.now() - reconcileDays * 24 * 60 * 60 * 1000;
+      // Re-check the gap against the latest doc so a double tap can't credit twice:
+      // expected earn (from orders on screen) minus what the fresh doc already credits.
+      gap = await runTransaction(db, async transaction => {
+        const snapshot = await transaction.get(ref);
+        const latest = snapshot.exists() ? snapshot.data() : {};
+        const freshGap = Number(member.expectedEarn || 0) + auditMemberEarn(latest, [], cutoff).earnGap;
+        if (freshGap < 1) return 0;
+        const payload = {
+          name: member.name || 'ลูกค้าทั่วไป',
+          pendingPoints: increment(freshGap),
+          pendingReason: 'recalc',
+        };
+        const phone = String(member.phone || '').trim();
+        if (phone) payload.phone = phone;
+        if (String(member.id || '').startsWith('name-only:')) payload.createdAt = serverTimestamp();
+        transaction.set(ref, payload, { merge: true });
+        return freshGap;
+      });
     }, 'เติมแต้มย้อนหลังไม่สำเร็จ');
-    if (ok) toast.success(`เติม +${gap} แต้ม (รออนุมัติ) ให้ ${member.name} แล้ว`);
-    else toast.error('เติมแต้มย้อนหลังไม่สำเร็จ');
+    if (!ok) toast.error('เติมแต้มย้อนหลังไม่สำเร็จ');
+    else if (gap < 1) toast.info('เติมแต้มไปแล้ว ไม่มีส่วนที่ขาด');
+    else toast.success(`เติม +${gap} แต้ม (รออนุมัติ) ให้ ${member.name} แล้ว`);
     setCreditTarget(null);
-  };
+  });
 
   // Merge duplicate identities into one primary member: sum points + pending,
   // concat history, re-point the losers' orders to the primary, then delete the
   // loser docs. Bounded to a single batch (well under Firestore's 500-op cap for
   // realistic customer histories). The owner picks the primary and confirms.
-  const mergeMembers = async (group, primaryId) => {
+  const mergeMembers = (group, primaryId) => withMembers(group.members, async () => {
     const base = ['artifacts', appId, 'public', 'data'];
     const primary = group.members.find(m => (m.id || m.phone) === primaryId) || group.members[0];
     const losers = group.members.filter(m => m !== primary);
@@ -424,14 +423,14 @@ export default function MembersView() {
     toast.success(`รวม ${losers.length + 1} รายการเข้าเป็น "${primaryName}" แล้ว`);
     setMergeGroup(null);
     setMergePrimaryId(null);
-  };
+  });
 
   // Wrong member entered on a bill → detach it from this member (revenue is
   // kept; the order just stops counting under this customer). The points this
   // bill earned were credited to the wrong member, so claw them back too —
   // from pendingPoints first (not yet approved), then from points, never below
   // zero. Redemptions aren't reversed (orders don't record a redeem flag).
-  const unlinkOrderFromMember = async (order) => {
+  const unlinkOrderFromMember = (order) => withMembers([selectedMemberForFavorites], async () => {
     const member = selectedMemberForFavorites;
     const ok = await runDbAction(async () => {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id), {
@@ -459,7 +458,7 @@ export default function MembersView() {
     const earned = Math.floor(Number(order.total || 0) / 10);
     if (ok) toast.success(earned > 0 ? `ถอดออเดอร์ออกแล้ว และหักแต้มที่ได้จากบิลนี้ ${earned} แต้ม` : 'ถอดออเดอร์ออกจากสมาชิกแล้ว');
     else toast.error('ถอดออเดอร์ออกจากสมาชิกไม่สำเร็จ');
-  };
+  });
 
   // Delete a whole bill (reuses the app-level confirm + stock restore flow).
   const deleteOrder = (order) => {
@@ -521,7 +520,7 @@ export default function MembersView() {
     setShowEditModal(true);
   };
 
-  const submitEditMember = async (formData) => {
+  const submitEditMember = (formData) => withMembers([editingMember, { phone: String(formData.phone || "").trim(), name: formData.name || editingMember?.name }], async () => {
     setShowEditModal(false);
     const member = editingMember;
     const currentName = String(member?.name || '');
@@ -564,7 +563,7 @@ export default function MembersView() {
       }
     }, 'ไม่สามารถแก้ไขสมาชิกได้');
     setEditingMember(null);
-  };
+  });
 
   const addMember = () => {
     setShowAddModal(true);
@@ -746,7 +745,7 @@ export default function MembersView() {
                         )}
                       </p>
                     </div>
-                    <Button onClick={() => setCreditTarget(m)} variant="primary" size="sm" leftIcon={<Check size={14} />}>
+                    <Button disabled={memberBusy(m)} className="min-h-11" onClick={() => setCreditTarget(m)} variant="primary" size="sm" leftIcon={<Check size={14} />}>
                       เติม +{Number(m.earnGap)}
                     </Button>
                   </div>
@@ -906,10 +905,10 @@ export default function MembersView() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Button onClick={() => approvePending(m)} variant="primary" size="sm" leftIcon={<Check size={14} />}>
+                    <Button disabled={memberBusy(m)} className="min-h-11" onClick={() => approvePending(m)} variant="primary" size="sm" leftIcon={<Check size={14} />}>
                       อนุมัติ
                     </Button>
-                    <Button onClick={() => rejectPending(m)} variant="outline-danger" size="sm" leftIcon={<X size={14} />}>
+                    <Button disabled={memberBusy(m)} className="min-h-11" onClick={() => rejectPending(m)} variant="outline-danger" size="sm" leftIcon={<X size={14} />}>
                       ปฏิเสธ
                     </Button>
                   </div>
@@ -1158,6 +1157,7 @@ export default function MembersView() {
                             {/* Fix mis-entered bills: detach from this member, or delete the bill */}
                             <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-[var(--border-color)]">
                               <button
+                                disabled={memberBusy(selectedMemberForFavorites)}
                                 onClick={() => unlinkOrderFromMember(order)}
                                 title="กรอกสมาชิกผิด — ถอดออเดอร์นี้ออกจากสมาชิก (ยอดขายไม่หาย)"
                                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-600 border border-amber-100 hover:bg-amber-100 transition-all active:scale-95 font-bold text-xs"
@@ -1261,6 +1261,7 @@ export default function MembersView() {
         isOpen={showEditModal}
         onClose={() => { setShowEditModal(false); setEditingMember(null); }}
         onSubmit={submitEditMember}
+        loading={memberBusy(editingMember)}
         title="แก้ไขข้อมูลสมาชิก"
         description={editingMember?.name || ''}
         variant="primary"
@@ -1290,6 +1291,7 @@ export default function MembersView() {
         isOpen={!!creditTarget}
         onClose={() => setCreditTarget(null)}
         onConfirm={() => creditGap(creditTarget)}
+        loading={memberBusy(creditTarget)}
         title="เติมแต้มย้อนหลัง"
         message={creditTarget
           ? `${creditTarget.name || 'ลูกค้า'} ซื้อใน ${reconcileDays} วันล่าสุดควรได้ ${Number(creditTarget.expectedEarn || 0)} แต้ม แต่ได้ไม่ครบ${Number(creditTarget.redeemed || 0) > 0 ? ` (แลกไปแล้ว ${Number(creditTarget.redeemed)} แต้ม — ไม่นับรวมในนี้)` : ''} — เติมส่วนที่ขาด +${Number(creditTarget.earnGap || 0)} แต้มเข้า "รออนุมัติ" ใช่หรือไม่? (ยังต้องกดอนุมัติอีกครั้ง)`
@@ -1338,7 +1340,7 @@ export default function MembersView() {
               <Button onClick={() => { setMergeGroup(null); setMergePrimaryId(null); }} variant="secondary" size="lg" fullWidth>
                 ยกเลิก
               </Button>
-              <Button onClick={() => mergeMembers(mergeGroup, mergePrimaryId)} variant="primary" size="lg" fullWidth leftIcon={<GitMerge size={16} />}>
+              <Button disabled={mergeGroup.members.some(memberBusy)} onClick={() => mergeMembers(mergeGroup, mergePrimaryId)} variant="primary" size="lg" fullWidth leftIcon={<GitMerge size={16} />}>
                 รวมเป็นหนึ่งเดียว
               </Button>
             </div>
