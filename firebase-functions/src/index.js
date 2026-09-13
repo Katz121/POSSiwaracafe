@@ -324,10 +324,13 @@ async function forEachMemberPage(database, fn) {
 }
 
 export async function expirePointsHandler(_event, database = db, now = new Date()) {
-  const settingsSnap = await database.doc(`${dataPath()}/config/settings`).get();
-  const months = Number(settingsSnap.exists ? settingsSnap.data()?.pointsExpiryMonths : 0) || 0;
+  const settingsRef = database.doc(`${dataPath()}/config/settings`);
+  const settingsSnap = await settingsRef.get();
+  const settings = settingsSnap.exists ? settingsSnap.data() || {} : {};
+  const months = Number(settings.pointsExpiryMonths) || 0;
 
   if (months <= 0) {
+    if (settings.pointsExpiryEnabledAt) await settingsRef.update({ pointsExpiryEnabledAt: FieldValue.delete() });
     await forEachMemberPage(database, async (docs) => {
       const toClear = docs.filter((docSnap) => docSnap.data()?.pointsExpireAt);
       if (!toClear.length) return;
@@ -338,15 +341,22 @@ export async function expirePointsHandler(_event, database = db, now = new Date(
     return;
   }
 
+  // First run after the owner turns expiry on starts the 30-day grace period.
+  let enabledAt = settings.pointsExpiryEnabledAt || null;
+  if (!enabledAt) {
+    enabledAt = now.toISOString();
+    await settingsRef.set({ pointsExpiryEnabledAt: enabledAt }, { merge: true });
+  }
+
   await forEachMemberPage(database, async (docs) => {
     for (const docSnap of docs) {
       const member = docSnap.data() || {};
       const points = Number(member.points) || 0;
       if (points <= 0) continue;
-      const expireAt = computePointsExpireAt(member.lastOrderAt, months);
+      const expireAt = computePointsExpireAt(member.lastOrderAt, months, enabledAt);
       if (!expireAt) continue;
 
-      if (shouldExpirePoints(member.lastOrderAt, months, now)) {
+      if (shouldExpirePoints(member.lastOrderAt, months, now, enabledAt)) {
         await database.runTransaction(async (transaction) => {
           const fresh = await transaction.get(docSnap.ref);
           if (!fresh.exists) return;

@@ -5,7 +5,7 @@ import {
   ShoppingBag, CheckCircle, RefreshCcw, ArrowRight,
   Trash2, Sparkles, Phone, User, UserX, Flame
 } from 'lucide-react';
-import { collection, doc, writeBatch, increment, arrayUnion, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { collection, doc, writeBatch, increment, arrayUnion, arrayRemove, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { db, appId, auth } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getNameKey } from '../../utils/calculations';
@@ -519,18 +519,10 @@ export default function PosView() {
             ? (members.find(m => m.phone === originalOrder.memberPhone)?.id || originalOrder.memberPhone) 
             : null;
             
-          let oldMemberSnap = null;
-          let newMemberSnap = null;
-          
-          if (oldMemberDocId) {
-            oldMemberSnap = await transaction.get(doc(db, ...membersPath, oldMemberDocId));
-          }
-          if (memberId && memberId !== oldMemberDocId) {
-            newMemberSnap = await transaction.get(doc(db, ...membersPath, memberId));
-          }
+          // Only the old member's balance matters (clawback); the new member just gets pending.
+          const oldMemberSnap = oldMemberDocId ? await transaction.get(doc(db, ...membersPath, oldMemberDocId)) : null;
           
           const oldMemberData = oldMemberSnap?.exists() ? { id: oldMemberDocId, ...oldMemberSnap.data() } : null;
-          const newMemberData = newMemberSnap?.exists() ? { id: memberId, ...newMemberSnap.data() } : null;
           
           const oldEarned = typeof originalOrder?.pointsEarned === 'number' ? originalOrder.pointsEarned : Math.floor(Number(originalOrder?.total || 0) / 10);
           const newEarned = Math.floor(netTotal / 10);
@@ -545,7 +537,7 @@ export default function PosView() {
           });
           
           // Points-only changes; the member's name/phone/lastOrderAt come from memberWrites below.
-          const applyUpdates = (memberRef, updates, existingData) => {
+          const applyUpdates = (memberRef, updates) => {
             if (!updates) return;
             const payload = {};
             if (updates.pendingPointsUpdate) payload.pendingPoints = increment(updates.pendingPointsUpdate);
@@ -559,16 +551,16 @@ export default function PosView() {
               payload.pendingOrderIds = arrayUnion(editingOrderId);
               payload.pendingReason = 'order';
             } else if (updates.pendingOrderIdsAction === 'remove') {
-              payload.pendingOrderIds = (existingData?.pendingOrderIds || []).filter(id => id !== editingOrderId);
+              payload.pendingOrderIds = arrayRemove(editingOrderId);
             }
             if (Object.keys(payload).length) transaction.set(memberRef, payload, { merge: true });
           };
           
           if (oldMemberDocId) {
-             applyUpdates(doc(db, ...membersPath, oldMemberDocId), oldMemberUpdates, oldMemberData);
+             applyUpdates(doc(db, ...membersPath, oldMemberDocId), oldMemberUpdates);
           }
           if (memberId && memberId !== oldMemberDocId) {
-             applyUpdates(doc(db, ...membersPath, memberId), newMemberUpdates, newMemberData);
+             applyUpdates(doc(db, ...membersPath, memberId), newMemberUpdates);
           }
           
           // Loyalty redemption for edit

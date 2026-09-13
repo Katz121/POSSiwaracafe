@@ -211,8 +211,26 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)('points v2 Cloud Functions
       expect(member.data().points).toBe(20);
     });
 
-    it('zeros expired points and writes an expire history entry', async () => {
+    it('does not take points on the first run after enabling · starts a 30-day grace period', async () => {
       await db.doc(`${BASE_PATH}/config/settings`).set({ pointsExpiryMonths: 6 });
+      await db.doc(`${BASE_PATH}/members/exp-grace`).set({
+        name: 'รอบแรก', phone: '0850000009', points: 40,
+        lastOrderAt: Timestamp.fromDate(new Date('2025-01-01T10:00:00+07:00')), pointsHistory: [],
+      });
+
+      await expirePointsHandler({}, db, now);
+
+      const [member, settings] = await Promise.all([
+        db.doc(`${BASE_PATH}/members/exp-grace`).get(),
+        db.doc(`${BASE_PATH}/config/settings`).get(),
+      ]);
+      expect(member.data().points).toBe(40);
+      expect(settings.data().pointsExpiryEnabledAt).toBe(now.toISOString());
+      expect(new Date(member.data().pointsExpireAt).getTime()).toBe(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    });
+
+    it('zeros expired points and writes an expire history entry', async () => {
+      await db.doc(`${BASE_PATH}/config/settings`).set({ pointsExpiryMonths: 6, pointsExpiryEnabledAt: '2025-01-01T00:00:00.000Z' });
       await db.doc(`${BASE_PATH}/members/exp-old`).set({
         name: 'หมดอายุ',
         phone: '0850000001',

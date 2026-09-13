@@ -70,16 +70,24 @@ export function addCalendarMonths(date, months) {
   return new Date(`${year}-${pad2(month)}-${pad2(day)}T${pad2(parts.hour)}:${pad2(parts.minute)}:${pad2(parts.second)}.${String(parts.ms).padStart(3, '0')}+07:00`);
 }
 
-export function computePointsExpireAt(lastOrderAt, months) {
+export const EXPIRY_GRACE_DAYS = 30;
+
+// Expiry = lastOrderAt + N months, but never earlier than 30 days after the owner
+// switched expiry on — customers see the date on their card before anything is lost.
+export function computePointsExpireAt(lastOrderAt, months, enabledAt = null) {
   const n = Number(months);
   if (!Number.isFinite(n) || n <= 0) return null;
   const last = parseInstant(lastOrderAt);
   if (!last) return null;
-  return addCalendarMonths(last, n);
+  const byActivity = addCalendarMonths(last, n);
+  const enabled = parseInstant(enabledAt);
+  if (!enabled) return byActivity;
+  const graceEnd = new Date(enabled.getTime() + EXPIRY_GRACE_DAYS * 24 * 60 * 60 * 1000);
+  return byActivity.getTime() > graceEnd.getTime() ? byActivity : graceEnd;
 }
 
-export function shouldExpirePoints(lastOrderAt, months, now = new Date()) {
-  const expireAt = computePointsExpireAt(lastOrderAt, months);
+export function shouldExpirePoints(lastOrderAt, months, now = new Date(), enabledAt = null) {
+  const expireAt = computePointsExpireAt(lastOrderAt, months, enabledAt);
   if (!expireAt) return false;
   return expireAt.getTime() <= now.getTime();
 }

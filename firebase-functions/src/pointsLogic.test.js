@@ -164,3 +164,17 @@ describe('lookupMember helpers', () => {
     });
   });
 });
+
+describe('expiry grace period after the owner turns expiry on', () => {
+  const enabledAt = '2026-09-14T20:00:00.000Z';
+  it('never expires earlier than 30 days after enabling', () => {
+    const at = computePointsExpireAt('2026-01-01T03:00:00.000Z', 6, enabledAt);
+    expect(at.toISOString()).toBe('2026-10-14T20:00:00.000Z');
+    expect(shouldExpirePoints('2026-01-01T03:00:00.000Z', 6, new Date('2026-10-01T00:00:00Z'), enabledAt)).toBe(false);
+    expect(shouldExpirePoints('2026-01-01T03:00:00.000Z', 6, new Date('2026-10-15T00:00:00Z'), enabledAt)).toBe(true);
+  });
+  it('keeps the activity-based date when it is later than the grace end', () => {
+    const at = computePointsExpireAt('2026-09-10T03:00:00.000Z', 6, enabledAt);
+    expect(at.getTime()).toBe(computePointsExpireAt('2026-09-10T03:00:00.000Z', 6).getTime());
+  });
+});
