@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Users, Search, User, UserMinus, UserX, Phone, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X, Calculator, GitMerge, AlertTriangle, ChevronDown } from 'lucide-react';
-import { doc, setDoc, deleteDoc, updateDoc, writeBatch, serverTimestamp, increment, arrayUnion, runTransaction } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, writeBatch, serverTimestamp, increment, arrayUnion, runTransaction } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getNameKey } from '../../utils/calculations';
-import { settlePendingPoints, withInFlightGuard } from '../../utils/pointsActions';
+import { settlePendingPoints, withInFlightGuard, planEarnClawback } from '../../utils/pointsActions';
 import useDebounce from '../../hooks/useDebounce';
 import { Button, Modal, Input, Select, EmptyState, useToast, ConfirmModal, InputModal, Skeleton } from '../ui';
 import { DEFAULT_REDEEM_POINTS_THRESHOLD } from '../../config/constants';
@@ -432,31 +432,41 @@ export default function MembersView() {
   // zero. Redemptions aren't reversed (orders don't record a redeem flag).
   const unlinkOrderFromMember = (order) => withMembers([selectedMemberForFavorites], async () => {
     const member = selectedMemberForFavorites;
-    const ok = await runDbAction(async () => {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id), {
-        memberPhone: '', memberNickname: ''
-      });
+    const earned = Math.floor(Number(order.total || 0) / 10);
+    const memberId = member && resolveMemberId(member);
+    const isNameOnly = String(member?.id || '').startsWith('name-only:');
+    let clawbackPoints = 0;
 
-      const earned = Math.floor(Number(order.total || 0) / 10);
-      const memberId = member && resolveMemberId(member);
-      const isNameOnly = String(member?.id || '').startsWith('name-only:');
+    const ok = await runDbAction(async () => {
+      const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id);
+      
       if (earned > 0 && memberId && !isNameOnly) {
-        let remain = earned;
-        const fromPending = Math.min(remain, Number(member.pendingPoints || 0)); remain -= fromPending;
-        const fromPoints = Math.min(remain, Number(member.points || 0));
-        const payload = {};
-        if (fromPending > 0) payload.pendingPoints = increment(-fromPending);
-        if (fromPoints > 0) {
-          payload.points = increment(-fromPoints);
-          payload.pointsHistory = arrayUnion(historyEntry(-fromPoints, 'manual'));
-        }
-        if (Object.keys(payload).length > 0) {
-          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId), payload, { merge: true });
-        }
+        const memberRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
+        await runTransaction(db, async transaction => {
+          const memberSnap = await transaction.get(memberRef);
+          
+          transaction.update(orderRef, { memberPhone: '', memberNickname: '' });
+          
+          if (memberSnap.exists()) {
+            const mData = memberSnap.data();
+            const { fromPending, fromPoints } = planEarnClawback(mData, earned);
+            clawbackPoints = fromPending + fromPoints;
+            if (clawbackPoints > 0) {
+              const payload = {};
+              if (fromPending > 0) payload.pendingPoints = increment(-fromPending);
+              if (fromPoints > 0) {
+                payload.points = increment(-fromPoints);
+                payload.pointsHistory = arrayUnion(historyEntry(-fromPoints, 'manual'));
+              }
+              transaction.update(memberRef, payload);
+            }
+          }
+        });
+      } else {
+        await updateDoc(orderRef, { memberPhone: '', memberNickname: '' });
       }
     }, 'ถอดออเดอร์ออกจากสมาชิกไม่สำเร็จ');
-    const earned = Math.floor(Number(order.total || 0) / 10);
-    if (ok) toast.success(earned > 0 ? `ถอดออเดอร์ออกแล้ว และหักแต้มที่ได้จากบิลนี้ ${earned} แต้ม` : 'ถอดออเดอร์ออกจากสมาชิกแล้ว');
+    if (ok) toast.success(clawbackPoints > 0 ? `ถอดออเดอร์ออกแล้ว และหักแต้มที่ได้จากบิลนี้ ${clawbackPoints} แต้ม` : 'ถอดออเดอร์ออกจากสมาชิกแล้ว');
     else toast.error('ถอดออเดอร์ออกจากสมาชิกไม่สำเร็จ');
   });
 
@@ -538,28 +548,45 @@ export default function MembersView() {
     const idChanged = currentId && currentId !== newId && !String(currentId).startsWith('name-only:');
     const newPoints = formData.points != null && formData.points !== '' ? Number(formData.points) || 0 : Number(member?.points || 0);
     const oldPoints = Number(editingMember?.points || 0);
-    const data = {
-      name: nextName || currentName || 'ลูกค้าทั่วไป',
-      phone: nextPhone || '',
-      points: newPoints,
-      createdAt: member?.createdAt || serverTimestamp(),
-    };
-    if (idChanged) {
-      // Moving to a new doc id — carry over pending points and full history so
-      // they aren't lost when the old doc is deleted below.
-      data.pendingPoints = Number(member?.pendingPoints || 0);
-      data.pendingReason = member?.pendingReason || '';
-      const history = Array.isArray(member?.pointsHistory) ? [...member.pointsHistory] : [];
-      if (newPoints - oldPoints !== 0) history.push(historyEntry(newPoints - oldPoints, 'manual'));
-      data.pointsHistory = history;
-    } else if (newPoints - oldPoints !== 0) {
-      data.pointsHistory = arrayUnion(historyEntry(newPoints - oldPoints, 'manual'));
-    }
+    const pointDiff = newPoints - oldPoints;
 
     await runDbAction(async () => {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', newId), data, { merge: true });
       if (idChanged) {
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', currentId));
+        await runTransaction(db, async transaction => {
+          const oldRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', currentId);
+          const newRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', newId);
+          const oldSnap = await transaction.get(oldRef);
+          
+          const oldData = oldSnap.exists() ? oldSnap.data() : {};
+          const basePoints = Number(oldData.points || 0);
+          
+          const data = {
+            name: nextName || currentName || 'ลูกค้าทั่วไป',
+            phone: nextPhone || '',
+            points: basePoints + pointDiff,
+            createdAt: oldData.createdAt || member?.createdAt || serverTimestamp(),
+            pendingPoints: Number(oldData.pendingPoints || 0),
+            pendingReason: oldData.pendingReason || '',
+          };
+          
+          const history = Array.isArray(oldData.pointsHistory) ? [...oldData.pointsHistory] : [];
+          if (pointDiff !== 0) history.push(historyEntry(pointDiff, 'manual'));
+          data.pointsHistory = history;
+          
+          transaction.set(newRef, data, { merge: true });
+          transaction.delete(oldRef);
+        });
+      } else {
+        const data = {
+          name: nextName || currentName || 'ลูกค้าทั่วไป',
+          phone: nextPhone || '',
+          createdAt: member?.createdAt || serverTimestamp(),
+        };
+        if (pointDiff !== 0) {
+          data.points = increment(pointDiff);
+          data.pointsHistory = arrayUnion(historyEntry(pointDiff, 'manual'));
+        }
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', newId), data, { merge: true });
       }
     }, 'ไม่สามารถแก้ไขสมาชิกได้');
     setEditingMember(null);

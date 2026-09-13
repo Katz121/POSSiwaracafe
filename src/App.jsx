@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback, useMemo, useRef, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, lazy, Suspense } from 'react';
 import {
   User, ChefHat, FileText, Package, DollarSign, ClipboardList, Users, BookOpen,
   PieChart, LayoutDashboard, Lock, Trash2, Moon, Sun, MoreHorizontal,
@@ -6,11 +6,11 @@ import {
 } from 'lucide-react';
 
 // UI Components
-import { Modal, Button, Spinner, IconButton, Input, ErrorBoundary } from './components/ui';
+import { Modal, Button, Spinner, IconButton, Input, ErrorBoundary, useToast } from './components/ui';
 
 // Firebase Imports
 import {
-  doc, updateDoc, deleteDoc, writeBatch, increment
+  doc, updateDoc, writeBatch, increment
 } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { auth, db, appId } from './services/firebase';
@@ -39,6 +39,7 @@ import NewOrderAlert from './components/NewOrderAlert';
 import useDarkMode from './hooks/useDarkMode';
 import { getISODate } from './utils/calculations';
 import { computeOrderStockUsage } from './utils/wastage';
+import { runDeleteOrderTransaction } from './utils/pointsActions';
 
 // View Components (Lazy Loaded for Performance)
 const PosView = lazy(() => import('./components/views/PosView'));
@@ -95,6 +96,7 @@ export default function App() {
   const { user, isAuthLoading } = useStaffAuth();
   const [view, setView] = useState('pos');
   const { isDark, toggle: toggleDarkMode } = useDarkMode();
+  const toast = useToast();
 
   // Data States from hook
   const {
@@ -220,31 +222,21 @@ export default function App() {
   // Delete order
   const executeDeleteOrder = async () => {
     if (!orderToCancel) return;
-    await runDbAction(async () => {
-      const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderToCancel);
-      const order = orders.find(o => o.id === orderToCancel);
+    const order = orders.find(o => o.id === orderToCancel);
+    let clawbackPoints = 0;
 
-      // If this order already deducted stock (was completed), add the consumed
-      // amounts back before deleting — otherwise cancelling silently loses
-      // inventory. Done in one batch with the delete so they can't diverge.
-      if (order?.stockDeducted) {
-        const usageByStock = computeOrderStockUsage(order);
-        const batch = writeBatch(db);
-        Object.entries(usageByStock).forEach(([stockId, used]) => {
-          if (used <= 0) return;
-          const stockItem = stock.find(s => s.id === stockId);
-          if (!stockItem) return; // linked stock was deleted — nothing to restore
-          batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), {
-            quantity: increment(used)
-          });
-        });
-        batch.delete(orderRef);
-        await batch.commit();
-      } else {
-        await deleteDoc(orderRef);
-      }
+    await runDbAction(async () => {
+      // Members registered before phone-as-id keep an older doc id — find it by phone.
+      const memberDocId = order?.memberPhone
+        ? (members.find(m => m.phone === order.memberPhone)?.id || order.memberPhone)
+        : null;
+      clawbackPoints = await runDeleteOrderTransaction(db, appId, order, stock, memberDocId);
       setOrderToCancel(null);
     }, 'ลบออเดอร์ไม่สำเร็จ');
+
+    if (clawbackPoints > 0) {
+      toast.success(`ลบบิลแล้ว และหักแต้มคืน ${clawbackPoints} แต้ม`);
+    }
   };
 
   // View change handler with PIN protection (memoized to prevent context changes every render)

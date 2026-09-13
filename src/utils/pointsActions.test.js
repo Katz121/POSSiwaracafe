@@ -24,7 +24,7 @@ vi.mock('firebase/firestore', () => ({
   },
 }));
 
-import { settlePendingPoints, withInFlightGuard } from './pointsActions';
+import { settlePendingPoints, withInFlightGuard, planEarnClawback } from './pointsActions';
 
 const ref = { path: 'members/0839536697' };
 const seed = (data) => store.set(ref.path, { points: 45, pendingPoints: 40, pendingReason: 'order', pointsHistory: [], ...data });
@@ -54,6 +54,24 @@ describe('settlePendingPoints', () => {
     seed({ pendingPoints: 0 });
     expect(await settlePendingPoints({}, ref, true)).toBe(0);
     expect(store.get(ref.path).points).toBe(45);
+  });
+});
+
+describe('planEarnClawback', () => {
+  it('takes from pending first when enough is pending', () => {
+    expect(planEarnClawback({ points: 100, pendingPoints: 20 }, 15)).toEqual({ fromPending: 15, fromPoints: 0 });
+  });
+  it('takes from points when pending is not enough', () => {
+    expect(planEarnClawback({ points: 100, pendingPoints: 10 }, 15)).toEqual({ fromPending: 10, fromPoints: 5 });
+  });
+  it('does not take more than available, no negative', () => {
+    expect(planEarnClawback({ points: 5, pendingPoints: 5 }, 15)).toEqual({ fromPending: 5, fromPoints: 5 });
+  });
+  it('ignores negative pending instead of adding points back', () => {
+    expect(planEarnClawback({ points: 20, pendingPoints: -5 }, 15)).toEqual({ fromPending: 0, fromPoints: 15 });
+  });
+  it('returns 0 when earned is 0', () => {
+    expect(planEarnClawback({ points: 100, pendingPoints: 100 }, 0)).toEqual({ fromPending: 0, fromPoints: 0 });
   });
 });
 
