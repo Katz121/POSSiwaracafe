@@ -2,6 +2,19 @@ import { dependencies, getFirebaseIdToken, fsBase, fsDoc, createFirestore } from
 import { sendTelegramShopMessage, postTelegramMessage, splitTelegramText } from './src/telegram/api.js';
 import { handleTelegramExpense, handleTelegramExpenseSetup, handleTelegramExpenseStatus, adminSecret } from './src/telegram/handler.js';
 import { buildPointsSummary } from './src/pointsSummary.js';
+import {
+  parseQrBeaconBody,
+  incrementQrBeaconCounts,
+  allowQrBeaconHit,
+  qrBeaconHits,
+  qrBeaconKvKey,
+  qrBeaconCorsHeaders,
+  QR_BEACON_TTL_SEC,
+  QR_BEACON_MAX_BODY,
+  listThaiDates,
+  bangkokISODate as beaconBangkokDate,
+  mergeQrBeaconIntoSummary,
+} from './src/qrBeacon.js';
 /**
  * Cloudflare Worker - Gemini API Proxy + shop notifier
  * ซ่อน API key / LINE token ฝั่ง server ไม่เปิดเผยให้ client
@@ -9,6 +22,8 @@ import { buildPointsSummary } from './src/pointsSummary.js';
  * Routes:
  *   POST /         -> Gemini text generation (body: { prompt, ... })
  *   POST /notify   -> push an order alert to Telegram (LINE fallback)
+ *   POST /qr-beacon -> public QR-page health counters (KV FOLLOWERS)
+ *   GET  /qr-beacon/stats -> admin daily totals (WORKER_ADMIN_SECRET / ADMIN_SECRET)
  *
  * Deploy: wrangler deploy
  * Secrets:
@@ -676,7 +691,15 @@ export async function buildPointsReport(env, injected) {
     db.listAll('members'),
     queryOrdersByDates(env, deps, yesterday === today ? [today] : [today, yesterday]),
   ]);
-  return buildPointsSummary(members, orders, now);
+  const report = buildPointsSummary(members, orders, now);
+  let text = report.text;
+  try {
+    const counts = await deps.kv?.get(qrBeaconKvKey(today), 'json');
+    text = mergeQrBeaconIntoSummary(text, counts);
+  } catch {
+    // KV ล่มแล้วข้ามหัวข้อ QR — สรุปแต้มยังต้องส่งได้
+  }
+  return { ...report, text };
 }
 
 export async function sendPointsSummary(env, injected) {
@@ -695,6 +718,58 @@ export async function sendPointsSummary(env, injected) {
   return { sent: true, channel: 'telegram-owner', text: report.text };
 }
 
+function qrBeaconNoContent(headers) {
+  return new Response(null, { status: 204, headers });
+}
+
+async function handleQrBeacon(request, env, headers) {
+  if (request.method === 'OPTIONS') return qrBeaconNoContent(headers);
+  if (request.method !== 'POST') {
+    return Response.json({ error: 'Method not allowed' }, { status: 405, headers });
+  }
+  try {
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (!allowQrBeaconHit(qrBeaconHits, ip, Date.now())) return qrBeaconNoContent(headers);
+    const declared = Number(request.headers.get('Content-Length') || 0);
+    if (declared > QR_BEACON_MAX_BODY) return qrBeaconNoContent(headers);
+    const raw = await request.text();
+    if (new TextEncoder().encode(raw).length > QR_BEACON_MAX_BODY) return qrBeaconNoContent(headers);
+    const parsed = parseQrBeaconBody(raw, request.headers.get('Content-Type'));
+    if (!parsed || !env.FOLLOWERS) return qrBeaconNoContent(headers);
+    const key = qrBeaconKvKey(beaconBangkokDate());
+    const prev = await env.FOLLOWERS.get(key, 'json');
+    const next = incrementQrBeaconCounts(prev, parsed.event, parsed.ua);
+    await env.FOLLOWERS.put(key, JSON.stringify(next), { expirationTtl: QR_BEACON_TTL_SEC });
+  } catch {
+    // sendBeacon ไม่อ่านผล — ห้าม throw แม้ KV ไม่ atomic
+  }
+  return qrBeaconNoContent(headers);
+}
+
+async function handleQrBeaconStats(request, env, headers, url) {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
+  if (request.method !== 'GET') {
+    return Response.json({ error: 'Method not allowed' }, { status: 405, headers });
+  }
+  const expected = adminSecret(env);
+  const provided = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!expected || provided !== expected) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401, headers });
+  }
+  const dates = listThaiDates(new Date(), url.searchParams.get('days'));
+  const stats = [];
+  for (const date of dates) {
+    let data = null;
+    try {
+      data = env.FOLLOWERS ? await env.FOLLOWERS.get(qrBeaconKvKey(date), 'json') : null;
+    } catch {
+      data = null;
+    }
+    stats.push({ date, ...(data && typeof data === 'object' ? data : {}) });
+  }
+  return Response.json({ days: dates.length, stats }, { status: 200, headers });
+}
+
 // ---------------------------------------------------------------------------
 export default {
   // Cron ตาม [triggers] ใน wrangler.toml
@@ -706,6 +781,21 @@ export default {
 
   async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin') || '';
+    const url = new URL(request.url);
+    const pathname = url.pathname.replace(/\/+$/, '');
+
+    // ตัวนับหน้า QR · สาธารณะ (POST) / สถิติ (GET + admin secret)
+    // ต้องก่อนเช็ค OPTIONS/POST ทั้งไฟล์ เพราะ GET /qr-beacon/stats ใช้ได้ และ CORS จำกัดกว่าเส้นอื่น
+    if (pathname.endsWith('/qr-beacon/stats')) {
+      return handleQrBeaconStats(request, env, {
+        ...corsHeaders(origin),
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      }, url);
+    }
+    if (pathname.endsWith('/qr-beacon')) {
+      return handleQrBeacon(request, env, qrBeaconCorsHeaders(origin));
+    }
+
     const headers = corsHeaders(origin);
 
     // Handle CORS preflight
@@ -720,10 +810,6 @@ export default {
         { status: 405, headers }
       );
     }
-
-    // Route: LINE notification
-    const url = new URL(request.url);
-    const pathname = url.pathname.replace(/\/+$/, '');
     if (pathname.endsWith('/telegram-expense/status')) {
       return handleTelegramExpenseStatus(request, env, headers);
     }

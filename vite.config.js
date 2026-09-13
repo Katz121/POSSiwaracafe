@@ -20,7 +20,6 @@ export default defineConfig({
           'vendor-react': ['react', 'react-dom'],
           'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
           'vendor-ui': ['framer-motion', 'lucide-react'],
-          'vendor-charts': ['recharts'],
         }
       }
     }

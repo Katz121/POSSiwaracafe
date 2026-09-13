@@ -1,5 +1,5 @@
-﻿import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeApp } from 'firebase/app';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
 import { getFunctions } from 'firebase/functions';
 import {
   initializeFirestore,
@@ -27,7 +27,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
+export const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence] });
 export const functions = getFunctions(app, 'asia-southeast1');
 
 // Firestore with an IndexedDB-backed offline cache. WHY: every `onSnapshot`

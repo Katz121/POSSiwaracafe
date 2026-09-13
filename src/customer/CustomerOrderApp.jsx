@@ -28,6 +28,19 @@ import {
 } from 'firebase/auth';
 import { lookupMemberByPhone } from '../services/memberLookup';
 import {
+  LOOKUP_DEBOUNCE_MS,
+  canRedeemOnSubmit,
+  canSubmitOrder,
+  clearRememberedPhone,
+  decideNameAutofill,
+  decideReorderIdentity,
+  initialNameAutofillState,
+  phoneToPrefillOnCheckout,
+  readRememberedPhone,
+  shouldApplyLookupResult,
+  writeRememberedPhone,
+} from '../utils/memberAutofill';
+import {
   collection,
   doc,
   getDoc,
@@ -129,14 +142,19 @@ const TX = {
     yourName: 'ชื่อของคุณ *',
     namePlaceholder: 'กรอกชื่อเพื่อรับออเดอร์',
     nameHint: 'ชื่อนี้จะใช้เรียกออเดอร์ของคุณ',
-    phoneLabel: 'เบอร์โทร (สำหรับสะสมแต้ม)',
-    phonePlaceholder: 'กรอกเบอร์โทร (ไม่บังคับ)',
+    nameHintAutofilled: 'ใส่ชื่อให้แล้วค่ะ แก้ได้ถ้าไม่ใช่ชื่อที่ต้องการ',
+    memberPhoneShortcut: 'สมาชิกกรอกแค่เบอร์ได้เลยค่ะ เดี๋ยวชื่อขึ้นให้เอง',
+    phoneLabel: 'เบอร์โทร สำหรับสะสมแต้ม',
+    phonePlaceholder: 'กรอกเบอร์โทรได้เลย (ไม่บังคับ)',
     memberStatus: (name, points) => `สมาชิก: ${name} • ${points} แต้ม`,
     defaultCustomerName: 'ลูกค้า',
     pointsReady: (val) => `🎉 ครบแล้ว! แลกส่วนลด ฿${val} ได้เลย`,
     pointsRemaining: (rem, val) => `อีก ${rem} แต้ม แลกส่วนลด ฿${val}`,
-    newPhoneHint: 'เบอร์ใหม่ — ระบบจะสมัครสมาชิกให้อัตโนมัติ และเริ่มสะสมแต้ม',
+    lookupChecking: 'กำลังดูให้นะคะ',
+    lookupFailedHint: 'เช็คเบอร์ไม่ได้นะคะ แต่สั่งได้ตามปกติค่ะ',
+    newPhoneHint: 'เบอร์นี้ยังไม่เป็นสมาชิก จะเริ่มสะสมแต้มจากบิลนี้ค่ะ',
     noPhoneHint: 'ไม่ใส่เบอร์ก็สั่งได้ แต่บิลนี้จะไม่สะสมแต้ม',
+    notMe: 'ไม่ใช่ฉัน',
     usePointsToggle: (threshold, val) => `ใช้ ${threshold} แต้ม แลกส่วนลด ฿${val}`,
     submitting: 'กำลังส่งออเดอร์...',
     submitOrder: 'ส่งออเดอร์',
@@ -229,14 +247,19 @@ const TX = {
     yourName: 'Your name *',
     namePlaceholder: 'Enter your name to receive your order',
     nameHint: "This name will be called when your order is ready",
-    phoneLabel: 'Phone (to earn points)',
-    phonePlaceholder: 'Enter phone (optional)',
+    nameHintAutofilled: "We filled this in for you — edit it if it's not right",
+    memberPhoneShortcut: "Members: just enter your phone — we'll fill in your name",
+    phoneLabel: 'Phone, to earn points',
+    phonePlaceholder: 'Enter your phone (optional)',
     memberStatus: (name, points) => `Member: ${name} • ${points} points`,
     defaultCustomerName: 'Customer',
     pointsReady: (val) => `🎉 Ready! Redeem for ฿${val} off`,
     pointsRemaining: (rem, val) => `${rem} points left to redeem ฿${val} off`,
-    newPhoneHint: "New number — you'll be signed up automatically and start earning points",
+    lookupChecking: 'Checking your number',
+    lookupFailedHint: "Couldn't check the number, but you can still order",
+    newPhoneHint: "This number isn't a member yet — this order starts earning points",
     noPhoneHint: 'You can order without a phone, but this bill earns no points',
+    notMe: 'Not me',
     usePointsToggle: (threshold, val) => `Use ${threshold} points for ฿${val} off`,
     submitting: 'Placing order...',
     submitOrder: 'Place order',
@@ -1059,6 +1082,9 @@ function CheckoutStep({
   onTogglePoints,
   redeemPointsThreshold,
   redeemDiscountValue,
+  lookupStatus = 'idle',
+  nameSource = 'empty',
+  onNotMe,
   // discount breakdown
   comboDiscount,
   pointsDiscount,
@@ -1067,7 +1093,7 @@ function CheckoutStep({
   lang = 'th',
 }) {
   const itemCount = cart.reduce((s, i) => s + Number(i.quantity), 0);
-  const canSubmit = customerName.trim().length > 0 && itemCount > 0 && !submitting;
+  const canSubmit = canSubmitOrder({ customerName, cartLength: itemCount, submitting });
 
   return (
     <motion.div
@@ -1173,10 +1199,13 @@ function CheckoutStep({
               maxLength={60}
               autoFocus
             />
-                  <p className="text-xs text-[var(--text-muted)] -mt-2">{t('nameHint')}</p>
+                  <p className="text-xs text-[var(--text-muted)] -mt-2">
+                    {nameSource === 'autofill' ? t('nameHintAutofilled') : t('nameHint')}
+                  </p>
 
             {/* Phone input for membership */}
             <div>
+              <p className="text-xs text-[var(--text-muted)] mb-1.5">{t('memberPhoneShortcut')}</p>
               <Input
                 label={t('phoneLabel')}
                 placeholder={t('phonePlaceholder')}
@@ -1189,17 +1218,36 @@ function CheckoutStep({
                 autoComplete="tel"
               />
               {/* Member status line + points progress */}
-              {member ? (
-                <div className="mt-1.5 space-y-0.5">
-                  <p className="text-xs text-emerald-600 font-medium">
-                    {t('memberStatus', member.name || t('defaultCustomerName'), memberPoints)}
-                  </p>
-                  <p className="text-xs text-amber-600 font-bold">
-                    {memberPoints >= redeemPointsThreshold
-                      ? t('pointsReady', redeemDiscountValue)
-                      : t('pointsRemaining', redeemPointsThreshold - memberPoints, redeemDiscountValue)}
-                  </p>
+              {member && lookupStatus !== 'checking' ? (
+                <div className="mt-1.5 flex items-start justify-between gap-3">
+                  <div className="space-y-0.5 min-w-0">
+                    <p className="text-xs text-emerald-600 font-medium">
+                      {t('memberStatus', member.name || t('defaultCustomerName'), memberPoints)}
+                    </p>
+                    <p className="text-xs text-amber-600 font-bold">
+                      {memberPoints >= redeemPointsThreshold
+                        ? t('pointsReady', redeemDiscountValue)
+                        : t('pointsRemaining', redeemPointsThreshold - memberPoints, redeemDiscountValue)}
+                    </p>
+                  </div>
+                  {onNotMe && (
+                    <button
+                      type="button"
+                      onClick={onNotMe}
+                      className="text-xs text-[var(--text-muted)] underline underline-offset-2 shrink-0 pt-0.5"
+                    >
+                      {t('notMe')}
+                    </button>
+                  )}
                 </div>
+              ) : lookupStatus === 'checking' ? (
+                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                  {t('lookupChecking')}
+                </p>
+              ) : lookupStatus === 'error' ? (
+                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                  {t('lookupFailedHint')}
+                </p>
               ) : customerPhone.length >= MEMBER_MIN_PHONE_LENGTH ? (
                 <p className="text-xs text-[var(--text-secondary)] mt-1.5">
                   {t('newPhoneHint')}
@@ -1496,9 +1544,14 @@ function CustomerOrderApp() {
   // --- Cart & checkout state ---
   const [cart, setCart] = useState([]);
   const [view, setView] = useState('menu'); // 'menu' | 'checkout' | 'success'
-  const [customerName, setCustomerName] = useState('');
+  const [nameAutofill, setNameAutofill] = useState(initialNameAutofillState);
+  const customerName = nameAutofill.customerName;
   const [customerPhone, setCustomerPhone] = useState('');
   const [usePoints, setUsePoints] = useState(false);
+  const [lookupStatus, setLookupStatus] = useState('idle');
+  const lookupSeqRef = useRef(0);
+  const customerPhoneRef = useRef('');
+  customerPhoneRef.current = customerPhone;
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [successQueue, setSuccessQueue] = useState(null);
@@ -1817,22 +1870,81 @@ function CustomerOrderApp() {
   const redeemPointsThreshold = Number(settingsData.redeemPointsThreshold) || 50;
   const redeemDiscountValue = Number(settingsData.redeemDiscountValue) || 50;
 
+  // Prefill the last phone saved on this device when checkout opens empty.
+  useEffect(() => {
+    if (view !== 'checkout') return;
+    const remembered = readRememberedPhone();
+    if (!remembered) return;
+    setCustomerPhone((current) => phoneToPrefillOnCheckout(current, remembered));
+  }, [view]);
+
+  // Drop a stale member (and the points toggle) as soon as the typed phone
+  // no longer matches — waiting for lookup would let submit send usePoints
+  // for the previous person and the backend rejects the whole order.
+  useEffect(() => {
+    const phone = normalizeThaiPhoneInput(customerPhone);
+    if (!member || member.phone === phone) return;
+    setMember(null);
+    setUsePoints(false);
+  }, [customerPhone, member]);
+
+  useEffect(() => {
+    if (!member || member.phone !== normalizeThaiPhoneInput(customerPhone)) {
+      setUsePoints(false);
+    }
+  }, [member, customerPhone]);
+
   // Look up the member by phone on demand (debounced) instead of loading the
   // whole members collection on every QR scan — keeps Firestore reads minimal.
   useEffect(() => {
-    const phone = customerPhone.trim();
-    if (phone.length < 9) { setMember(null); return; }
+    const phone = normalizeThaiPhoneInput(customerPhone);
+    if (phone.length < MEMBER_MIN_PHONE_LENGTH) {
+      lookupSeqRef.current += 1;
+      setMember(null);
+      setUsePoints(false);
+      setLookupStatus('idle');
+      setNameAutofill((state) => decideNameAutofill(state, { type: 'phone-below-min', phone }));
+      return undefined;
+    }
+
+    const seq = lookupSeqRef.current + 1;
+    lookupSeqRef.current = seq;
+    setLookupStatus('checking');
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
         const data = await lookupMemberByPhone(phone);
-        if (!cancelled) {
-          setMember(data.exists ? { id: phone, phone, name: data.name, points: data.points, pendingPoints: data.pendingPoints, pointsExpireAt: data.pointsExpireAt } : null);
+        if (!shouldApplyLookupResult({
+          cancelled,
+          seq,
+          currentSeq: lookupSeqRef.current,
+          resultPhone: phone,
+          currentPhone: customerPhoneRef.current,
+        })) return;
+        if (data.exists) {
+          setMember({ id: phone, phone, name: data.name, points: data.points, pendingPoints: data.pendingPoints, pointsExpireAt: data.pointsExpireAt });
+          setLookupStatus('found');
+          setNameAutofill((state) => decideNameAutofill(state, { type: 'lookup-hit', phone, memberName: data.name }));
+        } else {
+          setMember(null);
+          setUsePoints(false);
+          setLookupStatus('new');
+          setNameAutofill((state) => decideNameAutofill(state, { type: 'lookup-miss', phone }));
         }
       } catch {
-        if (!cancelled) setMember(null);
+        if (!shouldApplyLookupResult({
+          cancelled,
+          seq,
+          currentSeq: lookupSeqRef.current,
+          resultPhone: phone,
+          currentPhone: customerPhoneRef.current,
+        })) return;
+        setMember(null);
+        setUsePoints(false);
+        setLookupStatus('error');
+        setNameAutofill((state) => decideNameAutofill(state, { type: 'lookup-error', phone }));
       }
-    }, 500);
+    }, LOOKUP_DEBOUNCE_MS);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [customerPhone]);
 
@@ -1962,7 +2074,8 @@ function CustomerOrderApp() {
 
     try {
       const phone = customerPhone.trim();
-      const signature = JSON.stringify([customerName.trim(), phone, usePoints, buildCheckoutItems(cart)]);
+      const redeem = canRedeemOnSubmit({ usePoints, member, phone, pointsEligible });
+      const signature = JSON.stringify([customerName.trim(), phone, redeem, buildCheckoutItems(cart)]);
       if (requestSignatureRef.current !== signature) checkoutRequestIdRef.current = null;
       const requestId = checkoutRequestIdRef.current || crypto.randomUUID();
       checkoutRequestIdRef.current = requestId;
@@ -1972,7 +2085,7 @@ function CustomerOrderApp() {
         requestId,
         customerName: customerName.trim(),
         phone,
-        usePoints,
+        usePoints: redeem,
         items: buildCheckoutItems(cart),
       });
 
@@ -1983,6 +2096,7 @@ function CustomerOrderApp() {
       lastSuccessAtRef.current = Date.now();
       requestSignatureRef.current = null;
       checkoutRequestIdRef.current = null;
+      writeRememberedPhone(phone);
       clearCartDraft();
       setView('success');
     } catch (err) {
@@ -2011,6 +2125,7 @@ function CustomerOrderApp() {
           lastSuccessAtRef.current = Date.now();
           requestSignatureRef.current = null;
           checkoutRequestIdRef.current = null;
+          writeRememberedPhone(customerPhone.trim());
           clearCartDraft();
           setView('success');
           return;
@@ -2038,16 +2153,28 @@ function CustomerOrderApp() {
   const REORDER_KEEP_MS = 10 * 60 * 1000;
   const handleReset = () => {
     setCart([]);
-    if (Date.now() - lastSuccessAtRef.current > REORDER_KEEP_MS) {
-      setCustomerName('');
-      setCustomerPhone('');
-    }
+    const keepIdentity = Date.now() - lastSuccessAtRef.current <= REORDER_KEEP_MS;
+    setNameAutofill((state) => decideReorderIdentity(state, { keepIdentity }));
+    if (!keepIdentity) setCustomerPhone('');
     requestSignatureRef.current = null;
     setUsePoints(false);
     setSubmitError('');
     setSuccessQueue(null);
     checkoutRequestIdRef.current = null;
     setView('menu');
+  };
+
+  const handleNameChange = (nextName) => {
+    setNameAutofill((state) => decideNameAutofill(state, { type: 'name-input', nextName }));
+  };
+
+  const handleNotMe = () => {
+    setNameAutofill((state) => decideNameAutofill(state, { type: 'not-me' }));
+    setCustomerPhone('');
+    setMember(null);
+    setUsePoints(false);
+    setLookupStatus('idle');
+    clearRememberedPhone();
   };
 
   // Review reward = 10 points PENDING the shop's approval (we can't verify the
@@ -2094,7 +2221,7 @@ function CustomerOrderApp() {
           total={total}
           vatEnabled={settings.vatEnabled}
           customerName={customerName}
-          onNameChange={setCustomerName}
+          onNameChange={handleNameChange}
           onSubmit={handleSubmit}
           onBack={() => setView('menu')}
           submitting={submitting}
@@ -2106,6 +2233,9 @@ function CustomerOrderApp() {
           pointsEligible={pointsEligible}
           usePoints={usePoints}
           onTogglePoints={() => setUsePoints((v) => !v)}
+          lookupStatus={lookupStatus}
+          nameSource={nameAutofill.nameSource}
+          onNotMe={handleNotMe}
           redeemPointsThreshold={redeemPointsThreshold}
           redeemDiscountValue={redeemDiscountValue}
           comboDiscount={comboDiscount}

@@ -42,9 +42,12 @@
 
     <title>Siwara Cafe — คาเฟ่ & ร้านกาแฟ | สั่งเมนูออนไลน์</title>
 
-    <!-- Preconnect to Firebase -->
+    <!-- Preconnect -->
     <link rel="preconnect" href="https://firestore.googleapis.com" />
     <link rel="preconnect" href="https://firebase.googleapis.com" />
+    <link rel="preconnect" href="https://pub-d463619a014848819bdac456d1d599a2.r2.dev" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" />
 
     <!-- Fix iPad viewport: Safari may report narrow device-width in mobile mode -->
     <script>
@@ -64,6 +67,24 @@
     </script>
   </head>
   <body>
+    <script>
+      if (location.pathname === '/order') {
+        try {
+          if (!sessionStorage.getItem('qrBeacon_sent_open')) {
+            sessionStorage.setItem('qrBeacon_sent_open', '1');
+            var ua = navigator.userAgent;
+            var uaC = 'other';
+            if (/Line\//i.test(ua)) uaC = 'line';
+            else if (/FBAN|FBAV|FB_IAB/i.test(ua)) uaC = 'facebook';
+            else if (/Instagram/i.test(ua)) uaC = 'instagram';
+            var payload = JSON.stringify({ event: 'open', ua: uaC });
+            var url = 'https://pos-gemini-proxy.siwatid-99.workers.dev/qr-beacon';
+            if (navigator.sendBeacon) navigator.sendBeacon(url, payload);
+            else fetch(url, { method: 'POST', body: payload, keepalive: true, mode: 'no-cors' }).catch(function(){});
+          }
+        } catch(e) {}
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

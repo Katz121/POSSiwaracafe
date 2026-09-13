@@ -10,6 +10,7 @@
 # Vite build output is content-hashed (e.g. index-CJG9bo8K.js) — a new build
 # means a new filename, so these are immutable and can be cached long-term.
 /assets/*
+  ! Cache-Control
   Cache-Control: public, max-age=31536000, immutable
 
 # The service-worker tombstone must propagate fast — never let it be cached.
