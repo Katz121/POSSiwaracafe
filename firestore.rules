@@ -146,11 +146,11 @@ service cloud.firestore {
         allow read, write: if isStaff();
       }
 
-      // สมาชิกมีเบอร์โทรและประวัติการซื้อ · ลูกค้าเปิดดูบัตรของตัวเองได้ด้วย
-      // การรู้เบอร์ตัวเอง (get) แต่ห้ามไล่อ่านทั้งตาราง (list) และห้ามแก้แต้ม
+      // สมาชิกมีเบอร์โทรและประวัติการซื้อ · พนักงานเท่านั้น
+      // ลูกค้าเช็คแต้มผ่าน callable `lookupMember` ที่ส่งแค่ชื่อ/แต้ม และจำกัด 20 ครั้ง/10 นาที
+      // (เดิมใครที่เปิดหน้า QR รู้เบอร์คนอื่นก็อ่านประวัติทั้งหมดของคนนั้นได้)
       match /members/{id} {
-        allow get: if signedIn();
-        allow list, write: if isStaff();
+        allow read, write: if isStaff();
       }
 
       match /quickExpenses/{id} {
