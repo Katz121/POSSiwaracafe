@@ -26,7 +26,7 @@ import {
   signInAnonymously,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
+import { lookupMemberByPhone } from '../services/memberLookup';
 import {
   collection,
   doc,
@@ -1825,8 +1825,7 @@ function CustomerOrderApp() {
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const result = await httpsCallable(functions, 'lookupMember')({ phone });
-        const data = result.data || {};
+        const data = await lookupMemberByPhone(phone);
         if (!cancelled) {
           setMember(data.exists ? { id: phone, phone, name: data.name, points: data.points, pendingPoints: data.pendingPoints, pointsExpireAt: data.pointsExpireAt } : null);
         }

@@ -10,9 +10,9 @@
  * เอกสารสมาชิก 1 ใบ) · จำเบอร์ไว้ในเครื่อง เปิดครั้งต่อไปกดปุ่มเดียวจบ
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { httpsCallable } from 'firebase/functions';
+import { lookupMemberByPhone } from '../services/memberLookup';
 import { Coffee, Search, Star, ArrowRight } from 'lucide-react';
-import { db, appId, functions } from '../services/firebase';
+import { db, appId } from '../services/firebase';
 import useAuth from '../hooks/useAuth';
 import { fetchPublicMenu } from '../utils/publicMenu';
 import { MEMBER_MIN_PHONE_LENGTH } from '../config/constants';
@@ -62,8 +62,7 @@ export default function MemberCardApp() {
     setError('');
     setLoading(true);
     try {
-      const result = await httpsCallable(functions, 'lookupMember')({ phone: clean });
-      const data = result.data || {};
+      const data = await lookupMemberByPhone(clean);
       if (data.exists) {
         setMember({ id: clean, phone: clean, name: data.name, points: data.points, pendingPoints: data.pendingPoints, pointsExpireAt: data.pointsExpireAt });
       } else {
