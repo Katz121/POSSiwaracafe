@@ -100,10 +100,15 @@ function buildOrderMessage(body) {
     })
     .filter(Boolean);
 
+  // Staff hint line (regular customer / favourite drink / away N days), built
+  // server-side in the checkout function. Only shown when it carries something.
+  const contextLine = clean(body?.memberContext?.line, 200);
+
   return (
     `🔔 ออเดอร์ใหม่จาก QR\n` +
     `คิว ${queueStr}\n` +
     `ลูกค้า: ${name}\n` +
+    (contextLine ? `${contextLine}\n` : '') +
     `เวลา: ${time}\n` +
     `——————————\n` +
     `${lines.join('\n') || '(ไม่มีรายการ)'}\n` +

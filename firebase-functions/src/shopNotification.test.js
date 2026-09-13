@@ -21,6 +21,52 @@ describe('shop notification', () => {
     });
   });
 
+  it('forwards a trusted memberContext payload for the shop telegram line', () => {
+    expect(buildShopNotification({
+      ...order,
+      memberContext: {
+        isRegular: true,
+        favoriteItem: 'มัทฉะลาเต้',
+        orderCount: 8,
+        daysAway: 20,
+        extra: 'drop-me',
+        line: '⭐ ลูกค้าประจำ · ชอบ มัทฉะลาเต้ · หายไป 20 วัน',
+      },
+    })).toEqual({
+      type: 'order',
+      queueNumber: 12,
+      customerName: 'Test customer',
+      total: 75,
+      time: '12:30',
+      items: [{ name: 'Cocoa frappe', quantity: 1 }],
+      memberContext: {
+        isRegular: true,
+        favoriteItem: 'มัทฉะลาเต้',
+        orderCount: 8,
+        daysAway: 20,
+        line: '⭐ ลูกค้าประจำ · ชอบ มัทฉะลาเต้ · หายไป 20 วัน',
+      },
+    });
+  });
+
+  it('builds memberContext.line when the caller only sent structured fields', () => {
+    expect(buildShopNotification({
+      ...order,
+      memberContext: {
+        isRegular: true,
+        favoriteItem: 'มัทฉะลาเต้',
+        orderCount: 5,
+        daysAway: null,
+      },
+    }).memberContext).toEqual({
+      isRegular: true,
+      favoriteItem: 'มัทฉะลาเต้',
+      orderCount: 5,
+      daysAway: null,
+      line: '⭐ ลูกค้าประจำ · ชอบ มัทฉะลาเต้',
+    });
+  });
+
   it('posts the order to the protected worker endpoint', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,

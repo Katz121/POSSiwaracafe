@@ -8,6 +8,12 @@ import { defineSecret } from 'firebase-functions/params';
 import { buildTrustedCheckout } from './checkoutLogic.js';
 import { notifyShopOrder } from './shopNotification.js';
 import {
+  buildMemberContext,
+  computeDaysAway,
+  formatMemberContextLine,
+  MEMBER_ORDERS_QUERY_LIMIT,
+} from './memberContext.js';
+import {
   buildExpireHistoryEntry,
   computeAutoApproveTake,
   computePointsExpireAt,
@@ -135,6 +141,8 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
       }));
       const member = memberSnapshot?.exists ? memberSnapshot.data() : null;
       const now = new Date();
+      // lastOrderAt เดิมก่อนถูกทับ — ใช้คำนวณ "หายไปกี่วัน" ให้พนักงาน
+      const daysAway = phone ? computeDaysAway(member?.lastOrderAt, now) : null;
       const checkout = buildTrustedCheckout({
         requestedItems,
         menuById,
@@ -187,6 +195,7 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
         // closed can't make a customer think there are dozens ahead of them.
         pendingCount: countPendingSince(pendingSnapshot.docs, queueDayStart(now)) + 1,
         total: checkout.total,
+        daysAway,
       };
 
       transaction.set(queueRef, { current: queueNumber + 1, day: queue.day }, { merge: true });
@@ -221,14 +230,37 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
         createdAt,
         response,
       });
-      return { response, order: orderData };
+      return { response, order: { ...orderData, daysAway } };
     });
 
     // Notify only for a newly-created order. An idempotent replay returns the
     // original response without sending a duplicate shop alert.
     if (transactionResult.order) {
       try {
-        await sendNotification(transactionResult.order, { secret: notifySharedSecret.value() });
+        const order = transactionResult.order;
+        let notifyOrder = order;
+        const memberPhone = String(order.memberPhone || '');
+        if (memberPhone) {
+          try {
+            const snap = await database
+              .collection(`${basePath}/orders`)
+              .where('memberPhone', '==', memberPhone)
+              .limit(MEMBER_ORDERS_QUERY_LIMIT)
+              .get();
+            const ctx = buildMemberContext({
+              orders: snap.docs.map((docSnap) => docSnap.data()),
+              daysAway: order.daysAway,
+            });
+            notifyOrder = {
+              ...order,
+              memberContext: { ...ctx, line: formatMemberContextLine(ctx) },
+            };
+          } catch (contextError) {
+            // ประวัติสมาชิกพังต้องไม่ทำให้บอทออเดอร์เงียบ
+            console.error('member context query failed', contextError);
+          }
+        }
+        await sendNotification(notifyOrder, { secret: notifySharedSecret.value() });
       } catch (notificationError) {
         // The order is already committed. Notification failure must never make
         // the customer retry checkout and create uncertainty at the counter.
