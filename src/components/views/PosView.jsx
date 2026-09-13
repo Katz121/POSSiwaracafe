@@ -8,6 +8,7 @@ import {
 import { collection, doc, writeBatch, increment, arrayUnion, arrayRemove, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { db, appId, auth } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
+import { getEligibleRewards, toggleRewardSelection } from '../../utils/rewards';
 import { getISODate, getNameKey } from '../../utils/calculations';
 import { mergeStockLinks } from '../../utils/stockLinks';
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeCategory, isCakeSaleActive, supportsSweetnessChoice } from '../../utils/promotions';
@@ -59,6 +60,8 @@ export default function PosView() {
     comboPercent,
     spendThreshold,
     spendDiscount,
+    pointsRewardsEnabled,
+    pointsRewards,
     activePromotion,
     setActivePromotion,
     runDbAction,
@@ -88,6 +91,7 @@ export default function PosView() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isPaid, setIsPaid] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
+  const [redeemRewardId, setRedeemRewardId] = useState(null);
   const [bringOwnGlass, setBringOwnGlass] = useState(false);
   const [reviewDiscount, setReviewDiscount] = useState(false); // staff applies 5% for a verified review
   const [pendingBeanItem, setPendingBeanItem] = useState(null);
@@ -231,9 +235,11 @@ export default function PosView() {
     } else if (memberPhone.length > 0 && memberPhone.length < MEMBER_MIN_PHONE_LENGTH) {
       setCurrentMember(null);
       setUsePoints(false);
+      setRedeemRewardId(null);
     } else if (!memberPhone && !memberNickname) {
       setCurrentMember(null);
       setUsePoints(false);
+      setRedeemRewardId(null);
     }
   }, [memberPhone, members, memberNickname]);
 
@@ -241,7 +247,8 @@ export default function PosView() {
     if (memberPhone && memberPhone.length >= MEMBER_MIN_PHONE_LENGTH) return;
     const nameKey = getNameKey(memberNickname);
     if (!nameKey) {
-      if (!memberPhone) { setCurrentMember(null); setUsePoints(false); }
+      if (!memberPhone) { setCurrentMember(null); setUsePoints(false);
+      setRedeemRewardId(null); }
       return;
     }
     // Do not resolve members while the nickname is still being typed. A partial
@@ -250,6 +257,7 @@ export default function PosView() {
     // a name without a phone remains freely editable guest text on this bill.
     setCurrentMember({ phone: '', points: 0, name: memberNickname, isNew: true, isGuest: !ALLOW_NAME_ONLY_MEMBERS });
     setUsePoints(false);
+      setRedeemRewardId(null);
   }, [memberNickname, memberPhone]);
 
   const ordersRef = useRef(orders);
@@ -409,6 +417,7 @@ export default function PosView() {
     setMemberNickname('');
     setCurrentMember(null);
     setUsePoints(false);
+      setRedeemRewardId(null);
   };
 
   const handleSelectMember = (member) => {
@@ -416,6 +425,7 @@ export default function PosView() {
     setMemberNickname(String(member.name || ''));
     setCurrentMember(member);
     setUsePoints(false);
+      setRedeemRewardId(null);
     setIsMemberNameFocused(false);
   };
 
@@ -426,6 +436,7 @@ export default function PosView() {
   const handleClearCart = () => {
     setCart([]);
     setUsePoints(false);
+      setRedeemRewardId(null);
     setBringOwnGlass(false);
     setReviewDiscount(false);
     setMemberPhone('');
@@ -636,7 +647,8 @@ export default function PosView() {
         // Best-selling counter (best-effort; never blocks the sale)
         bumpMenuSoldCount(cart);
       }
-      setCart([]); setIsPaid(false); setMemberPhone(''); setMemberNickname(''); setUsePoints(false); setBringOwnGlass(false); setReviewDiscount(false);
+      setCart([]); setIsPaid(false); setMemberPhone(''); setMemberNickname(''); setUsePoints(false);
+      setRedeemRewardId(null); setBringOwnGlass(false); setReviewDiscount(false);
       toast.success(editingOrderId ? 'แก้ไขออเดอร์สำเร็จ' : `บันทึกออเดอร์ #${queueCounter} สำเร็จ`);
     }, 'บันทึกออเดอร์ไม่สำเร็จ');
   }, ids => setCheckoutBusy(ids.size > 0));
@@ -860,6 +872,7 @@ export default function PosView() {
                     setMemberPhone('');
                     setCurrentMember(null);
                     setUsePoints(false);
+      setRedeemRewardId(null);
                   }
                 }}
                 autoComplete="off"
@@ -904,11 +917,51 @@ export default function PosView() {
                 {currentMember.isNew ? `+${Math.floor(netTotal / 10)}` : Number(currentMember.points || 0)}
               </span>
               {!currentMember.isNew && Number(currentMember.points || 0) >= REDEEM_POINTS_THRESHOLD && (
-                <button onClick={() => setUsePoints(!usePoints)}
+                <button onClick={() => {
+                  const res = toggleRewardSelection(usePoints, redeemRewardId, 'discount');
+                  setUsePoints(res.usePoints);
+                  setRedeemRewardId(res.redeemRewardId);
+                }}
                   className={`ml-1 px-2 h-6 rounded-[var(--radius-sm)] text-[9px] font-medium flex items-center gap-2 transition-all ${usePoints ? 'bg-[var(--accent-orange)] text-white' : 'bg-[var(--accent-orange-light)] text-[var(--accent-orange)]'}`}>
-                  <Gift size={10} />{usePoints ? 'ยกเลิก' : `ใช้ ${REDEEM_POINTS_THRESHOLD}`}
+                  <Gift size={10} />{usePoints ? '??????' : `??? ${REDEEM_POINTS_THRESHOLD}`}
                 </button>
               )}
+                        </div>
+          </div>
+        )}
+
+        {pointsRewardsEnabled && currentMember && !currentMember.isGuest && getEligibleRewards(pointsRewards, currentMember.points).length > 0 && (
+          <div className="pt-2 border-t border-[var(--border-color)]">
+            <p className="text-[10px] font-semibold text-[var(--text-muted)] mb-1.5 uppercase tracking-wider">?????????????</p>
+            <div className="space-y-1.5">
+              {getEligibleRewards(pointsRewards, currentMember.points).map(reward => (
+                <label
+                  key={reward.id}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-[var(--radius-sm)] border cursor-pointer transition-all ${redeemRewardId === reward.id ? 'bg-[var(--accent-orange-light)] border-[var(--accent-orange)]' : 'bg-[var(--bg-primary)] border-[var(--border-color)] hover:border-[var(--accent-orange)]'}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${redeemRewardId === reward.id ? 'border-[var(--accent-orange)]' : 'border-gray-300'}`}>
+                      {redeemRewardId === reward.id && <div className="w-2 h-2 bg-[var(--accent-orange)] rounded-full" />}
+                    </div>
+                    <span className={`text-[11px] font-semibold ${redeemRewardId === reward.id ? 'text-[var(--accent-orange)]' : 'text-[var(--text-primary)]'}`}>
+                      {reward.name}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-[var(--accent-orange)]">
+                    {reward.cost} ????
+                  </span>
+                  <input
+                    type="radio"
+                    className="hidden"
+                    checked={redeemRewardId === reward.id}
+                    onChange={() => {
+                      const res = toggleRewardSelection(usePoints, redeemRewardId, 'reward', reward.id);
+                      setUsePoints(res.usePoints);
+                      setRedeemRewardId(res.redeemRewardId);
+                    }}
+                  />
+                </label>
+              ))}
             </div>
           </div>
         )}

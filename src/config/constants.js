@@ -11,6 +11,8 @@ export const DEFAULT_REDEEM_POINTS_THRESHOLD = 50;  // แต้มขั้น�
 export const DEFAULT_REDEEM_DISCOUNT_VALUE = 50;     // มูลค่าส่วนลดเมื่อแลกแต้ม (บาท)
 export const DEFAULT_OWN_GLASS_DISCOUNT = 5;         // ส่วนลดนำแก้วมาเอง (บาท)
 export const POINTS_PER_BAHT = 10;                   // ทุก X บาท ได้ 1 แต้ม
+export const DEFAULT_POINTS_REWARDS_ENABLED = false;
+export const DEFAULT_POINTS_REWARDS = [];
 
 // ==================== MEMBER IDENTITY ====================
 // เบอร์โทรคือ "ตัวตน" เดียวของสมาชิก — ชื่อเล่นซ้ำกันได้ (ข้อมูลจริงมี "แพรว" 3 คน

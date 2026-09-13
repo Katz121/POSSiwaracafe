@@ -63,6 +63,8 @@ export default function AdminView() {
     comboPercent,
     spendThreshold,
     spendDiscount,
+    pointsRewardsEnabled,
+    pointsRewards,
     adminTab,
     setAdminTab,
     runDbAction,
@@ -125,7 +127,9 @@ export default function AdminView() {
     comboEnabled: false,
     comboPercent: DEFAULT_COMBO_PERCENT,
     spendThreshold: 0,
-    spendDiscount: 0
+    spendDiscount: 0,
+    pointsRewardsEnabled: false,
+    pointsRewards: []
   });
   const [adminPanels, setAdminPanels] = useState({
     daily: true,
@@ -186,9 +190,11 @@ export default function AdminView() {
       comboEnabled: comboEnabled === true,
       comboPercent: Number(comboPercent) || DEFAULT_COMBO_PERCENT,
       spendThreshold: Number(spendThreshold) || 0,
-      spendDiscount: Number(spendDiscount) || 0
+      spendDiscount: Number(spendDiscount) || 0,
+      pointsRewardsEnabled: pointsRewardsEnabled === true,
+      pointsRewards: Array.isArray(pointsRewards) ? pointsRewards : []
     });
-  }, [ADMIN_PIN, REDEEM_POINTS_THRESHOLD, pointsExpiryMonths, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, geminiApiKey, STARTING_CASH, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount]);
+  }, [ADMIN_PIN, REDEEM_POINTS_THRESHOLD, pointsExpiryMonths, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, geminiApiKey, STARTING_CASH, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount, pointsRewardsEnabled, pointsRewards]);
 
   // Handle deep-linking from other views
   useEffect(() => {
@@ -403,6 +409,10 @@ export default function AdminView() {
         comboPercent: Number(settingsDraft.comboPercent) || 0,
         spendThreshold: Number(settingsDraft.spendThreshold) || 0,
         spendDiscount: Number(settingsDraft.spendDiscount) || 0,
+        pointsRewardsEnabled: settingsDraft.pointsRewardsEnabled === true,
+        pointsRewards: (settingsDraft.pointsRewards || [])
+          .map(r => ({ ...r, name: String(r.name || '').trim(), cost: Math.max(1, Math.floor(Number(r.cost) || 1)) }))
+          .filter(r => r.name !== ''),
         updatedAt: serverTimestamp()
       }, { merge: true });
       toast.success('บันทึกการตั้งค่าเรียบร้อยแล้ว');
@@ -679,6 +689,84 @@ export default function AdminView() {
                       <input type="number" value={settingsDraft.pointsExpiryMonths} onChange={(e) => setSettingsDraft({ ...settingsDraft, pointsExpiryMonths: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
                       <p className="text-[10px] text-amber-600 mt-1">ควรประกาศลูกค้าก่อนเปิดใช้</p>
                     </div>
+                  </div>
+                  <div className="col-span-2 border-t border-[var(--border-color)] pt-4 mt-2 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-xs font-medium text-[var(--text-primary)] tracking-widest flex items-center gap-2"><Star size={14} className="text-amber-500" /> ของแลกแต้ม (เมนูลับ / ท็อปปิ้ง)</label>
+                        <p className="text-[10px] text-[var(--text-muted)] mt-1">ลูกค้าจะเห็นของเหล่านี้ให้แลกด้วยแต้ม แทนส่วนลดเงินสด</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSettingsDraft({ ...settingsDraft, pointsRewardsEnabled: !settingsDraft.pointsRewardsEnabled })}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${settingsDraft.pointsRewardsEnabled ? 'bg-amber-100 text-amber-700' : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]'}`}
+                      >
+                        {settingsDraft.pointsRewardsEnabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                      </button>
+                    </div>
+                    {settingsDraft.pointsRewardsEnabled && (
+                      <div className="space-y-2">
+                        {(settingsDraft.pointsRewards || []).map((reward, idx) => (
+                          <div key={idx} className="flex gap-2 items-center">
+                            <input
+                              type="text"
+                              value={reward.name}
+                              onChange={(e) => {
+                                const next = [...settingsDraft.pointsRewards];
+                                next[idx].name = e.target.value;
+                                setSettingsDraft({ ...settingsDraft, pointsRewards: next });
+                              }}
+                              placeholder="ชื่อของแลก (เช่น วิปครีม)"
+                              className="flex-1 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl p-2 text-sm outline-none"
+                            />
+                            <input
+                              type="number"
+                              value={reward.cost}
+                              onChange={(e) => {
+                                const next = [...settingsDraft.pointsRewards];
+                                next[idx].cost = e.target.value;
+                                setSettingsDraft({ ...settingsDraft, pointsRewards: next });
+                              }}
+                              placeholder="แต้ม"
+                              className="w-20 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl p-2 text-sm outline-none num text-center"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = [...settingsDraft.pointsRewards];
+                                next[idx].enabled = !next[idx].enabled;
+                                setSettingsDraft({ ...settingsDraft, pointsRewards: next });
+                              }}
+                              className={`p-2 rounded-xl ${reward.enabled ? 'text-emerald-500 bg-emerald-50' : 'text-[var(--text-muted)] bg-[var(--bg-tertiary)]'}`}
+                            >
+                              {reward.enabled ? <Eye size={16} /> : <EyeOff size={16} />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = settingsDraft.pointsRewards.filter((_, i) => i !== idx);
+                                setSettingsDraft({ ...settingsDraft, pointsRewards: next });
+                              }}
+                              className="p-2 text-red-400 bg-red-50 rounded-xl"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSettingsDraft({
+                              ...settingsDraft,
+                              pointsRewards: [...(settingsDraft.pointsRewards || []), { id: crypto.randomUUID(), name: '', cost: 10, enabled: true }]
+                            });
+                          }}
+                          className="w-full py-2 rounded-xl border border-dashed border-[var(--border-color)] text-xs text-[var(--text-muted)] flex items-center justify-center gap-2 hover:bg-[var(--bg-tertiary)]"
+                        >
+                          <Plus size={14} /> เพิ่มรายการแลกแต้ม
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="col-span-2 border-t border-[var(--border-color)] pt-4 mt-2">
                     <label className="text-xs font-medium text-emerald-500  tracking-widest flex items-center gap-2"><Zap size={14} /> Gemini API Key (สำหรับ AI Features)</label>

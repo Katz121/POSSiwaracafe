@@ -161,3 +161,44 @@ describe('per-item sweetness toggle (sweetnessChoice)', () => {
     expect(run([{ id: 'cake', quantity: 1, sweetness: null, milkType: null }]).total).toBe(100);
   });
 });
+
+
+describe('points rewards', () => {
+  const reward = { id: 'shot', name: 'เพิ่มช็อต', cost: 20, enabled: true };
+  const settings = { ...baseSettings, pointsRewardsEnabled: true, pointsRewards: [reward] };
+  const checkout = (extra = {}) => buildTrustedCheckout({
+    requestedItems: [{ id: 'latte', quantity: 1, sweetness: 50, milkType: 'cow' }],
+    menuById: menu, modifiersById: noModifiers, settings,
+    member: { points: 20 }, redeemRewardId: 'shot', ...extra,
+  });
+
+  it('deducts the configured cost without discounting money', () => {
+    expect(checkout()).toMatchObject({ redeemDeduct: 20, discount: 0, total: 60,
+      pointsToAdd: 6, redeemedReward: { id: 'shot', name: 'เพิ่มช็อต', cost: 20 } });
+  });
+  it('keeps promotions and VAT when redeeming a reward', () => {
+    expect(checkout({ settings: { ...settings, spendThreshold: 50, spendDiscount: 10, vatEnabled: true } }))
+      .toMatchObject({ discount: 6, vat: 4, total: 58, redeemDeduct: 20 });
+  });
+  it('rejects simultaneous cash and reward redemption', () => {
+    expect(() => checkout({ usePoints: true })).toThrow('redeem-conflict');
+  });
+  it.each([false, undefined, 'true'])('requires an explicit enabled switch: %s', (enabled) => {
+    expect(() => checkout({ settings: { ...settings, pointsRewardsEnabled: enabled } })).toThrow('reward-unavailable');
+  });
+  it.each([[], null, [{ ...reward, enabled: false }], [{ ...reward, id: 'other' }]])('rejects unavailable rewards: %j', (pointsRewards) => {
+    expect(() => checkout({ settings: { ...settings, pointsRewards } })).toThrow('reward-unavailable');
+  });
+  it.each([0, -1, 1.5, '20', NaN, Infinity])('rejects invalid cost: %s', (cost) => {
+    expect(() => checkout({ settings: { ...settings, pointsRewards: [{ ...reward, cost }] } })).toThrow('reward-unavailable');
+  });
+  it.each([null, {}, { points: 19 }, { points: 'invalid' }])('requires eligible member: %j', (member) => {
+    expect(() => checkout({ member })).toThrow('points-not-eligible');
+  });
+  it('defaults to no reward and preserves cash redemption with rewards disabled', () => {
+    expect(checkout({ redeemRewardId: null, settings: baseSettings })).toMatchObject({ redeemedReward: null, redeemDeduct: 0, total: 60 });
+    expect(checkout({ redeemRewardId: null, usePoints: true, member: { points: 50 },
+      settings: { ...baseSettings, redeemPointsThreshold: 50, redeemDiscountValue: 50 } }))
+      .toMatchObject({ redeemedReward: null, redeemDeduct: 50, discount: 50, total: 10 });
+  });
+});

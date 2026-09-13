@@ -101,7 +101,7 @@ export default function App() {
   // Data States from hook
   const {
     isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes,
-    pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
+    pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, geminiApiKey, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
     comboEnabled, comboPercent, spendThreshold, spendDiscount
   } = usePosData(user, appId);
@@ -385,7 +385,7 @@ export default function App() {
 
   const configValue = useMemo(() => ({
     pinEnabled, vatEnabled, adminPin,
-    redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount,
+    redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount,
     geminiApiKey,
     startingCash,
     reviewUrl,
@@ -393,7 +393,7 @@ export default function App() {
     cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
     comboEnabled, comboPercent, spendThreshold, spendDiscount,
   }), [pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths,
-    redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
+    redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, geminiApiKey, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
     comboEnabled, comboPercent, spendThreshold, spendDiscount]);
 

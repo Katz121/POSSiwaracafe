@@ -66,6 +66,8 @@ const errorCodeMap = {
   'item-unavailable': 'failed-precondition',
   'modifier-unavailable': 'failed-precondition',
   'points-not-eligible': 'failed-precondition',
+  'reward-unavailable': 'failed-precondition',
+  'redeem-conflict': 'invalid-argument',
 };
 
 function cleanCustomer(data) {
@@ -150,6 +152,7 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
         settings: settingsSnapshot.exists ? settingsSnapshot.data() : {},
         member,
         usePoints: data.usePoints === true,
+        redeemRewardId: data.redeemRewardId ?? null,
         now,
       });
 
@@ -186,6 +189,7 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
         source: 'qr',
         checkoutRequestId: requestId,
         pointsEarned: checkout.pointsToAdd,
+        redeemedReward: checkout.redeemedReward,
       };
       const response = {
         orderId: orderRef.id,
@@ -219,6 +223,7 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
             at: now.toISOString(),
             orderId: orderRef.id,
             by: 'system:checkout',
+            ...(checkout.redeemedReward ? { note: checkout.redeemedReward.name } : {}),
           });
         }
         if (!memberSnapshot?.exists) memberPayload.createdAt = createdAt;

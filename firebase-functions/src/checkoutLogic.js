@@ -124,6 +124,7 @@ export function buildTrustedCheckout({
   settings = {},
   member = null,
   usePoints = false,
+  redeemRewardId = null,
   now = new Date(),
 }) {
   if (!Array.isArray(requestedItems) || requestedItems.length < 1 || requestedItems.length > 50) {
@@ -224,9 +225,26 @@ export function buildTrustedCheckout({
 
   const redeemThreshold = number(settings.redeemPointsThreshold) || 100;
   const redeemValue = number(settings.redeemDiscountValue) || 50;
-  const redeemDeduct = usePoints && member && number(member.points) >= redeemThreshold ? redeemThreshold : 0;
+  if (redeemRewardId && usePoints) throw new Error('redeem-conflict');
+  let redeemedReward = null;
+  let redeemDeduct = usePoints && member && number(member.points) >= redeemThreshold ? redeemThreshold : 0;
   if (usePoints && redeemDeduct === 0) throw new Error('points-not-eligible');
   const pointsDiscount = redeemDeduct > 0 ? redeemValue : 0;
+  if (redeemRewardId) {
+    const reward = Array.isArray(settings.pointsRewards)
+      ? settings.pointsRewards.find((entry) => entry?.id === redeemRewardId && entry.enabled === true)
+      : null;
+    if (settings.pointsRewardsEnabled !== true || !reward ||
+        !Number.isSafeInteger(reward.cost) || reward.cost <= 0 ||
+        typeof reward.name !== 'string' || !reward.name.trim()) {
+      throw new Error('reward-unavailable');
+    }
+    if (!member || !Number.isFinite(Number(member.points)) || Number(member.points) < reward.cost) {
+      throw new Error('points-not-eligible');
+    }
+    redeemDeduct = reward.cost;
+    redeemedReward = { id: reward.id, name: reward.name, cost: reward.cost };
+  }
   const promotionDiscount = Math.max(rawComboDiscount, rawSpendDiscount);
   const discount = Math.min(subtotal, promotionDiscount + pointsDiscount);
   const vat = settings.vatEnabled ? Math.round(Math.max(0, subtotal - discount) * VAT_RATE) : 0;
@@ -239,6 +257,7 @@ export function buildTrustedCheckout({
     vat,
     total,
     redeemDeduct,
+    redeemedReward,
     pointsToAdd: Math.floor(total / 10),
     promotionTitle: rawComboDiscount >= rawSpendDiscount && comboApplies ? 'คอมโบเค้ก + เครื่องดื่ม' : '',
     promotionDiscountPercent: rawComboDiscount >= rawSpendDiscount && comboApplies ? comboPercent : 0,

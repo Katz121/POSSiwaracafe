@@ -39,6 +39,8 @@ export default function usePosData(user, appId) {
   const [adminPin, setAdminPin] = useState(DEFAULT_ADMIN_PIN);
   const [redeemPointsThreshold, setRedeemPointsThreshold] = useState(DEFAULT_REDEEM_POINTS_THRESHOLD);
   const [pointsExpiryMonths, setPointsExpiryMonths] = useState(0);
+  const [pointsRewardsEnabled, setPointsRewardsEnabled] = useState(false);
+  const [pointsRewards, setPointsRewards] = useState([]);
   const [redeemDiscountValue, setRedeemDiscountValue] = useState(DEFAULT_REDEEM_DISCOUNT_VALUE);
   const [ownGlassDiscount, setOwnGlassDiscount] = useState(DEFAULT_OWN_GLASS_DISCOUNT);
   const [geminiApiKey, setGeminiApiKey] = useState(import.meta.env.VITE_GEMINI_API_KEY || '');
@@ -133,6 +135,9 @@ export default function usePosData(user, appId) {
     }, handleSnapshotError);
 
     const unsubSettings = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), (d) => {
+      const rewardsSettings = d.exists() ? d.data() : {};
+      setPointsRewardsEnabled(rewardsSettings.pointsRewardsEnabled === true);
+      setPointsRewards(Array.isArray(rewardsSettings.pointsRewards) ? rewardsSettings.pointsRewards : []);
       if (d.exists()) {
         const data = d.data();
         setSettingsRaw(data);
@@ -192,5 +197,5 @@ export default function usePosData(user, appId) {
     return () => clearTimeout(timeout);
   }, [menu, dynamicCategories, beanModifiers, settingsRaw, appId, isSyncing]);
 
-  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
+  return { pointsRewardsEnabled, pointsRewards, isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
 }

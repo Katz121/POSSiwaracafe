@@ -69,6 +69,7 @@ import { buildCartLine, calculateCartTotals, replaceCartLine, getCartCrossSell }
 import { trackFunnelStep } from '../utils/qrFunnel';
 import { readCartDraft, restoreCartDraft, saveCartDraft, clearCartDraft, readLastSweetness, rememberSweetness } from '../utils/cartDraft';
 import { applyCustomerSEO } from '../utils/seo';
+import { getEligibleRewards, toggleRewardSelection } from '../utils/rewards';
 
 // ---------------------------------------------------------------------------
 // i18n: Thai/English UI chrome for the customer-facing QR ordering page.
@@ -1098,6 +1099,10 @@ function CheckoutStep({
   onTogglePoints,
   redeemPointsThreshold,
   redeemDiscountValue,
+  pointsRewardsEnabled,
+  pointsRewards,
+  redeemRewardId,
+  onToggleReward,
   lookupStatus = 'idle',
   nameSource = 'empty',
   onNotMe,
@@ -1305,6 +1310,39 @@ function CheckoutStep({
                 </div>
               </motion.button>
             )}
+
+            {pointsRewardsEnabled && member && getEligibleRewards(pointsRewards, memberPoints).length > 0 && (
+              <div className="mt-2 space-y-2">
+                {getEligibleRewards(pointsRewards, memberPoints).map(reward => (
+                  <label
+                    key={reward.id}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-[var(--radius)] border-2 transition-all cursor-pointer ${
+                      redeemRewardId === reward.id
+                        ? 'bg-emerald-50 border-emerald-400'
+                        : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] hover:border-[var(--accent-emerald)]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${redeemRewardId === reward.id ? 'border-emerald-500' : 'border-gray-300'}`}>
+                        {redeemRewardId === reward.id && <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full" />}
+                      </div>
+                      <span className={`text-sm font-semibold ${redeemRewardId === reward.id ? 'text-[var(--accent-emerald-dark)]' : 'text-[var(--text-primary)]'}`}>
+                        ??? {reward.name}
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
+                      ??? {reward.cost} ????
+                    </span>
+                    <input
+                      type="radio"
+                      className="hidden"
+                      checked={redeemRewardId === reward.id}
+                      onChange={() => onToggleReward(reward.id)}
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Error message */}
@@ -1346,7 +1384,7 @@ function CheckoutStep({
 // ---------------------------------------------------------------------------
 // Sub-component: SuccessScreen
 // ---------------------------------------------------------------------------
-function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, t }) {
+function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, redeemedRewardName, t }) {
   const hasReviewUrl = typeof reviewUrl === 'string' && reviewUrl.trim() !== '';
   const [reviewDone, setReviewDone] = useState(false);
 
@@ -1430,6 +1468,12 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, t }) {
               <p className="text-[var(--text-secondary)] font-semibold text-base leading-relaxed">
           {t('payAtCounter')}
         </p>
+        {redeemedRewardName && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-[var(--radius)] px-4 py-3 mt-4 text-emerald-800">
+            <p className="text-sm font-semibold mb-1">????????????????</p>
+            <p className="text-xl font-bold">{redeemedRewardName}</p>
+          </div>
+        )}
               <p className="text-[var(--text-muted)] text-sm">
           {t('staffWillCall')}
         </p>
@@ -1566,6 +1610,7 @@ function CustomerOrderApp() {
   const customerName = nameAutofill.customerName;
   const [customerPhone, setCustomerPhone] = useState('');
   const [usePoints, setUsePoints] = useState(false);
+  const [redeemRewardId, setRedeemRewardId] = useState(null);
   const [lookupStatus, setLookupStatus] = useState('idle');
   const lookupSeqRef = useRef(0);
   const customerPhoneRef = useRef('');
@@ -1981,11 +2026,13 @@ function CustomerOrderApp() {
     if (!member || member.phone === phone) return;
     setMember(null);
     setUsePoints(false);
+      setRedeemRewardId(null);
   }, [customerPhone, member]);
 
   useEffect(() => {
     if (!member || member.phone !== normalizeThaiPhoneInput(customerPhone)) {
       setUsePoints(false);
+      setRedeemRewardId(null);
     }
   }, [member, customerPhone]);
 
@@ -1997,6 +2044,7 @@ function CustomerOrderApp() {
       lookupSeqRef.current += 1;
       setMember(null);
       setUsePoints(false);
+      setRedeemRewardId(null);
       setLookupStatus('idle');
       setNameAutofill((state) => decideNameAutofill(state, { type: 'phone-below-min', phone }));
       return undefined;
@@ -2023,6 +2071,7 @@ function CustomerOrderApp() {
         } else {
           setMember(null);
           setUsePoints(false);
+      setRedeemRewardId(null);
           setLookupStatus('new');
           setNameAutofill((state) => decideNameAutofill(state, { type: 'lookup-miss', phone }));
         }
@@ -2036,6 +2085,7 @@ function CustomerOrderApp() {
         })) return;
         setMember(null);
         setUsePoints(false);
+      setRedeemRewardId(null);
         setLookupStatus('error');
         setNameAutofill((state) => decideNameAutofill(state, { type: 'lookup-error', phone }));
       }
@@ -2253,6 +2303,7 @@ function CustomerOrderApp() {
     if (!keepIdentity) setCustomerPhone('');
     requestSignatureRef.current = null;
     setUsePoints(false);
+      setRedeemRewardId(null);
     setSubmitError('');
     setSuccessQueue(null);
     checkoutRequestIdRef.current = null;
@@ -2268,6 +2319,7 @@ function CustomerOrderApp() {
     setCustomerPhone('');
     setMember(null);
     setUsePoints(false);
+      setRedeemRewardId(null);
     setLookupStatus('idle');
     clearRememberedPhone();
   };
@@ -2341,12 +2393,24 @@ function CustomerOrderApp() {
           memberPoints={memberPoints}
           pointsEligible={pointsEligible}
           usePoints={usePoints}
-          onTogglePoints={() => setUsePoints((v) => !v)}
+          onTogglePoints={() => {
+            const res = toggleRewardSelection(usePoints, redeemRewardId, 'discount');
+            setUsePoints(res.usePoints);
+            setRedeemRewardId(res.redeemRewardId);
+          }}
           lookupStatus={lookupStatus}
           nameSource={nameAutofill.nameSource}
           onNotMe={handleNotMe}
           redeemPointsThreshold={redeemPointsThreshold}
           redeemDiscountValue={redeemDiscountValue}
+          pointsRewardsEnabled={settingsData.pointsRewardsEnabled}
+          pointsRewards={settingsData.pointsRewards}
+          redeemRewardId={redeemRewardId}
+          onToggleReward={(id) => {
+            const res = toggleRewardSelection(usePoints, redeemRewardId, 'reward', id);
+            setUsePoints(res.usePoints);
+            setRedeemRewardId(res.redeemRewardId);
+          }}
           comboDiscount={comboDiscount}
           pointsDiscount={pointsDiscount}
           spendDiscount={spendDiscount}
