@@ -50,6 +50,17 @@ import { auth, db, functions, appId } from '../services/firebase';
 import { buildCheckoutItems, shouldKeepRequestId, submitTrustedCheckout } from '../services/checkoutService';
 import { isBackendDown, submitCheckoutDirect } from '../services/checkoutFallback';
 import { fetchPublicMenu, readCachedPublicMenu, writeCachedPublicMenu, SENSITIVE_SETTINGS_KEYS } from '../utils/publicMenu';
+import { sendQrBeacon } from '../services/qrBeacon';
+import {
+  QR_LOAD_TIMEOUT_MS,
+  bundleFromCache,
+  isMenuReadyFromSources,
+  isQrLoadTimeoutError,
+  readWithRetry,
+  shouldShowQrLoadError,
+  shouldShowQrSpinner,
+  withTimeout,
+} from '../utils/qrMenuLoad';
 import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
 import { formatCurrency, roundUpTo5, getModifierGroups, isBaseModifier, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH, normalizeThaiPhoneInput } from '../config/constants';
 import { getItemSalePrice, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory, supportsSweetnessChoice } from '../utils/promotions';
@@ -86,6 +97,9 @@ const TX = {
     draftRestored: 'กู้ตะกร้าเดิมให้แล้ว',
     draftDropped: 'บางรายการหมดแล้ว',
     appLoading: 'กำลังโหลดเมนู...',
+    menuLoadSlow: 'โหลดเมนูช้าผิดปกติ',
+    menuLoadSlowDesc: 'อินเทอร์เน็ตหน่วงนิดนึงค่ะ กดลองใหม่อีกครั้งได้เลยนะคะ',
+    menuLoadRetry: 'ลองใหม่',
     orderViaQr: 'สั่งออเดอร์ผ่าน QR',
     searchPlaceholder: 'ค้นหาเมนู...',
     categoryAll: 'ทั้งหมด',
@@ -191,6 +205,9 @@ const TX = {
     draftRestored: 'Your cart has been restored',
     draftDropped: 'Some items are no longer available',
     appLoading: 'Loading menu...',
+    menuLoadSlow: 'Menu is taking too long',
+    menuLoadSlowDesc: 'The connection seems slow. Please try again.',
+    menuLoadRetry: 'Try again',
     orderViaQr: 'Order via QR',
     searchPlaceholder: 'Search menu...',
     categoryAll: 'All',
@@ -1506,6 +1523,8 @@ function CustomerOrderApp() {
   const [settingsData, setSettingsData] = useState({});
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [hasPainted, setHasPainted] = useState(false);
 
   // --- UI state ---
   const [activeCategory, setActiveCategory] = useState('ทั้งหมด');
@@ -1566,20 +1585,37 @@ function CustomerOrderApp() {
   const lastSuccessAtRef = useRef(0);
 
   // ---------------------------------------------------------------------------
-  // Anonymous sign-in
+  // Anonymous sign-in (8s timeout — a hung SDK used to spin forever)
   // ---------------------------------------------------------------------------
+  const authedRef = useRef(false);
   useEffect(() => {
+    let cancelled = false;
     const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (cancelled) return;
       if (user) {
+        authedRef.current = true;
         setAuthed(true);
+        setLoadError(null);
       } else {
         signInAnonymously(auth).catch(() => {
-          // If sign-in fails, still try to load data in case rules allow
-          setAuthed(true);
+          if (cancelled) return;
+          sendQrBeacon('error_auth');
+          setLoadError('error_auth');
+          setLoading(false);
         });
       }
     });
-    return () => unsubAuth();
+    const timer = setTimeout(() => {
+      if (cancelled || authedRef.current) return;
+      sendQrBeacon('error_auth');
+      setLoadError((prev) => prev || 'error_auth');
+      setLoading(false);
+    }, QR_LOAD_TIMEOUT_MS);
+    return () => {
+      cancelled = true;
+      unsubAuth();
+      clearTimeout(timer);
+    };
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -1605,12 +1641,35 @@ function CustomerOrderApp() {
     setCategories(bundle.categories || []);
     setBeanModifiers(bundle.beanModifiers || []);
     applySettings(bundle.settings || {});
+    setHasPainted(true);
   }, [applySettings]);
+
+  // Paint from localStorage immediately — do not wait for anonymous auth.
+  // Revalidate from Firestore once authed (see load() below).
+  useEffect(() => {
+    const cached = readCachedPublicMenu(appId);
+    const bundle = bundleFromCache(cached);
+    if (!bundle) return;
+    applyBundle(bundle);
+    setLoading(false);
+    sendQrBeacon('menu_ok');
+  }, [applyBundle]);
+
+  const finishLoad = useCallback((ready) => {
+    setLoading(false);
+    setMenuReady(ready);
+    if (ready) {
+      setLoadError(null);
+      sendQrBeacon('menu_ok');
+    }
+  }, []);
 
   const load = useCallback(async () => {
     const base = ['artifacts', appId, 'public', 'data'];
     const seq = ++loadSeqRef.current;
     const isStale = () => loadSeqRef.current !== seq;
+    const startedAt = Date.now();
+    const budgetLeft = () => Math.max(1, QR_LOAD_TIMEOUT_MS - (Date.now() - startedAt));
 
     // 1) Paint instantly from the per-device cache for a fast first frame, then
     //    ALWAYS revalidate against the latest bundle below (step 2). The shop
@@ -1622,6 +1681,7 @@ function CustomerOrderApp() {
     if (cached) {
       applyBundle(cached.bundle);
       setLoading(false);
+      sendQrBeacon('menu_ok');
     } else {
       setLoading(true);
     }
@@ -1631,8 +1691,19 @@ function CustomerOrderApp() {
     let bundle = null;
     let sourceMenuReady = false;
     try {
-      bundle = await fetchPublicMenu(db, appId);
-    } catch {
+      bundle = await withTimeout(
+        readWithRetry(() => fetchPublicMenu(db, appId)),
+        QR_LOAD_TIMEOUT_MS,
+        'error_menu',
+      );
+    } catch (err) {
+      if (isQrLoadTimeoutError(err)) {
+        if (isStale()) return;
+        sendQrBeacon('error_menu');
+        finishLoad(Boolean(cached));
+        if (!cached) setLoadError('error_menu');
+        return;
+      }
       // Read failed (e.g. rules not deployed yet / transient) — fall through to
       // the source-collection fallback below instead of showing an empty menu.
       bundle = null;
@@ -1646,17 +1717,39 @@ function CustomerOrderApp() {
       // No bundle and nothing cached — fall back to the 4 sources once so the
       // page still works (bundle not published yet, or the read above failed).
       try {
-        const [menuSnap, catsSnap, beansSnap] = await Promise.all([
-          getDocs(collection(db, ...base, 'menu')),
-          getDocs(collection(db, ...base, 'categories')),
-          getDocs(collection(db, ...base, 'beanModifiers')),
-        ]);
+        // Retry like the bundle read: the anonymous auth token can lag the first
+        // read (permission-denied), and when Firestore is unreachable getDocs
+        // RESOLVES empty from cache instead of throwing. Treat 0 menu items as a
+        // failure and retry — the shop always has items, so empty means the race
+        // or an offline read, not a real menu.
+        const [menuSnap, catsSnap, beansSnap] = await withTimeout(
+          readWithRetry(async () => {
+            const snaps = await Promise.all([
+              getDocs(collection(db, ...base, 'menu')),
+              getDocs(collection(db, ...base, 'categories')),
+              getDocs(collection(db, ...base, 'beanModifiers')),
+            ]);
+            if (snaps[0].empty && snaps[0].metadata.fromCache) throw new Error('offline-empty-menu');
+            return snaps;
+          }),
+          budgetLeft(),
+          'error_menu',
+        );
         if (isStale()) return;
         sourceMenuReady = true;
         setMenu(menuSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setCategories(catsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setBeanModifiers(beansSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      } catch {
+        setHasPainted(true);
+      } catch (err) {
+        if (isQrLoadTimeoutError(err)) {
+          if (!isStale()) {
+            sendQrBeacon('error_menu');
+            finishLoad(false);
+            setLoadError('error_menu');
+          }
+          return;
+        }
         // Both paths failed — keep whatever defaults we have so the page renders.
       }
 
@@ -1665,25 +1758,39 @@ function CustomerOrderApp() {
       // ถ้าเอาไปรวมใน Promise.all ข้างบน การถูกปฏิเสธจะลากให้เมนูหายทั้งหน้า
       // ค่าที่ลูกค้าต้องใช้อยู่ใน config/publicMenu อยู่แล้ว ทางนี้เป็นแค่ตาข่ายรอง
       // สำหรับกรณีที่ยังไม่เคยเผยแพร่ bundle
-      try {
-        const settingsSnap = await getDoc(doc(db, ...base, 'config', 'settings'));
+      // Don't let a hung settings read keep the spinner up — menu already painted.
+      getDoc(doc(db, ...base, 'config', 'settings')).then((settingsSnap) => {
         if (isStale()) return;
         const settingsRaw = settingsSnap.exists() ? { ...settingsSnap.data() } : {};
         for (const key of SENSITIVE_SETTINGS_KEYS) delete settingsRaw[key];
         applySettings(settingsRaw);
-      } catch {
+      }).catch(() => {
         // ลูกค้าอ่านไม่ได้ตามที่ตั้งใจ · ใช้ค่าเริ่มต้นต่อไป เมนูยังสั่งได้
-      }
+      });
     }
     if (!isStale()) {
-      setLoading(false);
-      setMenuReady(!!bundle || !!cached || sourceMenuReady);
+      const ready = isMenuReadyFromSources({ bundle, cached, sourceMenuReady });
+      finishLoad(ready);
+      // Both the bundle and the fallback collections failed WITHOUT tripping our
+      // 8s timeout (e.g. Firestore returned "unavailable" fast, or a blocked
+      // network). Without this the page would fall through to an empty menu that
+      // sits on "ยังไม่มีเมนู" forever — show the retry screen instead.
+      if (!ready && !cached) {
+        sendQrBeacon('error_menu');
+        setLoadError('error_menu');
+      }
     }
-  }, [applyBundle, applySettings]);
+  }, [applyBundle, applySettings, finishLoad]);
 
   // Invalidate any in-flight load() run (unmount / effect re-run).
   const cancelLoad = useCallback(() => {
     loadSeqRef.current++;
+  }, []);
+
+  const handleRetryLoad = useCallback(() => {
+    sendQrBeacon('retry');
+    // Reload also recreates the Firebase transport; local cache and draft survive.
+    window.location.reload();
   }, []);
 
   useEffect(() => {
@@ -1990,7 +2097,7 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   // Anonymous funnel counters (see utils/qrFunnel.js) · each step once per session,
   // fire-and-forget so a failed write can never affect ordering.
-  useEffect(() => { if (menuReady) trackFunnelStep(db, appId, 'view'); }, [menuReady]);
+  useEffect(() => { if (authed && (menuReady || hasPainted)) trackFunnelStep(db, appId, 'view'); }, [authed, menuReady, hasPainted]);
   useEffect(() => { if (cartDrawerOpen) trackFunnelStep(db, appId, 'cart'); }, [cartDrawerOpen]);
   useEffect(() => {
     if (view === 'checkout') trackFunnelStep(db, appId, 'checkout');
@@ -2180,9 +2287,23 @@ function CustomerOrderApp() {
   // Review reward = 10 points PENDING the shop's approval (we can't verify the
   // external review, so the owner approves it on the members page). Once per phone.
   // ---------------------------------------------------------------------------
-  // Loading screen
+  // Loading / timeout screen
   // ---------------------------------------------------------------------------
-  if (loading || !authed) {
+  if (shouldShowQrLoadError({ loadError, menuReady, hasPainted })) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-secondary)] px-6">
+        <EmptyState
+          icon="error"
+          title={t('menuLoadSlow')}
+          description={t('menuLoadSlowDesc')}
+          actionLabel={t('menuLoadRetry')}
+          onAction={handleRetryLoad}
+        />
+      </div>
+    );
+  }
+
+  if (shouldShowQrSpinner({ loading, authed, menuReady, loadError, hasPainted })) {
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-secondary)] gap-4">
         <Spinner size="xl" color="emerald" />
