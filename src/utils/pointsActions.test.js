@@ -7,6 +7,7 @@ let queue = Promise.resolve();
 vi.mock('firebase/firestore', () => ({
   increment: (n) => ({ __inc: n }),
   arrayUnion: (...items) => ({ __union: items }),
+  arrayRemove: (...items) => ({ __remove: items }),
   runTransaction: (_db, fn) => {
     const run = queue.then(() => fn({
       get: async (ref) => ({ exists: () => store.has(ref.path), data: () => structuredClone(store.get(ref.path)) }),
@@ -15,6 +16,7 @@ vi.mock('firebase/firestore', () => ({
         for (const [k, v] of Object.entries(payload)) {
           if (v && v.__inc !== undefined) cur[k] = Number(cur[k] || 0) + v.__inc;
           else if (v && v.__union) cur[k] = [...(cur[k] || []), ...v.__union];
+          else if (v && v.__remove) cur[k] = (cur[k] || []).filter(x => !v.__remove.includes(x));
           else cur[k] = v;
         }
       },
@@ -24,36 +26,57 @@ vi.mock('firebase/firestore', () => ({
   },
 }));
 
-import { settlePendingPoints, withInFlightGuard, planEarnClawback } from './pointsActions';
+import { settlePendingPoints, withInFlightGuard, planEarnClawback, planBillEditPoints } from './pointsActions';
 
 const ref = { path: 'members/0839536697' };
-const seed = (data) => store.set(ref.path, { points: 45, pendingPoints: 40, pendingReason: 'order', pointsHistory: [], ...data });
+const seed = (data) => store.set(ref.path, { points: 45, pendingPoints: 40, pendingReason: 'order', pendingOrderIds: ['order1', 'order2'], pointsHistory: [], ...data });
 
 describe('settlePendingPoints', () => {
   it('approves a pending batch only once even when tapped 6 times', async () => {
     seed();
-    const results = await Promise.all(Array.from({ length: 6 }, () => settlePendingPoints({}, ref, true)));
+    const results = await Promise.all(Array.from({ length: 6 }, () => settlePendingPoints({}, ref, true, 'staff@example.com')));
     const m = store.get(ref.path);
     expect(results.filter(Boolean)).toEqual([40]);
     expect(m.points).toBe(85);
     expect(m.pendingPoints).toBe(0);
+    expect(m.pendingOrderIds).toEqual([]);
     expect(m.pointsHistory).toHaveLength(1);
-    expect(m.pointsHistory[0]).toMatchObject({ delta: 40, reason: 'order' });
+    expect(m.pointsHistory[0]).toMatchObject({ delta: 40, reason: 'order', by: 'staff@example.com', orderIds: ['order1', 'order2'] });
   });
 
   it('records a rejection with the real pending amount and leaves points alone', async () => {
-    seed({ pendingPoints: 13 });
-    expect(await settlePendingPoints({}, ref, false)).toBe(13);
-    expect(await settlePendingPoints({}, ref, false)).toBe(0);
+    seed({ pendingPoints: 13, pendingOrderIds: ['order3'] });
+    expect(await settlePendingPoints({}, ref, false, 'staff2@example.com')).toBe(13);
+    expect(await settlePendingPoints({}, ref, false, 'staff2@example.com')).toBe(0);
     const m = store.get(ref.path);
     expect(m.points).toBe(45);
-    expect(m.pointsHistory).toEqual([expect.objectContaining({ delta: 0, reason: 'rejected', amount: 13 })]);
+    expect(m.pendingOrderIds).toEqual([]);
+    expect(m.pointsHistory).toEqual([expect.objectContaining({ delta: 0, reason: 'rejected', amount: 13, by: 'staff2@example.com', orderIds: ['order3'] })]);
   });
 
   it('does nothing when there is nothing pending', async () => {
     seed({ pendingPoints: 0 });
     expect(await settlePendingPoints({}, ref, true)).toBe(0);
     expect(store.get(ref.path).points).toBe(45);
+  });
+});
+
+describe('planBillEditPoints', () => {
+  it('handles same member with point increase', () => {
+    const res = planBillEditPoints({ oldMember: { id: 'm1' }, newMemberId: 'm1', oldEarned: 10, newEarned: 15 });
+    expect(res.oldMemberUpdates).toEqual({ pendingPointsUpdate: 5, pendingOrderIdsAction: 'add' });
+    expect(res.newMemberUpdates).toBeNull();
+  });
+  
+  it('handles same member with point decrease', () => {
+    const res = planBillEditPoints({ oldMember: { id: 'm1', points: 10, pendingPoints: 5 }, newMemberId: 'm1', oldEarned: 15, newEarned: 10 });
+    expect(res.oldMemberUpdates).toEqual({ pendingPointsUpdate: -5, pointsUpdate: 0, clawbackFromPoints: 0 });
+  });
+
+  it('handles changing members', () => {
+    const res = planBillEditPoints({ oldMember: { id: 'm1', points: 10, pendingPoints: 20 }, newMemberId: 'm2', oldEarned: 15, newEarned: 10 });
+    expect(res.oldMemberUpdates).toEqual({ pendingPointsUpdate: -15, pointsUpdate: 0, clawbackFromPoints: 0, pendingOrderIdsAction: 'remove' });
+    expect(res.newMemberUpdates).toEqual({ pendingPointsUpdate: 10, pendingOrderIdsAction: 'add' });
   });
 });
 

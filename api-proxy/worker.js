@@ -1,6 +1,7 @@
 import { dependencies, getFirebaseIdToken, fsBase, fsDoc, createFirestore } from './src/firestore.js';
-import { sendTelegramShopMessage } from './src/telegram/api.js';
+import { sendTelegramShopMessage, postTelegramMessage, splitTelegramText } from './src/telegram/api.js';
 import { handleTelegramExpense, handleTelegramExpenseSetup, handleTelegramExpenseStatus, adminSecret } from './src/telegram/handler.js';
+import { buildPointsSummary } from './src/pointsSummary.js';
 /**
  * Cloudflare Worker - Gemini API Proxy + shop notifier
  * ซ่อน API key / LINE token ฝั่ง server ไม่เปิดเผยให้ client
@@ -634,11 +635,73 @@ async function sendDailyReport(env) {
   return { sent: res.ok, status: res.status, text: report.text };
 }
 
+async function queryOrdersByDates(env, deps, dates) {
+  const token = await getFirebaseIdToken(env, deps);
+  const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const all = [];
+  const seen = new Set();
+  for (const date of dates) {
+    const qRes = await deps.fetch(`${fsBase(env)}:runQuery`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'orders' }],
+          where: {
+            fieldFilter: { field: { fieldPath: 'date' }, op: 'EQUAL', value: { stringValue: date } },
+          },
+          limit: 500,
+        },
+      }),
+    });
+    if (!qRes.ok) throw new Error(`Firestore query failed (${qRes.status})`);
+    for (const row of await qRes.json()) {
+      if (!row.document) continue;
+      const id = row.document.name.split('/').at(-1);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      all.push({ ...fsDoc(row.document), id });
+    }
+  }
+  return all;
+}
+
+export async function buildPointsReport(env, injected) {
+  const deps = dependencies(env, injected);
+  const db = createFirestore(env, deps);
+  const now = deps.now();
+  const today = bangkokISODate(new Date(now));
+  const yesterday = bangkokISODate(new Date(now - 24 * 60 * 60 * 1000));
+  const [members, orders] = await Promise.all([
+    db.listAll('members'),
+    queryOrdersByDates(env, deps, yesterday === today ? [today] : [today, yesterday]),
+  ]);
+  return buildPointsSummary(members, orders, now);
+}
+
+export async function sendPointsSummary(env, injected) {
+  if (!env.TELEGRAM_OWNER_CHAT_ID) {
+    console.log('points summary skipped: TELEGRAM_OWNER_CHAT_ID not set');
+    return { skipped: true, reason: 'TELEGRAM_OWNER_CHAT_ID not set' };
+  }
+  const report = await buildPointsReport(env, injected);
+  const chunks = splitTelegramText(report.text);
+  for (const chunk of chunks) {
+    const { res, result } = await postTelegramMessage(env, env.TELEGRAM_OWNER_CHAT_ID, chunk, injected);
+    if (!res.ok || !result.ok) {
+      throw new Error(`Telegram points summary failed (${res.status}): ${result.description || 'Unknown Telegram error'}`);
+    }
+  }
+  return { sent: true, channel: 'telegram-owner', text: report.text };
+}
+
 // ---------------------------------------------------------------------------
 export default {
   // Cron ตาม [triggers] ใน wrangler.toml
+  // รายงานยอดกับสรุปแต้มแยก waitUntil — อันหนึ่งพังต้องไม่กันอีกอัน
   async scheduled(event, env, ctx) {
     ctx.waitUntil(sendDailyReport(env).catch((e) => console.error('daily report failed:', e.message)));
+    ctx.waitUntil(sendPointsSummary(env).catch((e) => console.error('points summary failed:', e.message)));
   },
 
   async fetch(request, env, ctx) {
@@ -659,7 +722,8 @@ export default {
     }
 
     // Route: LINE notification
-    const pathname = new URL(request.url).pathname.replace(/\/+$/, '');
+    const url = new URL(request.url);
+    const pathname = url.pathname.replace(/\/+$/, '');
     if (pathname.endsWith('/telegram-expense/status')) {
       return handleTelegramExpenseStatus(request, env, headers);
     }
@@ -689,6 +753,25 @@ export default {
           return Response.json({ dryRun: true, ...r }, { status: 200, headers });
         }
         return Response.json(await sendDailyReport(env), { status: 200, headers });
+      } catch (e) {
+        return Response.json({ error: e.message }, { status: 502, headers });
+      }
+    }
+    // สรุปแต้มเจ้าของร้าน · `?dry=1` หรือ `{"dryRun":true}` = ดูข้อความเฉยๆ ไม่ส่ง
+    if (pathname.endsWith('/points-report')) {
+      const expected = adminSecret(env);
+      const provided = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+      if (!expected || provided !== expected) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401, headers });
+      }
+      const body = await request.json().catch(() => ({}));
+      const dry = url.searchParams.get('dry') === '1' || body.dryRun;
+      try {
+        if (dry) {
+          const r = await buildPointsReport(env);
+          return Response.json({ dryRun: true, ...r }, { status: 200, headers });
+        }
+        return Response.json(await sendPointsSummary(env), { status: 200, headers });
       } catch (e) {
         return Response.json({ error: e.message }, { status: 502, headers });
       }

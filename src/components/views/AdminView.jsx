@@ -47,6 +47,7 @@ export default function AdminView() {
     pinEnabled,
     adminPin,
     redeemPointsThreshold,
+    pointsExpiryMonths,
     redeemDiscountValue,
     ownGlassDiscount,
     geminiApiKey,
@@ -165,6 +166,7 @@ export default function AdminView() {
     setSettingsDraft({
       adminPin: ADMIN_PIN,
       redeemPointsThreshold: REDEEM_POINTS_THRESHOLD,
+      pointsExpiryMonths: pointsExpiryMonths || 0,
       redeemDiscountValue: REDEEM_DISCOUNT_VALUE,
       ownGlassDiscount: OWN_GLASS_DISCOUNT,
       geminiApiKey: geminiApiKey || '',
@@ -186,7 +188,7 @@ export default function AdminView() {
       spendThreshold: Number(spendThreshold) || 0,
       spendDiscount: Number(spendDiscount) || 0
     });
-  }, [ADMIN_PIN, REDEEM_POINTS_THRESHOLD, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, geminiApiKey, STARTING_CASH, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount]);
+  }, [ADMIN_PIN, REDEEM_POINTS_THRESHOLD, pointsExpiryMonths, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, geminiApiKey, STARTING_CASH, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount]);
 
   // Handle deep-linking from other views
   useEffect(() => {
@@ -381,6 +383,7 @@ export default function AdminView() {
         geminiApiKey: settingsDraft.geminiApiKey,
         adminPin: settingsDraft.adminPin,
         redeemPointsThreshold: Number(settingsDraft.redeemPointsThreshold),
+        pointsExpiryMonths: Number(settingsDraft.pointsExpiryMonths || 0),
         redeemDiscountValue: Number(settingsDraft.redeemDiscountValue),
         ownGlassDiscount: Number(settingsDraft.ownGlassDiscount),
         startingCash: Number(settingsDraft.startingCash),
@@ -666,9 +669,16 @@ export default function AdminView() {
                       <input type="number" value={settingsDraft.redeemDiscountValue} onChange={(e) => setSettingsDraft({ ...settingsDraft, redeemDiscountValue: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
                     </div>
                   </div>
-                  <div>
-                    <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ส่วนลดแก้วส่วนตัว</label>
-                    <input type="number" value={settingsDraft.ownGlassDiscount} onChange={(e) => setSettingsDraft({ ...settingsDraft, ownGlassDiscount: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div>
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ส่วนลดแก้วส่วนตัว</label>
+                      <input type="number" value={settingsDraft.ownGlassDiscount} onChange={(e) => setSettingsDraft({ ...settingsDraft, ownGlassDiscount: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">แต้มหมดอายุถ้าไม่มาซื้อ (เดือน) · 0 = ไม่หมดอายุ</label>
+                      <input type="number" value={settingsDraft.pointsExpiryMonths} onChange={(e) => setSettingsDraft({ ...settingsDraft, pointsExpiryMonths: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
+                      <p className="text-[10px] text-amber-600 mt-1">ควรประกาศลูกค้าก่อนเปิดใช้</p>
+                    </div>
                   </div>
                   <div className="col-span-2 border-t border-[var(--border-color)] pt-4 mt-2">
                     <label className="text-xs font-medium text-emerald-500  tracking-widest flex items-center gap-2"><Zap size={14} /> Gemini API Key (สำหรับ AI Features)</label>

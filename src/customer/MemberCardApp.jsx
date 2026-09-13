@@ -10,9 +10,9 @@
  * เอกสารสมาชิก 1 ใบ) · จำเบอร์ไว้ในเครื่อง เปิดครั้งต่อไปกดปุ่มเดียวจบ
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { Coffee, Search, Star, ArrowRight } from 'lucide-react';
-import { db, appId } from '../services/firebase';
+import { db, appId, functions } from '../services/firebase';
 import useAuth from '../hooks/useAuth';
 import { fetchPublicMenu } from '../utils/publicMenu';
 import { MEMBER_MIN_PHONE_LENGTH } from '../config/constants';
@@ -46,7 +46,7 @@ export default function MemberCardApp() {
       try {
         const bundle = await fetchPublicMenu(db, appId);
         if (cancelled || !bundle?.settings) return;
-        setThreshold(Number(bundle.settings.redeemPointsThreshold) || 100);
+        setThreshold(Number(bundle.settings.redeemPointsThreshold) || 50);
         setDiscount(Number(bundle.settings.redeemDiscountValue) || 50);
       } catch { /* ใช้ค่าเริ่มต้นไปก่อน ไม่ใช่เรื่องคอขาดบาดตาย */ }
     })();
@@ -62,12 +62,21 @@ export default function MemberCardApp() {
     setError('');
     setLoading(true);
     try {
-      const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', clean));
-      setMember(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+      const result = await httpsCallable(functions, 'lookupMember')({ phone: clean });
+      const data = result.data || {};
+      if (data.exists) {
+        setMember({ id: clean, phone: clean, name: data.name, points: data.points, pendingPoints: data.pendingPoints, pointsExpireAt: data.pointsExpireAt });
+      } else {
+        setMember(null);
+      }
       setChecked(true);
       try { localStorage.setItem(PHONE_KEY, clean); } catch { /* private mode */ }
-    } catch {
-      setError('เชื่อมต่อไม่ได้ ลองใหม่อีกครั้งนะคะ');
+    } catch (err) {
+      if (String(err?.code || '').endsWith('resource-exhausted')) {
+         setError('ลองใหม่อีกครั้งในอีกสักครู่นะคะ');
+      } else {
+         setError('เชื่อมต่อไม่ได้ ลองใหม่อีกครั้งนะคะ');
+      }
     } finally {
       setLoading(false);
     }
@@ -149,6 +158,11 @@ export default function MemberCardApp() {
               </p>
             )}
 
+            {member.pointsExpireAt && (
+              <p className="text-xs text-[var(--accent-orange)] mt-3 pt-3 border-t border-[var(--border-color)] font-medium">
+                แต้มจะหมดอายุ {new Date(member.pointsExpireAt).toLocaleDateString('th-TH')} ถ้าไม่มาซื้อก่อน
+              </p>
+            )}
             {pending > 0 && (
               <p className="text-xs text-[var(--accent-orange)] mt-3 pt-3 border-t border-[var(--border-color)]">
                 มีอีก {pending} แต้มจากบิลล่าสุด รอทางร้านยืนยัน เดี๋ยวเข้าบัตรให้ค่ะ

@@ -26,6 +26,7 @@ import {
   signInAnonymously,
   onAuthStateChanged,
 } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
 import {
   collection,
   doc,
@@ -1813,7 +1814,7 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   // Membership / points derivations
   // ---------------------------------------------------------------------------
-  const redeemPointsThreshold = Number(settingsData.redeemPointsThreshold) || 100;
+  const redeemPointsThreshold = Number(settingsData.redeemPointsThreshold) || 50;
   const redeemDiscountValue = Number(settingsData.redeemDiscountValue) || 50;
 
   // Look up the member by phone on demand (debounced) instead of loading the
@@ -1824,8 +1825,11 @@ function CustomerOrderApp() {
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', phone));
-        if (!cancelled) setMember(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+        const result = await httpsCallable(functions, 'lookupMember')({ phone });
+        const data = result.data || {};
+        if (!cancelled) {
+          setMember(data.exists ? { id: phone, phone, name: data.name, points: data.points, pendingPoints: data.pendingPoints, pointsExpireAt: data.pointsExpireAt } : null);
+        }
       } catch {
         if (!cancelled) setMember(null);
       }

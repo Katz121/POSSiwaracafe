@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Users, Search, User, UserMinus, UserX, Phone, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X, Calculator, GitMerge, AlertTriangle, ChevronDown } from 'lucide-react';
 import { doc, setDoc, updateDoc, writeBatch, serverTimestamp, increment, arrayUnion, runTransaction } from 'firebase/firestore';
-import { db, appId } from '../../services/firebase';
+import { db, appId, auth } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getNameKey } from '../../utils/calculations';
 import { settlePendingPoints, withInFlightGuard, planEarnClawback } from '../../utils/pointsActions';
@@ -44,6 +44,7 @@ export default function MembersView() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedMemberForFavorites, setSelectedMemberForFavorites] = useState(null);
   const [historyMember, setHistoryMember] = useState(null);
+  const [pendingOrdersMember, setPendingOrdersMember] = useState(null);
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -186,6 +187,7 @@ export default function MembersView() {
       });
 
     return [...memberStats, ...nameOnlyMap.values()].sort((a, b) => b.totalPurchases - a.totalPurchases);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [members, orders, reconcileDays]);
 
   // A member IS a phone number. Everything else — a legacy `name:xxx` doc, a
@@ -309,13 +311,17 @@ export default function MembersView() {
       ? (nameKey ? `name:${nameKey}` : null)
       : (member.id || member.phone || (nameKey ? `name:${nameKey}` : null));
   };
-  const historyEntry = (delta, reason) => ({ delta: Number(delta), reason, at: new Date().toISOString() });
+  const historyEntry = (delta, reason) => {
+    const entry = { delta: Number(delta), reason, at: new Date().toISOString() };
+    if (auth.currentUser?.email) entry.by = auth.currentUser.email;
+    return entry;
+  };
 
   const settlePending = (member, approve) => withMembers([member], async () => {
     let pending = 0;
     const ok = await runDbAction(async () => {
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'members', resolveMemberId(member));
-      pending = await settlePendingPoints(db, ref, approve);
+      pending = await settlePendingPoints(db, ref, approve, auth.currentUser?.email);
     }, approve ? 'อนุมัติแต้มไม่สำเร็จ' : 'ปฏิเสธไม่สำเร็จ');
     if (!ok) toast.error(approve ? 'อนุมัติแต้มไม่สำเร็จ' : 'ปฏิเสธไม่สำเร็จ');
     else if (!pending) toast.info(approve ? 'อนุมัติไปแล้ว' : 'ดำเนินการคำขอแต้มไปแล้ว');
@@ -927,9 +933,12 @@ export default function MembersView() {
                 <div key={`pending-${m.phone || m.id}`} className="bg-[var(--bg-secondary)] rounded-2xl border border-amber-100 p-3 flex items-center justify-between gap-3 shadow-sm">
                   <div className="min-w-0">
                     <p className="font-semibold text-[var(--text-primary)] text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
-                    <span className="inline-block mt-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-700 font-semibold text-xs">
-                      รออนุมัติ +{Number(m.pendingPoints)} · {m.pendingReason === 'order' ? 'จากการซื้อ' : m.pendingReason === 'recalc' ? 'กระทบยอดย้อนหลัง' : 'รีวิว'}
-                    </span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      <span className="inline-block px-2 py-0.5 rounded-lg bg-amber-100 text-amber-700 font-semibold text-xs cursor-pointer hover:bg-amber-200 transition-colors" onClick={() => m.pendingOrderIds?.length ? setPendingOrdersMember(m) : null}>
+                        รออนุมัติ +{Number(m.pendingPoints)} · {m.pendingReason === 'order' ? 'จากการซื้อ' : m.pendingReason === 'recalc' ? 'กระทบยอดย้อนหลัง' : 'รีวิว'}
+                        {m.pendingOrderIds?.length > 0 && ` (จาก ${m.pendingOrderIds.length} บิล)`}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Button disabled={memberBusy(m)} className="min-h-11" onClick={() => approvePending(m)} variant="primary" size="sm" leftIcon={<Check size={14} />}>
@@ -1223,6 +1232,49 @@ export default function MembersView() {
         })()}
       </Modal>
 
+      {/* Pending Orders Modal */}
+      <Modal
+        isOpen={!!pendingOrdersMember}
+        onClose={() => setPendingOrdersMember(null)}
+        title="รายการบิลรออนุมัติแต้ม"
+      >
+        {(() => {
+          const mOrders = (pendingOrdersMember?.pendingOrderIds || [])
+            .map(id => orders.find(o => o.id === id))
+            .filter(Boolean)
+            .sort((a, b) => getOrderMs(b) - getOrderMs(a));
+            
+          if (mOrders.length === 0) {
+            return (
+              <div className="text-center py-10 text-[var(--text-muted)] font-bold text-sm">
+                ไม่พบข้อมูลบิล
+              </div>
+            );
+          }
+          
+          return (
+            <div className="space-y-2 md:space-y-3">
+              {mOrders.map((o, idx) => {
+                const dateStr = o.createdAt?.seconds 
+                  ? new Date(o.createdAt.seconds * 1000).toLocaleString('th-TH') 
+                  : (o.date ? new Date(o.date).toLocaleString('th-TH') : 'ไม่ทราบวันที่');
+                return (
+                  <div key={idx} className="flex items-center justify-between gap-3 p-3 md:p-4 rounded-xl md:rounded-2xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[var(--text-primary)] text-sm">บิล {o.id.slice(-4)}</p>
+                      <p className="text-xs font-bold text-[var(--text-muted)]">{dateStr}</p>
+                    </div>
+                    <div className="font-semibold text-base md:text-lg shrink-0 text-emerald-600">
+                      ฿{Number(o.total || 0).toLocaleString()}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </Modal>
+
       {/* Points History Modal */}
       <Modal
         isOpen={!!historyMember}
@@ -1230,7 +1282,7 @@ export default function MembersView() {
         title="ประวัติแต้ม"
       >
         {(() => {
-          const reasonLabels = { order: 'ออเดอร์', review: 'รีวิว', redeem: 'แลกแต้ม', manual: 'ปรับด้วยมือ', recalc: 'ปรับปรุง', rejected: 'ปฏิเสธแต้ม' };
+          const reasonLabels = { order: 'ออเดอร์', review: 'รีวิว', redeem: 'แลกแต้ม', manual: 'ปรับด้วยมือ', recalc: 'ปรับปรุง', rejected: 'ปฏิเสธแต้ม', expire: 'แต้มหมดอายุ', 'bill-edit': 'ปรับตามการแก้บิล', 'redeem-refund': 'คืนแต้ม' };
           const entries = [...(historyMember?.pointsHistory || [])].sort((a, b) => new Date(b.at) - new Date(a.at));
           if (entries.length === 0) {
             return (
@@ -1244,11 +1296,17 @@ export default function MembersView() {
               {entries.map((e, idx) => {
                 const delta = Number(e.delta || 0);
                 const dateStr = e.at ? new Date(e.at).toLocaleString('th-TH') : 'ไม่ทราบวันที่';
+                
+                const metaParts = [dateStr];
+                if (e.by) metaParts.push(`พนักงาน: ${e.by.split('@')[0]}`);
+                if (e.orderId) metaParts.push(`บิล: ${e.orderId.slice(-4)}`);
+                if (e.orderIds?.length) metaParts.push(`บิล: ${e.orderIds.map(id => id.slice(-4)).join(', ')}`);
+                
                 return (
                   <div key={idx} className="flex items-center justify-between gap-3 p-3 md:p-4 rounded-xl md:rounded-2xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
                     <div className="min-w-0">
                       <p className="font-semibold text-[var(--text-primary)] text-sm">{reasonLabels[e.reason] || e.reason || 'ไม่ระบุ'}</p>
-                      <p className="text-xs font-bold text-[var(--text-muted)]">{dateStr}</p>
+                      <p className="text-xs font-bold text-[var(--text-muted)]">{metaParts.join(' · ')}</p>
                     </div>
                     {e.reason === 'rejected' ? (
                       <div className="font-semibold text-base md:text-lg shrink-0 text-[var(--text-muted)]">

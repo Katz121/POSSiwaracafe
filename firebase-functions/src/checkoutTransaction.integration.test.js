@@ -81,5 +81,15 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)('checkout Firestore transa
     expect(queue.data().current).toBe(8);
     expect(member.data().points).toBe(20);
     expect(member.data().pendingPoints).toBe(1);
+    expect(member.data().pendingOrderIds).toEqual([orders.docs[0].id]);
+    expect(orders.docs[0].data().pointsEarned).toBe(1);
+    expect(member.data().pointsHistory).toEqual([
+      expect.objectContaining({
+        delta: -100,
+        reason: 'redeem',
+        by: 'system:checkout',
+        orderId: orders.docs[0].id,
+      }),
+    ]);
   });
 });

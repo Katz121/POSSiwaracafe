@@ -16,6 +16,7 @@ export function harness(stocks = []) {
     if (url.includes('securetoken')) return Response.json({ id_token: 'id-token', refresh_token: 'refresh' });
     if (url.includes('api.telegram.org')) return Response.json({ ok: true, result: {} });
     if (url.includes('/stock?')) return Response.json({ documents: stocks.map(s => ({ name: `projects/siwarapos/databases/(default)/documents/artifacts/siwara-pos-v1/public/data/stock/${s.id}`, fields: encodeFields(s) })) });
+    if (url.includes('/members?')) return Response.json({ documents: [] });
     if (url.endsWith(':batchGet')) return Response.json(body.documents.map(name => { const s = stocks.find(s => name.endsWith(`/stock/${s.id}`)); return s ? { found: { name, fields: encodeFields(s), updateTime: '2026-09-10T00:00:00.000001Z' } } : { missing: name }; }));
     if (url.endsWith(':commit')) {
       commits.push(body);

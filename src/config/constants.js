@@ -7,7 +7,7 @@
 export const DEFAULT_ADMIN_PIN = '';
 
 // ==================== POINTS & REWARDS ====================
-export const DEFAULT_REDEEM_POINTS_THRESHOLD = 100;  // แต้มขั้นต่ำที่ใช้แลกได้
+export const DEFAULT_REDEEM_POINTS_THRESHOLD = 50;  // แต้มขั้นต่ำที่ใช้แลกได้
 export const DEFAULT_REDEEM_DISCOUNT_VALUE = 50;     // มูลค่าส่วนลดเมื่อแลกแต้ม (บาท)
 export const DEFAULT_OWN_GLASS_DISCOUNT = 5;         // ส่วนลดนำแก้วมาเอง (บาท)
 export const POINTS_PER_BAHT = 10;                   // ทุก X บาท ได้ 1 แต้ม

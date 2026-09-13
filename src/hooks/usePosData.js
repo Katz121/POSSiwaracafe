@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { publishPublicMenu } from '../utils/publicMenu';
@@ -38,6 +38,7 @@ export default function usePosData(user, appId) {
   const [vatEnabled, setVatEnabled] = useState(true);
   const [adminPin, setAdminPin] = useState(DEFAULT_ADMIN_PIN);
   const [redeemPointsThreshold, setRedeemPointsThreshold] = useState(DEFAULT_REDEEM_POINTS_THRESHOLD);
+  const [pointsExpiryMonths, setPointsExpiryMonths] = useState(0);
   const [redeemDiscountValue, setRedeemDiscountValue] = useState(DEFAULT_REDEEM_DISCOUNT_VALUE);
   const [ownGlassDiscount, setOwnGlassDiscount] = useState(DEFAULT_OWN_GLASS_DISCOUNT);
   const [geminiApiKey, setGeminiApiKey] = useState(import.meta.env.VITE_GEMINI_API_KEY || '');
@@ -139,6 +140,7 @@ export default function usePosData(user, appId) {
         setVatEnabled(data.vatEnabled !== false);
         if (data.adminPin != null) setAdminPin(String(data.adminPin));
         if (data.redeemPointsThreshold != null) setRedeemPointsThreshold(Number(data.redeemPointsThreshold));
+        if (data.pointsExpiryMonths != null) setPointsExpiryMonths(Number(data.pointsExpiryMonths));
         if (data.redeemDiscountValue != null) setRedeemDiscountValue(Number(data.redeemDiscountValue));
         if (data.ownGlassDiscount != null) setOwnGlassDiscount(Number(data.ownGlassDiscount));
         if (data.geminiApiKey != null) setGeminiApiKey(String(data.geminiApiKey));
@@ -190,5 +192,5 @@ export default function usePosData(user, appId) {
     return () => clearTimeout(timeout);
   }, [menu, dynamicCategories, beanModifiers, settingsRaw, appId, isSyncing]);
 
-  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
+  return { isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
 }

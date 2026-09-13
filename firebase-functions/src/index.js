@@ -1,10 +1,22 @@
 import { initializeApp } from 'firebase-admin/app';
-import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { FieldPath, FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { nextQueueNumber, queueDayStart, countPendingSince } from './queueDay.js';
 import { defineSecret } from 'firebase-functions/params';
 import { buildTrustedCheckout } from './checkoutLogic.js';
 import { notifyShopOrder } from './shopNotification.js';
+import {
+  buildExpireHistoryEntry,
+  computeAutoApproveTake,
+  computePointsExpireAt,
+  isLookupPhone,
+  publicMemberLookup,
+  resolvePointsEarned,
+  shouldAutoApproveQrPoints,
+  shouldExpirePoints,
+} from './pointsLogic.js';
 
 initializeApp();
 
@@ -13,7 +25,30 @@ const APP_ID = 'siwara-pos-v1';
 const REGION = 'asia-southeast1';
 const REQUEST_ID_PATTERN = /^[a-zA-Z0-9_-]{16,80}$/;
 const PHONE_PATTERN = /^\d{9,15}$/;
+const RATE_LIMIT_MAX = 20;
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+const MEMBER_PAGE_SIZE = 100;
 const notifySharedSecret = defineSecret('NOTIFY_SHARED_SECRET');
+
+function dataPath(appId = APP_ID) {
+  return `artifacts/${appId}/public/data`;
+}
+
+function snapshotExists(snap) {
+  if (!snap) return false;
+  return typeof snap.exists === 'function' ? snap.exists() : !!snap.exists;
+}
+
+function snapshotData(snap) {
+  return snapshotExists(snap) ? (snap.data() || null) : null;
+}
+
+function parseWindowStart(value) {
+  if (!value) return 0;
+  if (typeof value.toDate === 'function') return value.toDate().getTime();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
 
 const errorCodeMap = {
   'invalid-items': 'invalid-argument',
@@ -142,6 +177,7 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
         table: 'QR',
         source: 'qr',
         checkoutRequestId: requestId,
+        pointsEarned: checkout.pointsToAdd,
       };
       const response = {
         orderId: orderRef.id,
@@ -162,7 +198,10 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
           lastOrderAt: createdAt,
           pendingReason: 'order',
         };
-        if (checkout.pointsToAdd > 0) memberPayload.pendingPoints = FieldValue.increment(checkout.pointsToAdd);
+        if (checkout.pointsToAdd > 0) {
+          memberPayload.pendingPoints = FieldValue.increment(checkout.pointsToAdd);
+          memberPayload.pendingOrderIds = FieldValue.arrayUnion(orderRef.id);
+        }
         if (checkout.redeemDeduct > 0) {
           memberPayload.points = FieldValue.increment(-checkout.redeemDeduct);
           memberPayload.pointsHistory = FieldValue.arrayUnion({
@@ -170,6 +209,7 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
             reason: 'redeem',
             at: now.toISOString(),
             orderId: orderRef.id,
+            by: 'system:checkout',
           });
         }
         if (!memberSnapshot?.exists) memberPayload.createdAt = createdAt;
@@ -209,4 +249,187 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
 export const checkoutOrder = onCall(
   { region: REGION, timeoutSeconds: 30, secrets: [notifySharedSecret] },
   (request) => checkoutOrderHandler(request),
+);
+
+export async function autoApproveQrPointsHandler(event, database = db) {
+  const after = snapshotData(event?.data?.after);
+  const before = snapshotData(event?.data?.before);
+  if (!shouldAutoApproveQrPoints(before, after)) return;
+
+  const appId = event?.params?.appId || APP_ID;
+  const orderId = event?.params?.orderId || event?.data?.after?.id;
+  if (!orderId) return;
+  const base = dataPath(appId);
+  const orderRef = database.doc(`${base}/orders/${orderId}`);
+
+  await database.runTransaction(async (transaction) => {
+    const orderSnap = await transaction.get(orderRef);
+    const order = snapshotData(orderSnap);
+    // Re-read as if it just flipped to paid so a replay still no-ops on pointsAutoApproved.
+    if (!shouldAutoApproveQrPoints({ isPaid: false }, order)) return;
+
+    const phone = String(order.memberPhone);
+    let memberRef = database.doc(`${base}/members/${phone}`);
+    let memberSnap = await transaction.get(memberRef);
+    if (!snapshotExists(memberSnap)) {
+      const found = await transaction.get(
+        database.collection(`${base}/members`).where('phone', '==', phone).limit(1),
+      );
+      if (found.empty) {
+        transaction.update(orderRef, { pointsAutoApproved: true });
+        return;
+      }
+      memberRef = found.docs[0].ref;
+      memberSnap = found.docs[0];
+    }
+
+    const member = memberSnap.data() || {};
+    const earn = resolvePointsEarned(order);
+    const pending = Math.max(0, Number(member.pendingPoints) || 0);
+    const take = computeAutoApproveTake(earn, pending);
+    const nowIso = new Date().toISOString();
+    const payload = {
+      pendingOrderIds: FieldValue.arrayRemove(orderId),
+    };
+    if (take > 0) {
+      payload.points = (Number(member.points) || 0) + take;
+      payload.pendingPoints = pending - take;
+      payload.pointsHistory = FieldValue.arrayUnion({
+        delta: take,
+        reason: 'order',
+        by: 'system:auto-qr',
+        orderId,
+        at: nowIso,
+      });
+    }
+    if (pending - take <= 0) payload.pendingReason = '';
+
+    transaction.update(memberRef, payload);
+    transaction.update(orderRef, { pointsAutoApproved: true });
+  });
+}
+
+async function forEachMemberPage(database, fn) {
+  const col = database.collection(`${dataPath()}/members`);
+  let last = null;
+  for (;;) {
+    let query = col.orderBy(FieldPath.documentId()).limit(MEMBER_PAGE_SIZE);
+    if (last) query = query.startAfter(last);
+    const snap = await query.get();
+    if (snap.empty) return;
+    await fn(snap.docs);
+    last = snap.docs[snap.docs.length - 1];
+    if (snap.size < MEMBER_PAGE_SIZE) return;
+  }
+}
+
+export async function expirePointsHandler(_event, database = db, now = new Date()) {
+  const settingsSnap = await database.doc(`${dataPath()}/config/settings`).get();
+  const months = Number(settingsSnap.exists ? settingsSnap.data()?.pointsExpiryMonths : 0) || 0;
+
+  if (months <= 0) {
+    await forEachMemberPage(database, async (docs) => {
+      const toClear = docs.filter((docSnap) => docSnap.data()?.pointsExpireAt);
+      if (!toClear.length) return;
+      const batch = database.batch();
+      toClear.forEach((docSnap) => batch.update(docSnap.ref, { pointsExpireAt: null }));
+      await batch.commit();
+    });
+    return;
+  }
+
+  await forEachMemberPage(database, async (docs) => {
+    for (const docSnap of docs) {
+      const member = docSnap.data() || {};
+      const points = Number(member.points) || 0;
+      if (points <= 0) continue;
+      const expireAt = computePointsExpireAt(member.lastOrderAt, months);
+      if (!expireAt) continue;
+
+      if (shouldExpirePoints(member.lastOrderAt, months, now)) {
+        await database.runTransaction(async (transaction) => {
+          const fresh = await transaction.get(docSnap.ref);
+          if (!fresh.exists) return;
+          const current = Number(fresh.data()?.points) || 0;
+          if (current <= 0) {
+            transaction.update(docSnap.ref, { pointsExpireAt: null });
+            return;
+          }
+          transaction.update(docSnap.ref, {
+            points: 0,
+            pointsExpireAt: null,
+            pointsHistory: FieldValue.arrayUnion(
+              buildExpireHistoryEntry(current, months, now.toISOString()),
+            ),
+          });
+        });
+        continue;
+      }
+
+      const iso = expireAt.toISOString();
+      if (member.pointsExpireAt !== iso) {
+        await docSnap.ref.update({ pointsExpireAt: iso });
+      }
+    }
+  });
+}
+
+export async function lookupMemberHandler(request, database = db) {
+  if (!request?.auth?.uid) throw new HttpsError('unauthenticated', 'sign-in-required');
+
+  const phone = String(request?.data?.phone || '');
+  if (!isLookupPhone(phone)) throw new HttpsError('invalid-argument', 'invalid-phone');
+
+  const uid = request.auth.uid;
+  const rateRef = database.doc(`${dataPath()}/rateLimits/${uid}`);
+  await database.runTransaction(async (transaction) => {
+    const snap = await transaction.get(rateRef);
+    const now = Date.now();
+    let windowStart = now;
+    let count = 0;
+    if (snap.exists) {
+      const start = parseWindowStart(snap.data()?.windowStart);
+      if (start && now - start < RATE_LIMIT_WINDOW_MS) {
+        windowStart = start;
+        count = Number(snap.data()?.count) || 0;
+      }
+    }
+    if (count >= RATE_LIMIT_MAX) {
+      throw new HttpsError('resource-exhausted', 'rate-limit-exceeded');
+    }
+    transaction.set(rateRef, {
+      windowStart: new Date(windowStart).toISOString(),
+      count: count + 1,
+    });
+  });
+
+  const memberRef = database.doc(`${dataPath()}/members/${phone}`);
+  const direct = await memberRef.get();
+  if (direct.exists) return publicMemberLookup(direct.data());
+
+  const found = await database.collection(`${dataPath()}/members`).where('phone', '==', phone).limit(1).get();
+  if (found.empty) return { exists: false };
+  return publicMemberLookup(found.docs[0].data());
+}
+
+export const autoApproveQrPoints = onDocumentWritten(
+  {
+    region: REGION,
+    document: 'artifacts/{appId}/public/data/orders/{orderId}',
+  },
+  (event) => autoApproveQrPointsHandler(event),
+);
+
+export const expirePoints = onSchedule(
+  {
+    schedule: '0 3 * * *',
+    timeZone: 'Asia/Bangkok',
+    region: REGION,
+  },
+  (event) => expirePointsHandler(event),
+);
+
+export const lookupMember = onCall(
+  { region: REGION },
+  (request) => lookupMemberHandler(request),
 );

@@ -58,7 +58,13 @@ export async function handleTelegramExpense(request, env, injected) {
   const migrated = await deps.kv.get('__telegram_shop_chat');
   const allowed = [env.TELEGRAM_CHAT_ID, ...(env.TELEGRAM_ALLOWED_CHAT_IDS || '').split(','), migrated].filter(v => v != null && String(v).trim()).map(v => String(v).trim());
   const reply = (text, keyboard) => replyTelegramExpense(env, chatId, text, keyboard, deps);
+  const isPrivateChat = message?.chat?.type === 'private' || (message?.chat?.type == null && Number(chatId) > 0);
+  const myidReply = () => reply(`${h(chatId)}\nส่งเลขนี้ให้ผู้ดูแลเพื่อเปิดรับรายงานแต้ม`);
   if (!chatId || !allowed.includes(chatId)) {
+    if (!callback && /^\/myid(?:@[\w_]+)?(?:\s|$)/i.test(message?.text || '') && isPrivateChat) {
+      await myidReply();
+      return ok();
+    }
     if (!callback && /^\/(start|help)(?:@[\w_]+)?(?:\s|$)/i.test(message?.text || '')) await reply(`แชทนี้ยังไม่ได้รับอนุญาต · chat id: ${h(chatId)}`);
     return ok();
   }
@@ -119,6 +125,7 @@ export async function handleTelegramExpense(request, env, injected) {
     if (text.startsWith('/')) {
       const command = text.split(/\s/)[0].replace(/@[\w_]+$/, '').toLocaleLowerCase();
       if (['/start', '/help'].includes(command)) await reply(help());
+      else if (command === '/myid') await myidReply();
       else if (['/ยกเลิก', '/cancel'].includes(command)) { await deps.kv.delete(key); await reply('ยกเลิกรายจ่ายแล้ว'); }
       else if (['/ยอดวันนี้', '/เช็คยอด', '/sales', '/summary'].includes(command)) {
         const report = await deps.buildDailyReport(env, deps);

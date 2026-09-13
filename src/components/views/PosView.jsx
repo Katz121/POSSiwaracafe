@@ -5,8 +5,8 @@ import {
   ShoppingBag, CheckCircle, RefreshCcw, ArrowRight,
   Trash2, Sparkles, Phone, User, UserX, Flame
 } from 'lucide-react';
-import { collection, doc, writeBatch, increment, arrayUnion, serverTimestamp } from 'firebase/firestore';
-import { db, appId } from '../../services/firebase';
+import { collection, doc, writeBatch, increment, arrayUnion, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { db, appId, auth } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
 import { getISODate, getNameKey } from '../../utils/calculations';
 import { mergeStockLinks } from '../../utils/stockLinks';
@@ -14,7 +14,7 @@ import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE,
 import { sortByFeaturedOrder } from '../../utils/featuredOrder';
 import { queueDayKey } from '../../utils/queueDay';
 import { bumpMenuSoldCount } from '../../utils/menuSales';
-import { withInFlightGuard } from '../../utils/pointsActions';
+import { withInFlightGuard, planBillEditPoints } from '../../utils/pointsActions';
 import useDebounce from '../../hooks/useDebounce';
 import { trackRecommendationsShown, trackRecommendationAccepted } from '../../services/upsellTracker';
 import { Button, Modal, EmptyState, useToast, Skeleton } from '../ui';
@@ -511,52 +511,127 @@ export default function PosView() {
         const originalOrder = orders.find(o => o.id === editingOrderId);
         const editData = { ...orderData, updatedAt: serverTimestamp() };
         if (originalOrder?.status) editData.status = originalOrder.status;
-        // Editing must NOT move the sale to "now" — keep the original creation
-        // time and report date, otherwise daily sales totals get corrupted.
         if (originalOrder?.createdAt) editData.createdAt = originalOrder.createdAt;
         if (originalOrder?.date) editData.date = originalOrder.date;
-        // Reconcile the redemption against what this bill already redeemed:
-        if (pointsRedeemActive && !wasRedeemed && redeemMemberId) {
-          addMemberWrite(redeemMemberId, {
-            points: increment(-redeemAmount),
-            pointsHistory: arrayUnion({ delta: -redeemAmount, reason: 'redeem', at: new Date().toISOString() }),
-          });
-          editData.pointsRedeemed = true;
-          editData.pointsRedeemId = redeemMemberId;
-          editData.pointsRedeemAmount = redeemAmount;
-        } else if (!pointsRedeemActive && wasRedeemed) {
-          const refundId = originalOrder?.pointsRedeemId;
-          const refundAmt = Number(originalOrder?.pointsRedeemAmount) || redeemAmount;
-          if (refundId) {
-            addMemberWrite(refundId, {
-              points: increment(refundAmt),
-              pointsHistory: arrayUnion({ delta: refundAmt, reason: 'redeem-refund', at: new Date().toISOString() }),
-            });
+        
+        await runTransaction(db, async transaction => {
+          const oldMemberDocId = originalOrder?.memberPhone 
+            ? (members.find(m => m.phone === originalOrder.memberPhone)?.id || originalOrder.memberPhone) 
+            : null;
+            
+          let oldMemberSnap = null;
+          let newMemberSnap = null;
+          
+          if (oldMemberDocId) {
+            oldMemberSnap = await transaction.get(doc(db, ...membersPath, oldMemberDocId));
           }
-          editData.pointsRedeemed = false;
-          editData.pointsRedeemId = '';
-          editData.pointsRedeemAmount = 0;
-        }
-        // (both redeemed, or neither → leave the existing flags untouched)
-        Object.entries(memberWrites).forEach(([id, data]) => {
-          batch.set(doc(db, ...membersPath, id), data, { merge: true });
+          if (memberId && memberId !== oldMemberDocId) {
+            newMemberSnap = await transaction.get(doc(db, ...membersPath, memberId));
+          }
+          
+          const oldMemberData = oldMemberSnap?.exists() ? { id: oldMemberDocId, ...oldMemberSnap.data() } : null;
+          const newMemberData = newMemberSnap?.exists() ? { id: memberId, ...newMemberSnap.data() } : null;
+          
+          const oldEarned = typeof originalOrder?.pointsEarned === 'number' ? originalOrder.pointsEarned : Math.floor(Number(originalOrder?.total || 0) / 10);
+          const newEarned = Math.floor(netTotal / 10);
+          
+          editData.pointsEarned = newEarned;
+          
+          const { oldMemberUpdates, newMemberUpdates } = planBillEditPoints({
+             oldMember: oldMemberData,
+             newMemberId: memberId,
+             oldEarned,
+             newEarned
+          });
+          
+          // Points-only changes; the member's name/phone/lastOrderAt come from memberWrites below.
+          const applyUpdates = (memberRef, updates, existingData) => {
+            if (!updates) return;
+            const payload = {};
+            if (updates.pendingPointsUpdate) payload.pendingPoints = increment(updates.pendingPointsUpdate);
+            if (updates.pointsUpdate) {
+              payload.points = increment(updates.pointsUpdate);
+              const historyEntry = { delta: updates.pointsUpdate, reason: 'bill-edit', orderId: editingOrderId, at: new Date().toISOString() };
+              if (auth.currentUser?.email) historyEntry.by = auth.currentUser.email;
+              payload.pointsHistory = arrayUnion(historyEntry);
+            }
+            if (updates.pendingOrderIdsAction === 'add') {
+              payload.pendingOrderIds = arrayUnion(editingOrderId);
+              payload.pendingReason = 'order';
+            } else if (updates.pendingOrderIdsAction === 'remove') {
+              payload.pendingOrderIds = (existingData?.pendingOrderIds || []).filter(id => id !== editingOrderId);
+            }
+            if (Object.keys(payload).length) transaction.set(memberRef, payload, { merge: true });
+          };
+          
+          if (oldMemberDocId) {
+             applyUpdates(doc(db, ...membersPath, oldMemberDocId), oldMemberUpdates, oldMemberData);
+          }
+          if (memberId && memberId !== oldMemberDocId) {
+             applyUpdates(doc(db, ...membersPath, memberId), newMemberUpdates, newMemberData);
+          }
+          
+          // Loyalty redemption for edit
+          if (pointsRedeemActive && !wasRedeemed && redeemMemberId) {
+             const rEntry = { delta: -redeemAmount, reason: 'redeem', at: new Date().toISOString() };
+             if (auth.currentUser?.email) rEntry.by = auth.currentUser.email;
+             transaction.set(doc(db, ...membersPath, redeemMemberId), {
+                points: increment(-redeemAmount),
+                pointsHistory: arrayUnion(rEntry)
+             }, { merge: true });
+             editData.pointsRedeemed = true;
+             editData.pointsRedeemId = redeemMemberId;
+             editData.pointsRedeemAmount = redeemAmount;
+          } else if (!pointsRedeemActive && wasRedeemed) {
+             const refundId = originalOrder?.pointsRedeemId;
+             const refundAmt = Number(originalOrder?.pointsRedeemAmount) || redeemAmount;
+             if (refundId) {
+                const rEntry = { delta: refundAmt, reason: 'redeem-refund', at: new Date().toISOString() };
+                if (auth.currentUser?.email) rEntry.by = auth.currentUser.email;
+                transaction.set(doc(db, ...membersPath, refundId), {
+                   points: increment(refundAmt),
+                   pointsHistory: arrayUnion(rEntry)
+                }, { merge: true });
+             }
+             editData.pointsRedeemed = false;
+             editData.pointsRedeemId = '';
+             editData.pointsRedeemAmount = 0;
+          }
+          
+          // Name/phone/lastOrderAt (and createdAt for a brand-new member) for the bill's member.
+          Object.entries(memberWrites).forEach(([id, data]) => {
+            transaction.set(doc(db, ...membersPath, id), data, { merge: true });
+          });
+          transaction.update(doc(db, 'artifacts', appId, 'public', 'data', 'orders', editingOrderId), editData);
         });
-        batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'orders', editingOrderId), editData);
-        await batch.commit();
+        
         setEditingOrderId(null);
       } else {
+        const orderRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'));
+        const queueRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue');
+        
+        const pointsEarned = Math.floor(netTotal / 10);
+        orderData.pointsEarned = pointsEarned;
+        
+        if (memberId && pointsEarned > 0) {
+           addMemberWrite(memberId, {
+              pendingOrderIds: arrayUnion(orderRef.id)
+           });
+        }
+        
         if (pointsRedeemActive && redeemMemberId) {
+          const rEntry = { delta: -redeemAmount, reason: 'redeem', at: new Date().toISOString() };
+          if (auth.currentUser?.email) rEntry.by = auth.currentUser.email;
           addMemberWrite(redeemMemberId, {
             points: increment(-redeemAmount),
-            pointsHistory: arrayUnion({ delta: -redeemAmount, reason: 'redeem', at: new Date().toISOString() }),
+            pointsHistory: arrayUnion(rEntry),
           });
           orderData.pointsRedeemed = true;
           orderData.pointsRedeemId = redeemMemberId;
           orderData.pointsRedeemAmount = redeemAmount;
         }
+        
         // New order doc + member writes + queue increment, all-or-nothing.
-        const orderRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'));
-        const queueRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'queue');
         Object.entries(memberWrites).forEach(([id, data]) => {
           batch.set(doc(db, ...membersPath, id), data, { merge: true });
         });
