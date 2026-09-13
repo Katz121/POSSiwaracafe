@@ -88,8 +88,9 @@ export async function publishPublicMenu(db, appId, input, prevSerialized) {
  * @returns the bundle data ({ menu, categories, beanModifiers, settings, updatedAt })
  *          or null if it has not been published yet (caller should fall back).
  */
-export async function fetchPublicMenu(db, appId) {
-  const snap = await getDoc(publicMenuDocRef(db, appId));
+export async function fetchPublicMenu(db, appId, reader = { doc, getDoc }) {
+  // The QR page supplies Lite; member-card reads and admin writes stay full SDK.
+  const snap = await reader.getDoc(reader.doc(db, 'artifacts', appId, 'public', 'data', 'config', 'publicMenu'));
   if (!snap.exists()) return null;
   return snap.data();
 }

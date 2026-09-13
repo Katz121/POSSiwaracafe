@@ -41,12 +41,11 @@ import {
   writeRememberedPhone,
 } from '../utils/memberAutofill';
 import {
-  collection,
   doc,
   getDoc,
-  getDocs,
 } from 'firebase/firestore';
 import { auth, db, functions, appId } from '../services/firebase';
+import { liteDb, menuLiteReader, fetchMenuCollectionsLite } from '../services/firebaseLite';
 import { buildCheckoutItems, shouldKeepRequestId, submitTrustedCheckout } from '../services/checkoutService';
 import { isBackendDown, submitCheckoutDirect } from '../services/checkoutFallback';
 import { fetchPublicMenu, readCachedPublicMenu, writeCachedPublicMenu, SENSITIVE_SETTINGS_KEYS } from '../utils/publicMenu';
@@ -1692,7 +1691,7 @@ function CustomerOrderApp() {
     let sourceMenuReady = false;
     try {
       bundle = await withTimeout(
-        readWithRetry(() => fetchPublicMenu(db, appId)),
+        readWithRetry(() => fetchPublicMenu(liteDb, appId, menuLiteReader)),
         QR_LOAD_TIMEOUT_MS,
         'error_menu',
       );
@@ -1717,21 +1716,10 @@ function CustomerOrderApp() {
       // No bundle and nothing cached — fall back to the 4 sources once so the
       // page still works (bundle not published yet, or the read above failed).
       try {
-        // Retry like the bundle read: the anonymous auth token can lag the first
-        // read (permission-denied), and when Firestore is unreachable getDocs
-        // RESOLVES empty from cache instead of throwing. Treat 0 menu items as a
-        // failure and retry — the shop always has items, so empty means the race
-        // or an offline read, not a real menu.
+        // Lite reads go directly to the server and reject when offline. They
+        // have no cache metadata; a successful empty response is authoritative.
         const [menuSnap, catsSnap, beansSnap] = await withTimeout(
-          readWithRetry(async () => {
-            const snaps = await Promise.all([
-              getDocs(collection(db, ...base, 'menu')),
-              getDocs(collection(db, ...base, 'categories')),
-              getDocs(collection(db, ...base, 'beanModifiers')),
-            ]);
-            if (snaps[0].empty && snaps[0].metadata.fromCache) throw new Error('offline-empty-menu');
-            return snaps;
-          }),
+          readWithRetry(() => fetchMenuCollectionsLite(appId)),
           budgetLeft(),
           'error_menu',
         );

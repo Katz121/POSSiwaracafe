@@ -108,6 +108,39 @@ describe('withTimeout', () => {
     expect(isQrLoadTimeoutError(new Error('nope'))).toBe(false);
   });
 
+  it('waits the full 8 seconds and clears the deadline after timing out', async () => {
+    vi.useFakeTimers();
+    let rejected = false;
+    const pending = withTimeout(new Promise(() => {})).catch(() => { rejected = true; });
+    await vi.advanceTimersByTimeAsync(7999);
+    expect(rejected).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+    expect(rejected).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('ignores a late result after the deadline', async () => {
+    vi.useFakeTimers();
+    let resolve;
+    const onSuccess = vi.fn();
+    const onError = vi.fn();
+    const pending = withTimeout(new Promise((done) => { resolve = done; }))
+      .then(onSuccess, onError);
+    await vi.advanceTimersByTimeAsync(8000);
+    resolve('late menu');
+    await pending;
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it('preserves a fast network error and removes its timer', async () => {
+    vi.useFakeTimers();
+    const error = new Error('unavailable');
+    await expect(withTimeout(Promise.reject(error))).rejects.toBe(error);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('rejects immediately for a non-positive budget', async () => {
     await expect(withTimeout(Promise.resolve('ok'), 0)).rejects.toBeInstanceOf(QrLoadTimeoutError);
   });
