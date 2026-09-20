@@ -1,5 +1,5 @@
 import { dependencies, getFirebaseIdToken, fsBase, fsDoc, createFirestore } from './src/firestore.js';
-import { sendTelegramShopMessage, postTelegramMessage, splitTelegramText } from './src/telegram/api.js';
+import { sendTelegramShopMessage, postTelegramMessage, splitTelegramText, telegramApi, escapeTelegramHtml, resolveShopChatId } from './src/telegram/api.js';
 import { handleTelegramExpense, handleTelegramExpenseSetup, handleTelegramExpenseStatus, adminSecret } from './src/telegram/handler.js';
 import { buildPointsSummary } from './src/pointsSummary.js';
 import {
@@ -502,11 +502,56 @@ async function replyToLine(env, replyToken, text) {
 }
 
 /**
+ * สำเนาออเดอร์เค้กเข้า Telegram ของร้าน
+ *
+ * ทำไมต้องมี: แชทไลน์เลื่อนหายง่าย พอรับปากลูกค้าไปแล้วไม่มีที่ไหนเก็บว่าวันไหนมีกี่ก้อน
+ * TG เป็นที่ที่ร้านใช้อยู่แล้ว ปักหมุดได้ ค้นย้อนหลังได้ และไม่กินโควตาข้อความของ LINE
+ *
+ * Best-effort ล้วน · TG ล่มต้องไม่ทำให้ลูกค้าไม่ได้รับคำตอบในไลน์
+ */
+async function copyCakeOrderToTelegram(env, order, code, ev) {
+  if (!env.TELEGRAM_BOT_TOKEN) return;
+  try {
+    const chatId = await resolveShopChatId(env);
+    if (!chatId) return;
+    const e = escapeTelegramHtml;
+    const lines = [
+      `🎂 <b>ออเดอร์เค้กจากเว็บ</b>  <code>${e(code)}</code>`,
+      order.designName ? `ลาย: ${e(order.designName)}${order.design && order.design !== 'own' ? ` (${e(order.design)})` : ''}` : '',
+      order.size ? `ขนาด: ${e(order.size)}` : '',
+      order.flavor ? `รส: ${e(order.flavor)}` : '',
+      order.msg ? `ข้อความบนเค้ก: ${e(order.msg)}` : '',
+      order.date ? `<b>วันรับ: ${e(order.date)}${order.time ? ` ${e(order.time)}` : ''}</b>${order.rush ? ' ⚡ ขอด่วน' : ''}` : '',
+      order.fulfill ? `รับ: ${e(order.fulfill)}` : '',
+      order.total ? `ยอดประเมิน ~${order.total.toLocaleString('th-TH')} บาท` : '',
+      `ลูกค้า: ${e(order.name || '-')} ${e(order.tel || '')}`.trim(),
+      '',
+      'ลูกค้ารออยู่ในแชทไลน์ · ยังไม่ได้ยืนยันคิวให้',
+    ].filter(Boolean);
+    const caption = lines.join('\n');
+
+    const photo = order.img ? `https://siwaracafe.com/${order.img}` : '';
+    if (photo) {
+      // รูปอาจส่งไม่ผ่าน (TG ดึง URL ไม่ได้) · ตกไปใช้ข้อความล้วนที่มีตัวจัดการกลุ่มย้าย id ให้อยู่แล้ว
+      try {
+        await telegramApi(env, 'sendPhoto', { chat_id: chatId, photo, caption, parse_mode: 'HTML' });
+        return;
+      } catch {
+        // ตกไปทางข้อความด้านล่าง
+      }
+    }
+    await sendTelegramShopMessage(env, caption);
+  } catch {
+    // เงียบไว้ · ไลน์ต้องได้ 200 เสมอ ไม่งั้น LINE จะปิด endpoint ทิ้ง
+  }
+}
+
+/**
  * ลูกค้าส่งรหัสออเดอร์เค้กจากเว็บเข้ามา → ตอบรูปลายที่เลือก + สรุปออเดอร์
  * ใช้ reply (ฟรี ไม่กินโควตา) · ส่งซ้ำรหัสเดิมตอบสั้นลงและไม่ส่งรูปซ้ำ
  * คืน true ถ้าจัดการข้อความนี้แล้ว (ไม่ต้องให้กฎ auto-reply ทำงานต่อ)
  */
-async function handleCakeCode(ev, text, env) {
+async function handleCakeCode(ev, text, env, ctx) {
   const code = extractCakeCode(text);
   if (!code || !env.FOLLOWERS) return false;
 
@@ -525,6 +570,9 @@ async function handleCakeCode(ev, text, env) {
     const next = { ...saved, redeemedAt: new Date().toISOString(), redeemedBy: ev.source?.userId || '' };
     await env.FOLLOWERS.put(key, JSON.stringify(next), { expirationTtl: CAKE_ORDER_TTL_SEC })
       .catch(() => {});
+    // สำเนาเข้า TG เฉพาะครั้งแรก · ส่งซ้ำทุกครั้งที่ลูกค้าพิมพ์รหัสเดิมจะกลายเป็นสแปมของร้าน
+    const copy = copyCakeOrderToTelegram(env, saved.order, code, ev);
+    if (ctx && ctx.waitUntil) ctx.waitUntil(copy); else await copy;
   }
   return true;
 }
@@ -568,7 +616,7 @@ async function handleCakeOrder(request, env, headers) {
   return Response.json({ code }, { status: 200, headers });
 }
 
-async function handleWebhook(request, env) {
+async function handleWebhook(request, env, ctx) {
   const secret = env.LINE_CHANNEL_SECRET;
   if (!secret) return new Response('OK', { status: 200 });
 
@@ -610,7 +658,7 @@ async function handleWebhook(request, env) {
     if (ev.source?.type !== 'user') continue;
 
     // รหัสออเดอร์เค้กจากเว็บต้องมาก่อนกฎคีย์เวิร์ด · ข้อความมีคำว่า "เค้ก" อยู่ด้วยเสมอ
-    if (await handleCakeCode(ev, raw, env)) continue;
+    if (await handleCakeCode(ev, raw, env, ctx)) continue;
 
     const answer = matchAutoReply(raw);
     if (answer) await replyToLine(env, ev.replyToken, answer);
@@ -910,7 +958,7 @@ export default {
       return handleTelegramExpense(request, env, { buildDailyReport, ctx });
     }
     if (pathname.endsWith('/webhook')) {
-      return handleWebhook(request, env);
+      return handleWebhook(request, env, ctx);
     }
     if (pathname.endsWith('/cake-order')) {
       return handleCakeOrder(request, env, headers);

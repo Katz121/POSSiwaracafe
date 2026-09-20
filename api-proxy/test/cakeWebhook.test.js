@@ -124,6 +124,41 @@ describe('webhook ตอบรหัสออเดอร์เค้ก', () =>
     expect(replies).toHaveLength(0);
   });
 
+  // แชทไลน์เลื่อนหาย · ร้านต้องมีสำเนาถาวรใน TG ที่ค้นย้อนหลังได้
+  it('ออเดอร์ใหม่ส่งสำเนาเข้า Telegram พร้อมรูป ครั้งเดียว', async () => {
+    const tg = [];
+    const prev = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url, options = {}) => {
+      if (String(url).includes('api.telegram.org')) {
+        tg.push({ url: String(url), body: JSON.parse(options.body) });
+        return Response.json({ ok: true, result: {} });
+      }
+      return prev(url, options);
+    });
+    env = { ...ENV_BASE, FOLLOWERS: memoryKV(), TELEGRAM_BOT_TOKEN: 'tg-token', TELEGRAM_CHAT_ID: '42' };
+    await seed('SW-7K2Q');
+
+    await post(textEvent('SW-7K2Q'));
+    expect(tg).toHaveLength(1);
+    expect(tg[0].url).toContain('/sendPhoto');
+    expect(tg[0].body.photo).toBe('https://siwaracafe.com/cakes/v2/c03.jpg');
+    expect(tg[0].body.caption).toContain('SW-7K2Q');
+    expect(tg[0].body.caption).toContain('วันรับ');
+    expect(tg[0].body.caption).toContain('0891234567');
+    // ย้ำว่ายังไม่ได้ยืนยันคิวแทนร้าน
+    expect(tg[0].body.caption).toContain('ยังไม่ได้ยืนยันคิว');
+
+    // ลูกค้าพิมพ์รหัสซ้ำต้องไม่เด้ง TG อีก
+    await post(textEvent('SW-7K2Q'));
+    expect(tg).toHaveLength(1);
+  });
+
+  it('ไม่มี Telegram ตั้งไว้ ก็ยังตอบลูกค้าได้ปกติ', async () => {
+    await seed('SW-7K2Q');
+    await post(textEvent('SW-7K2Q'));
+    expect(replies[0].messages[0].type).toBe('image');
+  });
+
   it('ข้อความปกติยังได้ auto-reply เหมือนเดิม', async () => {
     await post(textEvent('ร้านเปิดกี่โมง'));
     expect(replies[0].messages[0].text).toContain('เปิดอังคาร');
