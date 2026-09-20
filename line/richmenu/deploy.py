@@ -49,6 +49,9 @@ def issue_token():
 
 TOKEN = issue_token()
 
+if not TOKEN.isascii() or len(TOKEN) < 40:   # กันเคสวางคำอธิบายมาแทนค่าจริง
+    sys.exit("หยุด: ค่า token/secret ที่ใส่มายังเป็นข้อความตัวอย่าง ไม่ใช่ค่าจริงจาก LINE Developers Console")
+
 # ปลายทางจริงทั้งหมด
 # ⚠️ หน้าสั่งล่วงหน้า/สะสมแต้มอยู่บนแอป POS คนละโดเมนกับเว็บร้าน
 #    siwaracafe.com/order และ /member = 404 (เช็คสดอีกครั้ง 2026-09-20) ห้ามกลับไปใช้
