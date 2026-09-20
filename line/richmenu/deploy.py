@@ -133,6 +133,21 @@ def call(url, data=None, ctype="application/json", method=None):
     return json.loads(body) if body.strip() else {}
 
 
+def assert_channel(expect_basic, expect_premium):
+    """กันอัปเมนูผิด OA · env อาจมี LINE_CHANNEL_ACCESS_TOKEN ของแอคอื่นค้างอยู่
+    (เคยเกิดจริง 2026-09-20: token ของ @kuapapoh ค้างใน env แล้วเมนูศิวราขึ้นผิดแอคจนเมนูเดิมถูกลบ)"""
+    req = urllib.request.Request(f"{API}/v2/bot/info", headers={"Authorization": f"Bearer {TOKEN}"})
+    with urllib.request.urlopen(req) as r:
+        info = json.load(r)
+    got = (info.get("basicId"), info.get("premiumId"))
+    if expect_basic not in got and expect_premium not in got:
+        sys.exit(f"หยุด: token นี้เป็นของ {info.get('displayName')} {got} "
+                 f"ไม่ใช่ {expect_premium} · unset LINE_CHANNEL_ACCESS_TOKEN แล้วใช้ CHANNEL_ID+SECRET ของแอคที่ถูก")
+    print(f"ยืนยันแอค: {info.get('displayName')} {info.get('premiumId') or info.get('basicId')}")
+
+
+assert_channel("@639gyrjn", "@siwara")
+
 img = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).parent / "d-cafe7.png")
 
 old = call(f"{API}/v2/bot/richmenu/list").get("richmenus", [])
