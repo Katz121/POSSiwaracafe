@@ -55,13 +55,23 @@ if not TOKEN.isascii() or len(TOKEN) < 40:   # กันเคสวางคำ
 # ปลายทางจริงทั้งหมด
 # ⚠️ หน้าสั่งล่วงหน้า/สะสมแต้มอยู่บนแอป POS คนละโดเมนกับเว็บร้าน
 #    siwaracafe.com/order และ /member = 404 (เช็คสดอีกครั้ง 2026-09-20) ห้ามกลับไปใช้
-ORDER = "https://possiwaracafe.pages.dev/order"          # หน้าสั่งเองของลูกค้า (เดียวกับที่ QR ในร้านชี้ไป)
-MEMBER = "https://possiwaracafe.pages.dev/member"        # บัตรสมาชิก ลูกค้ากรอกเบอร์เช็คแต้มเอง
+# UTM บอกว่าคนมาจากช่องไหนของริชเมนู · เว็บร้านมี GA4 (G-PRG04Y0WJF) อ่านค่าพวกนี้ได้เลย
+# ฝั่ง POS (possiwaracafe.pages.dev) ไม่ได้อ่าน utm แต่ /qr-beacon บน worker นับ ua=line ให้อยู่แล้ว
+# ⚠️ query ต้องมาก่อน # เสมอ ไม่งั้นมันกลายเป็นส่วนหนึ่งของ fragment แล้ว GA อ่านไม่เห็น
+def utm(url, campaign):
+    joiner = "&" if "?" in url.split("#")[0] else "?"
+    base, _, frag = url.partition("#")
+    q = f"utm_source=line&utm_medium=richmenu&utm_campaign={campaign}"
+    return f"{base}{joiner}{q}" + (f"#{frag}" if frag else "")
+
+POS = "https://possiwaracafe.pages.dev"
 SITE = "https://siwaracafe.com"
-MENU = f"{SITE}/#menu"
-STORY = f"{SITE}/#cafe"
-CAKE = f"{SITE}/cake"
-CATERING = f"{SITE}/cake#catering"
+ORDER = utm(f"{POS}/order", "oa_order")           # หน้าสั่งเองของลูกค้า (เดียวกับที่ QR ในร้านชี้ไป)
+MEMBER = utm(f"{POS}/member", "oa_member")        # บัตรสมาชิก ลูกค้ากรอกเบอร์เช็คแต้มเอง
+MENU = utm(f"{SITE}/#menu", "oa_menu")
+STORY = utm(f"{SITE}/#cafe", "oa_story")
+CAKE = utm(f"{SITE}/cake", "oa_cake")
+CATERING = utm(f"{SITE}/cake#catering", "oa_catering")
 TEL = "tel:0973501514"
 # ลิงก์หมุดจริงของร้าน (ทางร้านส่งมาเอง) · Siwara Cafe · 53 ถ.ราษฎร์บำรุง ต.บางไทร
 # อ.ตะกั่วป่า พังงา 82110 · ราว 8.8408064, 98.3629824
