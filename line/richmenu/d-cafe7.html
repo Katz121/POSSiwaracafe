@@ -1,0 +1,108 @@
+<!doctype html><html lang="th"><head><meta charset="utf-8">
+<!-- ริชเมนู Siwara Cafe · 7 ช่อง · เขียนที่ 1250x843 แล้วเรนเดอร์ @2x = 2500x1686
+     python D:/workFull/scripts/render_covers_png.py --width 1250 --height 843 "D:/code pos/my-pos-app/line/richmenu/d-cafe7.html"
+     พิกัด area (สเกลจริง 2500x1686) อยู่ใน deploy.py ที่ AREAS_7 · แก้ที่ไหนต้องแก้ให้ตรงกันทั้งสองไฟล์ -->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chonburi&family=Noto+Sans+Thai:wght@300;400;500;600;700&family=Cormorant+Garamond:wght@600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1250px;height:843px;overflow:hidden}
+body{font-family:'Noto Sans Thai',sans-serif;background:#F7EFE1;position:relative}
+.cell{position:absolute;overflow:hidden}
+.ph{position:absolute;inset:0;background-size:cover;background-position:74% 46%}
+.vg{position:absolute;inset:0}
+.in{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);padding:0 20px;text-align:center}
+.in.big{text-align:left;padding:0 34px}
+.ico{display:flex;justify-content:center;margin-bottom:10px}
+.in.big .ico{justify-content:flex-start;margin-bottom:14px}
+.en{font-family:'Cormorant Garamond',Georgia,serif;font-weight:600;letter-spacing:.3em;text-transform:uppercase;font-size:12px;margin-bottom:7px}
+.in.big .en{font-size:16px;margin-bottom:9px}
+.en:after{content:'';display:block;width:26px;height:2px;margin:7px auto 0;background:currentColor;opacity:.5}
+.in.big .en:after{margin:8px 0 0}
+.th{font-family:'Chonburi',serif;font-weight:400;line-height:1.34;font-size:30px}
+.in.big .th{font-size:44px;line-height:1.24}
+.no{font-weight:500;font-size:18px;line-height:1.45;margin-top:9px}
+.in.big .no{font-size:22px;margin-top:12px;line-height:1.45;font-weight:500}
+.sep{position:absolute;background:rgba(122,86,48,.20)}
+</style></head><body>
+
+<!-- 1 · สั่งล่วงหน้า (0,0 1250x900) -->
+<div class="cell" style="left:0;top:0;width:625px;height:450px">
+  <div class="ph" style="background-image:url('assets/interior-corner.jpg')"></div>
+  <div class="vg" style="background:linear-gradient(97deg,rgba(34,20,9,.96) 0%,rgba(34,20,9,.90) 44%,rgba(34,20,9,.44) 100%),linear-gradient(0deg,rgba(34,20,9,.55) 0%,rgba(34,20,9,0) 46%)"></div>
+  <div class="in big">
+    <div class="ico"><svg viewBox="0 0 100 100" width="76" height="76"><path d="M22 34h44v22a20 20 0 0 1-20 20h-4a20 20 0 0 1-20-20zM66 40h8a11 11 0 0 1 0 22h-8M20 88h50M34 12c-3 5 3 8 0 14M50 10c-3 6 3 9 0 15" fill="none" stroke="#D9B878" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="en" style="color:#D9B878">Order Ahead</div>
+    <div class="th" style="color:#FFF6E7">สั่งล่วงหน้า</div>
+    <div class="no" style="color:#F0DDBE">สั่งไว้ก่อน แวะมารับ ไม่ต้องยืนรอคิว<br>กาแฟ · มัทฉะ · เบเกอรี่อบสด</div>
+  </div>
+</div>
+
+<!-- 2 · เมนู & ราคา (1250,0 1250x450) -->
+<div class="cell" style="left:625px;top:0;width:625px;height:225px;background:#F0E4D0">
+  <div class="in">
+    <div class="ico"><svg viewBox="0 0 100 100" width="46" height="46"><path d="M12 22h33a10 10 0 0 1 10 10v50a9 9 0 0 0-9-9H12zM88 22H55a10 10 0 0 0-10 10v50a9 9 0 0 1 9-9h34zM22 40h22M22 54h22M60 40h22M60 54h22" fill="none" stroke="#B68A46" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="en" style="color:#A3711F">Our Menu</div>
+    <div class="th" style="color:#33251A">เมนู &amp; ราคา</div>
+    <div class="no" style="color:#5A4227">กาแฟเริ่ม ฿50 · มัทฉะ · เค้กในร้าน</div>
+  </div>
+</div>
+
+<!-- 3 · สะสมแต้ม (1250,450 625x450) -->
+<div class="cell" style="left:625px;top:225px;width:313px;height:225px;background:#FBF6EC">
+  <div class="in">
+    <div class="ico"><svg viewBox="0 0 100 100" width="42" height="42"><path d="M50 14l11 23 25 4-18 18 4 25-22-12-22 12 4-25-18-18 25-4z" fill="none" stroke="#B68A46" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="en" style="color:#A3711F">Member</div>
+    <div class="th" style="color:#33251A;font-size:25px">สะสมแต้ม</div>
+    <div class="no" style="color:#5A4227;font-size:16px">กรอกเบอร์ เช็กแต้มเอง</div>
+  </div>
+</div>
+
+<!-- 4 · โทรหาร้าน (1875,450 625x450) -->
+<div class="cell" style="left:938px;top:225px;width:312px;height:225px;background:#4A2F1C">
+  <div class="in">
+    <div class="ico"><svg viewBox="0 0 100 100" width="42" height="42"><path d="M26 16l14 4 5 18-10 7c4 12 12 20 24 24l7-10 18 5 4 14c0 5-5 9-11 9C43 87 13 57 13 27c0-6 4-11 9-11z" fill="none" stroke="#D9B878" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="en" style="color:#D9B878">Call Us</div>
+    <div class="th" style="color:#FFF6E7;font-size:25px">โทรหาร้าน</div>
+    <div class="no" style="color:#F0DDBE;font-size:16px">097-350-1514</div>
+  </div>
+</div>
+
+<!-- 5 · เค้กสั่งทำ (0,900 833x786) -->
+<div class="cell" style="left:0;top:450px;width:417px;height:393px;background:#F0E4D0">
+  <div class="in">
+    <div class="ico"><svg viewBox="0 0 100 100" width="60" height="60"><path d="M18 52c0-7 6-12 13-12h38c7 0 13 5 13 12v30H18zM18 66h64M50 40V26M50 20a6 6 0 0 0 0 8 6 6 0 0 0 0-8M30 40V30M70 40V30M14 88h72" fill="none" stroke="#B68A46" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="en" style="color:#A3711F">Birthday Cake</div>
+    <div class="th" style="color:#33251A">เค้กสั่งทำ</div>
+    <div class="no" style="color:#5A4227">฿290-790 · เลือกลาย<br>แล้วรู้ราคาก่อนทักแชท</div>
+  </div>
+</div>
+
+<!-- 6 · จัดเบรก (833,900 833x786) -->
+<div class="cell" style="left:417px;top:450px;width:416px;height:393px;background:#F7EFE1">
+  <div class="in">
+    <div class="ico"><svg viewBox="0 0 100 100" width="60" height="60"><path d="M14 34l36-16 36 16-36 16zM14 34v34l36 16 36-16V34M50 50v34" fill="none" stroke="#B68A46" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="en" style="color:#A3711F">Snack Box</div>
+    <div class="th" style="color:#33251A">จัดเบรก</div>
+    <div class="no" style="color:#5A4227">ใบเสร็จมีเลขทะเบียน<br>หน่วยงานเบิกได้</div>
+  </div>
+</div>
+
+<!-- 7 · แผนที่ร้าน (1666,900 834x786) -->
+<div class="cell" style="left:833px;top:450px;width:417px;height:393px;background:#F0E4D0">
+  <div class="in">
+    <div class="ico"><svg viewBox="0 0 100 100" width="60" height="60"><path d="M50 90S22 64 22 42a28 28 0 0 1 56 0c0 22-28 48-28 48M50 32a10 10 0 1 0 0 20 10 10 0 0 0 0-20" fill="none" stroke="#B68A46" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="en" style="color:#A3711F">Find Us</div>
+    <div class="th" style="color:#33251A">แผนที่ร้าน</div>
+    <div class="no" style="color:#5A4227">อังคาร-อาทิตย์ 10:00-17:00<br>ปิดจันทร์ · มีที่จอดรถ</div>
+  </div>
+</div>
+
+<!-- เส้นคั่นบาง ๆ ให้อ่านเป็นปุ่มแยกช่อง -->
+<div class="sep" style="left:625px;top:0;width:1.5px;height:450px"></div>
+<div class="sep" style="left:625px;top:225px;width:625px;height:1.5px"></div>
+<div class="sep" style="left:938px;top:225px;width:1.5px;height:225px"></div>
+<div class="sep" style="left:0;top:450px;width:1250px;height:1.5px"></div>
+<div class="sep" style="left:417px;top:450px;width:1.5px;height:393px"></div>
+<div class="sep" style="left:833px;top:450px;width:1.5px;height:393px"></div>
+</body></html>

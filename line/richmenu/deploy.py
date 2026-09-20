@@ -4,7 +4,7 @@
     # ออก token จาก channel id/secret ให้อัตโนมัติ (หรือ set LINE_CHANNEL_ACCESS_TOKEN เองก็ได้)
     set LINE_CHANNEL_ID=2007854865
     set LINE_CHANNEL_SECRET=...
-    python line/richmenu/deploy.py line/richmenu/a-wood.png
+    python line/richmenu/deploy.py line/richmenu/d-cafe7.png
 
 ทำอะไรบ้าง: สร้าง rich menu → อัปรูป → ตั้งเป็น default → ลบเมนูเก่าที่ไม่ใช้แล้ว
 """
@@ -43,13 +43,17 @@ def issue_token():
 
 TOKEN = issue_token()
 
-# ปลายทางจริงทั้งหมด (เช็คแล้วว่าเปิดได้ 2026-08-07)
-ORDER = "https://siwaracafe.com/order"                   # หน้าสั่งเองของลูกค้า (เดียวกับที่ QR ในร้านชี้ไป)
-MEMBER = "https://siwaracafe.com/member"                 # บัตรสมาชิก ลูกค้ากรอกเบอร์เช็คแต้มเอง
+# ปลายทางจริงทั้งหมด
+# ⚠️ หน้าสั่งล่วงหน้า/สะสมแต้มอยู่บนแอป POS คนละโดเมนกับเว็บร้าน
+#    siwaracafe.com/order และ /member = 404 (เช็คสดอีกครั้ง 2026-09-20) ห้ามกลับไปใช้
+ORDER = "https://possiwaracafe.pages.dev/order"          # หน้าสั่งเองของลูกค้า (เดียวกับที่ QR ในร้านชี้ไป)
+MEMBER = "https://possiwaracafe.pages.dev/member"        # บัตรสมาชิก ลูกค้ากรอกเบอร์เช็คแต้มเอง
 SITE = "https://siwaracafe.com"
 MENU = f"{SITE}/#menu"
 STORY = f"{SITE}/#cafe"
 CAKE = f"{SITE}/cake"
+CATERING = f"{SITE}/cake#catering"
+TEL = "tel:0973501514"
 # ลิงก์หมุดจริงของร้าน (ทางร้านส่งมาเอง) · Siwara Cafe · 53 ถ.ราษฎร์บำรุง ต.บางไทร
 # อ.ตะกั่วป่า พังงา 82110 · ราว 8.8408064, 98.3629824
 #
@@ -58,10 +62,26 @@ CAKE = f"{SITE}/cake"
 MAPS = "https://maps.app.goo.gl/EmCpQ4hKVBHTm3vM9"
 
 W, H = 2500, 1686
-CW, CH = 833, 843  # ช่องละ 1/3 กว้าง · ครึ่งสูง (ช่องขวาสุดกว้าง 834 ให้เต็มพอดี)
 
-# เรียงตาม CELLS ใน gen.py — ซ้าย→ขวา บน→ล่าง
-ACTIONS = [
+# ── เลย์เอาต์ ────────────────────────────────────────────────────────────────
+# "cafe7" = ของที่ใช้อยู่ (ภาพ d-cafe7.png · 7 ช่องไม่เท่ากัน · คาเฟ่เป็นแกน)
+#   พิกัดทุกช่องเขียนตรงตามภาพ ไม่ได้คำนวณจากลำดับเหมือนเลย์เอาต์เก่า
+#   ⚠️ แก้ตรงนี้ต้องแก้ d-cafe7.html ให้ตรงกันเสมอ (ไฟล์ HTML เขียนที่ครึ่งสเกล 1250x843)
+# "grid6" = ของเดิม 3x2 เท่ากัน (ภาพ a-wood.png / b-cream.png / c-block.png)
+LAYOUTS = {
+    "cafe7": [
+        ("สั่งล่วงหน้า",  0,    0,   1250, 900, {"type": "uri", "uri": ORDER}),
+        ("เมนู & ราคา",  1250, 0,   1250, 450, {"type": "uri", "uri": MENU}),
+        ("สะสมแต้ม",     1250, 450, 625,  450, {"type": "uri", "uri": MEMBER}),
+        ("โทรหาร้าน",    1875, 450, 625,  450, {"type": "uri", "uri": TEL}),
+        ("เค้กสั่งทำ",    0,    900, 833,  786, {"type": "uri", "uri": CAKE}),
+        ("จัดเบรก",      833,  900, 833,  786, {"type": "uri", "uri": CATERING}),
+        ("แผนที่ร้าน",    1666, 900, 834,  786, {"type": "uri", "uri": MAPS}),
+    ],
+    "grid6": None,  # สร้างจากลำดับด้านล่าง (ของเดิม)
+}
+
+GRID6 = [
     ("สั่งล่วงหน้า", {"type": "uri", "uri": ORDER}),
     ("เมนู & ราคา", {"type": "uri", "uri": MENU}),
     ("สะสมแต้ม", {"type": "uri", "uri": MEMBER}),
@@ -70,14 +90,23 @@ ACTIONS = [
     ("เรื่องเล่าบ้านไม้", {"type": "uri", "uri": STORY}),
 ]
 
-areas = []
-for i, (label, action) in enumerate(ACTIONS):
-    col, row = i % 3, i // 3
-    x = col * CW
-    areas.append({
-        "bounds": {"x": x, "y": row * CH, "width": (W - x) if col == 2 else CW, "height": CH},
-        "action": {**action, "label": label},
-    })
+LAYOUT = os.environ.get("RICHMENU_LAYOUT", "cafe7")
+
+if LAYOUT == "grid6":
+    CW, CH = 833, 843
+    areas = []
+    for i, (label, action) in enumerate(GRID6):
+        col, row = i % 3, i // 3
+        x = col * CW
+        areas.append({
+            "bounds": {"x": x, "y": row * CH, "width": (W - x) if col == 2 else CW, "height": CH},
+            "action": {**action, "label": label},
+        })
+else:
+    areas = [
+        {"bounds": {"x": x, "y": y, "width": w, "height": h}, "action": {**act, "label": label}}
+        for (label, x, y, w, h, act) in LAYOUTS["cafe7"]
+    ]
 
 MENU_DEF = {
     "size": {"width": W, "height": H},
@@ -98,7 +127,7 @@ def call(url, data=None, ctype="application/json", method=None):
     return json.loads(body) if body.strip() else {}
 
 
-img = Path(sys.argv[1] if len(sys.argv) > 1 else "line/richmenu/a-wood.png")
+img = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).parent / "d-cafe7.png")
 
 old = call(f"{API}/v2/bot/richmenu/list").get("richmenus", [])
 
