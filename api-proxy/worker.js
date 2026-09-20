@@ -1,4 +1,4 @@
-import { dependencies, getFirebaseIdToken, fsBase, fsDoc, createFirestore } from './src/firestore.js';
+import { dependencies, getFirebaseIdToken, fsBase, fsDoc, createFirestore, createWrite } from './src/firestore.js';
 import { sendTelegramShopMessage, postTelegramMessage, splitTelegramText, telegramApi, escapeTelegramHtml, resolveShopChatId } from './src/telegram/api.js';
 import { handleTelegramExpense, handleTelegramExpenseSetup, handleTelegramExpenseStatus, adminSecret } from './src/telegram/handler.js';
 import { buildPointsSummary } from './src/pointsSummary.js';
@@ -502,6 +502,50 @@ async function replyToLine(env, replyToken, text) {
 }
 
 /**
+ * บันทึกออเดอร์เค้กลงคิวของร้าน (Firestore `cakeQueue`)
+ *
+ * ทำไมต้องมี: แชทไลน์กับ Telegram เป็นการแจ้งเตือน ไม่ใช่รายการงาน
+ * ร้านต้องมีที่ที่บอกได้ว่า "วันเสาร์นี้มีกี่ก้อน" และ "ก้อนไหนยังไม่ได้ยืนยัน"
+ * หน้าจอคิวเค้กในแอป POS อ่านจากคอลเลกชันนี้
+ *
+ * doc id = รหัสออเดอร์ · ส่งรหัสซ้ำจึงไม่สร้างงานซ้ำ
+ * สถานะเริ่มที่ `new` เสมอ · การยืนยันคิวเป็นการตัดสินใจของคน ไม่ใช่ของบอท
+ *
+ * Best-effort · Firestore ล่มต้องไม่ทำให้ลูกค้าไม่ได้รับคำตอบในไลน์
+ */
+async function saveCakeQueueItem(env, order, code, ev) {
+  if (!env.BOT_EMAIL || !env.BOT_PASSWORD) return;
+  try {
+    const fs = createFirestore(env);
+    await fs.runTransaction(async () => ([
+      createWrite(fs.name('cakeQueue', code), {
+        code,
+        status: 'new',                       // new → confirmed → done → picked (ยกเลิก = cancelled)
+        design: order.design || '',
+        designName: order.designName || '',
+        img: order.img || '',
+        size: order.size || '',
+        flavor: order.flavor || '',
+        msg: order.msg || '',
+        pickupDate: order.date || '',        // ข้อความไทยตามที่ลูกค้าเห็นบนเว็บ
+        pickupTime: order.time || '',
+        fulfill: order.fulfill || '',
+        rush: !!order.rush,
+        total: order.total || 0,
+        name: order.name || '',
+        tel: order.tel || '',
+        lineUserId: ev?.source?.userId || '',
+        source: 'web',
+        createdAt: new Date().toISOString(),
+      }),
+    ]));
+  } catch (e) {
+    // ALREADY_EXISTS = ลูกค้าส่งรหัสซ้ำ ไม่ใช่ความผิดพลาด · ที่เหลือ log ไว้ให้ tail เห็น
+    if (e?.code !== 'ALREADY_EXISTS') console.error('cakeQueue write failed:', e?.code || '', e?.message || e);
+  }
+}
+
+/**
  * สำเนาออเดอร์เค้กเข้า Telegram ของร้าน
  *
  * ทำไมต้องมี: แชทไลน์เลื่อนหายง่าย พอรับปากลูกค้าไปแล้วไม่มีที่ไหนเก็บว่าวันไหนมีกี่ก้อน
@@ -572,7 +616,8 @@ async function handleCakeCode(ev, text, env, ctx) {
       .catch(() => {});
     // สำเนาเข้า TG เฉพาะครั้งแรก · ส่งซ้ำทุกครั้งที่ลูกค้าพิมพ์รหัสเดิมจะกลายเป็นสแปมของร้าน
     const copy = copyCakeOrderToTelegram(env, saved.order, code, ev);
-    if (ctx && ctx.waitUntil) ctx.waitUntil(copy); else await copy;
+    const queued = saveCakeQueueItem(env, saved.order, code, ev);
+    if (ctx && ctx.waitUntil) { ctx.waitUntil(copy); ctx.waitUntil(queued); } else { await copy; await queued; }
   }
   return true;
 }

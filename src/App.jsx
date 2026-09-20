@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect, lazy, Suspens
 import {
   User, ChefHat, FileText, Package, DollarSign, ClipboardList, Users, BookOpen,
   PieChart, LayoutDashboard, Lock, Trash2, Moon, Sun, MoreHorizontal,
-  Coffee, Sparkles, LogOut, TrendingUp
+  Coffee, Sparkles, LogOut, TrendingUp, Cake
 } from 'lucide-react';
 
 // UI Components
@@ -56,6 +56,7 @@ const MembersView = lazy(() => import('./components/views/MembersView'));
 const AdminView = lazy(() => import('./components/views/AdminView'));
 const FinancialView = lazy(() => import('./components/views/FinancialView'));
 const SalesHistoryView = lazy(() => import('./components/views/SalesHistoryView'));
+const CakeQueueView = lazy(() => import('./components/views/CakeQueueView'));
 
 // One-way token derived from the PIN. Stored on a "remembered" device so the app
 // stays unlocked across restarts — and so that changing the PIN later
@@ -598,6 +599,7 @@ export default function App() {
             {view === 'admin' && <AdminView />}
             {view === 'financial' && <FinancialView />}
             {view === 'sales_history' && <SalesHistoryView />}
+            {view === 'cake_queue' && <CakeQueueView />}
           </Suspense>
         </ErrorBoundary>
 
@@ -710,7 +712,7 @@ export default function App() {
                   'flex items-center gap-1 px-3 md:px-4 lg:px-5 py-2 md:py-3',
                   'rounded-[var(--radius-sm)] text-[11px] md:text-xs font-medium leading-none shrink-0',
                   'transition-all duration-300',
-                  ['expenses', 'menu_manage', 'recipes', 'members_manage', 'financial', 'admin', 'category_summary', 'sales_history'].includes(view)
+                  ['expenses', 'menu_manage', 'recipes', 'members_manage', 'financial', 'admin', 'category_summary', 'sales_history', 'cake_queue'].includes(view)
                     ? 'bg-emerald-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.42)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--accent-emerald)] hover:bg-black/5 active:scale-95',
                 ].join(' ')}
@@ -728,6 +730,7 @@ export default function App() {
                     border border-[var(--border-color)] shadow-[var(--elev-2)]">
 
                     {[
+                      { key: 'cake_queue',       icon: Cake,          label: 'คิวเค้ก'      },
                       { key: 'sales_history',    icon: TrendingUp,     label: 'ประวัติการขาย' },
                       { key: 'expenses',         icon: DollarSign,    label: 'รายจ่าย'      },
                       { key: 'menu_manage',       icon: ClipboardList, label: 'จัดการเมนู'   },
