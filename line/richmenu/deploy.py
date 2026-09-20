@@ -15,6 +15,12 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+for _s in (sys.stdout, sys.stderr):   # คอนโซล Windows เป็น cp1252 · ไม่บังคับ utf-8 แล้ว print ไทยจะ crash
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 API = "https://api.line.me"
 API_DATA = "https://api-data.line.me"
 
@@ -135,7 +141,9 @@ rid = call(f"{API}/v2/bot/richmenu",
            json.dumps(MENU_DEF, ensure_ascii=False).encode())["richMenuId"]
 print("สร้างเมนู:", rid)
 
-call(f"{API_DATA}/v2/bot/richmenu/{rid}/content", img.read_bytes(), "image/png")
+ctype = "image/jpeg" if img.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+# LINE จำกัดรูปริชเมนูไม่เกิน 1 MB · PNG 2500x1686 ที่มีรูปถ่ายมักเกิน ให้ใช้ JPEG แทน
+call(f"{API_DATA}/v2/bot/richmenu/{rid}/content", img.read_bytes(), ctype)
 print("อัปรูป:", img.name, f"({img.stat().st_size // 1024} KB)")
 
 call(f"{API}/v2/bot/user/all/richmenu/{rid}", b"", method="POST")
