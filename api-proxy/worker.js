@@ -3,6 +3,17 @@ import { sendTelegramShopMessage, postTelegramMessage, splitTelegramText } from 
 import { handleTelegramExpense, handleTelegramExpenseSetup, handleTelegramExpenseStatus, adminSecret } from './src/telegram/handler.js';
 import { buildPointsSummary } from './src/pointsSummary.js';
 import {
+  CAKE_ORDER_TTL_SEC,
+  CAKE_ORDER_MAX_BODY,
+  allowCakeOrder,
+  buildCakeReplyMessages,
+  cakeOrderKey,
+  extractCakeCode,
+  makeCakeCode,
+  sanitizeCakeOrder,
+  CAKE_CODE_NOT_FOUND,
+} from './src/cakeOrder.js';
+import {
   parseQrBeaconBody,
   incrementQrBeaconCounts,
   allowQrBeaconHit,
@@ -379,7 +390,8 @@ async function handleFollowers(request, env, headers) {
     return Response.json({ error: 'FOLLOWERS KV not bound' }, { status: 500, headers });
   }
 
-  const list = await env.FOLLOWERS.list({ limit: 1000 });
+  // เฉพาะ key ของผู้ติดตาม (LINE userId ขึ้นต้นด้วย U) · KV เดียวกันนี้เก็บ qrbeacon: กับ order: ด้วย
+  const list = await env.FOLLOWERS.list({ limit: 1000, prefix: 'U' });
   const people = [];
   for (const k of list.keys) {
     const v = await env.FOLLOWERS.get(k.name, 'json');
@@ -472,17 +484,88 @@ export function matchAutoReply(text) {
   return null;
 }
 
-async function replyToLine(env, replyToken, text) {
+async function replyMessagesToLine(env, replyToken, messages) {
   try {
     const token = await getLineAccessToken(env);
     await fetch('https://api.line.me/v2/bot/message/reply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ replyToken, messages: [{ type: 'text', text }] }),
+      body: JSON.stringify({ replyToken, messages: messages.slice(0, 5) }),
     });
   } catch {
     // Best effort — never fail the webhook, LINE retries and disables noisy endpoints.
   }
+}
+
+async function replyToLine(env, replyToken, text) {
+  return replyMessagesToLine(env, replyToken, [{ type: 'text', text }]);
+}
+
+/**
+ * ลูกค้าส่งรหัสออเดอร์เค้กจากเว็บเข้ามา → ตอบรูปลายที่เลือก + สรุปออเดอร์
+ * ใช้ reply (ฟรี ไม่กินโควตา) · ส่งซ้ำรหัสเดิมตอบสั้นลงและไม่ส่งรูปซ้ำ
+ * คืน true ถ้าจัดการข้อความนี้แล้ว (ไม่ต้องให้กฎ auto-reply ทำงานต่อ)
+ */
+async function handleCakeCode(ev, text, env) {
+  const code = extractCakeCode(text);
+  if (!code || !env.FOLLOWERS) return false;
+
+  const key = cakeOrderKey(code);
+  const saved = await env.FOLLOWERS.get(key, 'json').catch(() => null);
+  if (!saved) {
+    await replyToLine(env, ev.replyToken, CAKE_CODE_NOT_FOUND);
+    return true;
+  }
+
+  const repeat = !!saved.redeemedAt;
+  await replyMessagesToLine(env, ev.replyToken, buildCakeReplyMessages(saved.order, code, { repeat }));
+
+  if (!repeat) {
+    // ผูกออเดอร์กับคนที่ส่งโค้ดคนแรก · คนอื่นเอาโค้ดไปใช้ต่อไม่ได้
+    const next = { ...saved, redeemedAt: new Date().toISOString(), redeemedBy: ev.source?.userId || '' };
+    await env.FOLLOWERS.put(key, JSON.stringify(next), { expirationTtl: CAKE_ORDER_TTL_SEC })
+      .catch(() => {});
+  }
+  return true;
+}
+
+/**
+ * รับออเดอร์จากหน้า /cake แล้วคืนรหัสสั้นให้เว็บเอาไปต่อท้ายข้อความ
+ * เก็บใน KV 7 วัน · ไม่มี endpoint สำหรับอ่านกลับ ป้องกันคนเดารหัสแล้วดูข้อมูลคนอื่น
+ */
+async function handleCakeOrder(request, env, headers) {
+  if (!env.FOLLOWERS) {
+    return Response.json({ error: 'KV not bound' }, { status: 503, headers });
+  }
+  const ip = request.headers.get('CF-Connecting-IP') || '';
+  if (!allowCakeOrder(ip)) {
+    return Response.json({ error: 'Too many requests' }, { status: 429, headers });
+  }
+
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).length > CAKE_ORDER_MAX_BODY) {
+    return Response.json({ error: 'Body too large' }, { status: 413, headers });
+  }
+
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return Response.json({ error: 'Bad JSON' }, { status: 400, headers });
+  }
+
+  const order = sanitizeCakeOrder(body);
+  if (!order) {
+    return Response.json({ error: 'Bad order' }, { status: 400, headers });
+  }
+
+  const code = makeCakeCode();
+  await env.FOLLOWERS.put(
+    cakeOrderKey(code),
+    JSON.stringify({ order, createdAt: new Date().toISOString() }),
+    { expirationTtl: CAKE_ORDER_TTL_SEC },
+  );
+  return Response.json({ code }, { status: 200, headers });
 }
 
 async function handleWebhook(request, env) {
@@ -525,6 +608,9 @@ async function handleWebhook(request, env) {
     // ตอบอัตโนมัติเฉพาะแชทเดี่ยว · ในกลุ่มแจ้งเตือนออเดอร์ของร้าน บอทต้องเงียบ
     // ไม่งั้นพนักงานคุยกันแล้วบอทเด้งขึ้นมาแทรกทุกครั้งที่มีคำว่า "สั่ง"
     if (ev.source?.type !== 'user') continue;
+
+    // รหัสออเดอร์เค้กจากเว็บต้องมาก่อนกฎคีย์เวิร์ด · ข้อความมีคำว่า "เค้ก" อยู่ด้วยเสมอ
+    if (await handleCakeCode(ev, raw, env)) continue;
 
     const answer = matchAutoReply(raw);
     if (answer) await replyToLine(env, ev.replyToken, answer);
@@ -825,6 +911,9 @@ export default {
     }
     if (pathname.endsWith('/webhook')) {
       return handleWebhook(request, env);
+    }
+    if (pathname.endsWith('/cake-order')) {
+      return handleCakeOrder(request, env, headers);
     }
     if (pathname.endsWith('/followers')) {
       return handleFollowers(request, env, headers);
