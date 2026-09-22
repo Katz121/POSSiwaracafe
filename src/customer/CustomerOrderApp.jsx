@@ -21,6 +21,7 @@ import {
   Star,
   BookOpen,
   Maximize2,
+  MessageCircle,
 } from 'lucide-react';
 import {
   signInAnonymously,
@@ -192,6 +193,9 @@ const TX = {
     reviewDesc: 'ฝากรีวิวให้เราหน่อยน้า เป็นกำลังใจให้ร้านมากๆ 🙏',
     writeReview: 'เขียนรีวิว',
     reviewDiscountNote: '📣 รีวิวแล้ว แจ้งพนักงานตอนจ่ายเงิน รับส่วนลด 5% ทันที!',
+    lineTitle: 'เป็นสมาชิกร้านผ่านไลน์',
+    lineDesc: 'แอดไลน์ @siwara ไว้เช็คแต้มสะสม สั่งล่วงหน้า ไม่ต้องรอคิว และรู้ก่อนใครเมื่อมีเมนูใหม่',
+    lineButton: 'แอดไลน์ @siwara',
     orderAgain: 'สั่งเพิ่ม / สั่งใหม่',
     soldOutError: (names) => `ขออภัย "${names}" เพิ่งหมด กรุณานำออกจากตะกร้าแล้วลองใหม่อีกครั้ง`,
     submitFailedError: (code) => `สั่งออเดอร์ไม่สำเร็จ (${code}) — ลองใหม่อีกครั้ง`,
@@ -300,6 +304,9 @@ const TX = {
     reviewDesc: 'Leave us a review — it means a lot! 🙏',
     writeReview: 'Write a review',
     reviewDiscountNote: '📣 Show your review to staff at checkout for 5% off!',
+    lineTitle: 'Join us on LINE',
+    lineDesc: 'Add @siwara to check your points, pre-order to skip the queue, and hear about new menu items first.',
+    lineButton: 'Add @siwara on LINE',
     orderAgain: 'Order again',
     soldOutError: (names) => `Sorry, "${names}" just sold out — please remove it from your cart and try again`,
     submitFailedError: (code) => `Order failed (${code}) — please try again`,
@@ -1384,6 +1391,8 @@ function CheckoutStep({
 // ---------------------------------------------------------------------------
 // Sub-component: SuccessScreen
 // ---------------------------------------------------------------------------
+const LINE_OA_URL = 'https://line.me/R/ti/p/@siwara';
+
 function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, redeemedRewardName, t }) {
   const hasReviewUrl = typeof reviewUrl === 'string' && reviewUrl.trim() !== '';
   const [reviewDone, setReviewDone] = useState(false);
@@ -1479,13 +1488,36 @@ function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, redeemed
         </p>
       </motion.div>
 
+      {/* LINE OA card */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+        className="mt-8 w-full max-w-xs bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 text-center"
+      >
+        <p className="font-bold text-[var(--text-primary)] text-base mb-1">{t('lineTitle')}</p>
+        <p className="text-[var(--text-secondary)] text-sm mb-4 leading-relaxed">
+          {t('lineDesc')}
+        </p>
+        <a
+          href={LINE_OA_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-[var(--radius-sm)] font-bold text-white text-sm"
+          style={{ backgroundColor: '#06C755' }}
+        >
+          <MessageCircle size={16} />
+          {t('lineButton')}
+        </a>
+      </motion.div>
+
       {/* Review prompt card */}
       {hasReviewUrl && (
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.55 }}
-              className="mt-8 w-full max-w-xs bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 text-center"
+          transition={{ delay: 0.6 }}
+              className="mt-4 w-full max-w-xs bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 text-center"
         >
           {reviewDone ? (
             <p className="font-bold text-emerald-600 text-base py-2">{t('reviewThanks')}</p>
