@@ -21,6 +21,7 @@
 import { getOrderDate } from './calculations.js';
 import { resolveStockId } from './stockMerge.js';
 import { applyMilkSwap } from './milkSwap.js';
+import { buildFixContext, currentLineRecipe, evaluateLineFix, lineDeductions, orderMilkSwap, priorBackfill } from './stockAuditFix.js';
 
 const num = (value) => {
   const n = Number(value);
@@ -167,6 +168,15 @@ export function planOrderDeduction(order, stockById, options = {}) {
   return { applied, skipped, unlinked };
 }
 
+/** ปุ่มแก้ของข้อที่ยังเปิดอยู่ · ลิงก์เสียในตัวเลือก → ไปแก้ตัวเลือก · เมนูถูกลบ → ไปตรวจนับ */
+function fixTarget(recipe, menuId) {
+  if (!recipe?.menu) return { kind: 'count' };
+  const menuDead = recipe.dead.some((d) => d.source === 'menu');
+  const modDead = recipe.dead.find((d) => d.source === 'modifier');
+  if (modDead && !menuDead) return { kind: 'modifier', modifierId: modDead.modifierId, modifierName: modDead.modifierName };
+  return { kind: 'menu', menuId: recipe.menu.id || menuId };
+}
+
 const orderTime = (order) => {
   if (order?.time) return String(order.time);
   const s = order?.createdAt?.seconds;
@@ -184,11 +194,20 @@ const orderTime = (order) => {
  * @param {Array} [input.menu] ใช้บอกว่าเมนูที่ไม่ได้ผูกในบิล ตอนนี้ผูกแล้วหรือยัง
  * @param {string} input.date YYYY-MM-DD
  * @param {object} [input.milkSwap] นมโอ๊ตตัดแทนนมวัว (ดู milkSwap.js)
+ * @param {Array} [input.beanModifiers] ตัวเลือก (#) ปัจจุบัน · ใช้ดูว่าแก้สูตรแล้วหรือยัง (stockAuditFix.js)
+ *
+ * ทุกข้อใน `issues` มี `state`:
+ * - 'open' ยังต้องแก้
+ * - 'fixed_pending_backfill' แก้สูตรแล้ว แต่บิลที่ขายไปยังตัดขาด · กด "ตัดสต็อกที่ขาดย้อนหลัง"
+ * - 'resolved' เรียบร้อยแล้ว (ตัดย้อนหลังแล้ว / ตอนขายตัดครบ / นับสต็อกแล้ว)
+ * ผลตัดสิน (verdict) และความแม่นยำ (`accuracy`) ดูเฉพาะข้อที่ยังไม่เรียบร้อย ·
+ * `accuracyBefore` = ความแม่นยำตามบิลเดิมก่อนแก้ ไว้โชว์ "ก่อนแก้ 76% → หลังตัดย้อนหลัง 100%"
  */
-export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap } = {}) {
+export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap, beanModifiers = [] } = {}) {
   const stockById = new Map(stock.map((s) => [s.id, s]));
   const menuById = new Map(menu.map((m) => [m.id, m]));
   const menuByName = new Map(menu.map((m) => [String(m.name || '').trim(), m]));
+  const fixCtx = buildFixContext({ stock, menu, beanModifiers, milkSwap });
 
   const dayOrders = orders
     .filter((o) => getOrderDate(o) === date)
@@ -214,6 +233,7 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap } 
     billsMismatch: 0,
     billsRecorded: 0,
     cost: 0,
+    unitsAccurate: 0,
   };
 
   const addIssue = (issue) => issues.push(issue);
@@ -224,7 +244,9 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap } 
     const deducted = completed && Boolean(order.stockDeducted);
     // บิลที่ตัดไปแล้วโดยไม่มีป้าย milkSwapApplied = ตัดก่อนมีระบบนมโอ๊ต (ตัดนมวัวจริง)
     // ตรวจตามกติกาตอนตัด ไม่งั้นบิลนมโอ๊ตเก่าขึ้น "ตัดไม่ตรงสูตร" ทั้งที่ระบบทำตามกติกาสมัยนั้น
-    const orderSwap = order.stockDeducted && !order.stockDeduction?.milkSwapApplied ? null : milkSwap;
+    const orderSwap = orderMilkSwap(order, milkSwap);
+    let deductions = null; // lineDeductions ของบิลนี้ · คำนวณเมื่อมีบรรทัดที่มีปัญหาเท่านั้น
+    let prior = null;
     if (completed) summary.completed += 1; else summary.waiting += 1;
 
     const lines = order.items || [];
@@ -241,11 +263,13 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap } 
         severity: 'error',
         type: 'bill_not_deducted',
         ...bill,
+        state: 'open',
+        fix: { kind: 'deduct_bill', orderId: order.id },
         message: 'บิลเสร็จแล้วแต่ไม่ถูกตัดสต็อก',
       });
     }
 
-    lines.forEach((item) => {
+    lines.forEach((item, index) => {
       const qty = num(item?.quantity) || 1;
       const name = String(item?.name || 'ไม่ระบุ');
       const modifier = String(item?.beanModifier || '').trim();
@@ -253,10 +277,30 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap } 
       const { status: rawStatus, alive, dead } = classifyLinks(applyMilkSwap(item, orderSwap, stockById), stockById);
       const currentMenu = menuById.get(item?.id) || menuByName.get(name.trim());
       // สูตรในบิลมีแต่ของจากตัวเลือก (เมล็ด) · ตัวเมนูเองไม่มีสูตร แก้ว/นม/ไซรัปจึงไม่ถูกตัด
-      const status = rawStatus === LINK_STATUS.OK && modifier && currentMenu
-        && !(currentMenu.stockLinks || []).length && !(currentMenu.stockLinkId)
-        ? LINK_STATUS.MODIFIER_ONLY
-        : rawStatus;
+      // ตอนขายเมนูไม่มีสูตร: ตอนนี้เมนูยังไม่มีสูตร หรือสูตรในบิลมีแต่ของจากตัวเลือกล้วนๆ
+      // (เมนูเพิ่งผูกทีหลัง · ยังต้องตัดแก้ว/นมย้อนหลัง)
+      const recipe = rawStatus === LINK_STATUS.OK && modifier && currentMenu ? currentLineRecipe(item, fixCtx) : null;
+      const menuHadNone = Boolean(recipe) && (
+        (!(currentMenu.stockLinks || []).length && !(currentMenu.stockLinkId))
+        || (recipe.modifiers.length > 0 && alive.every((l) => recipe.modifiers.some((m) => (m.stockLinks || [])
+          .some((ml) => ml?.stockId && resolveStockId(ml.stockId, stockById) === l.stockId))))
+      );
+      const status = menuHadNone ? LINK_STATUS.MODIFIER_ONLY : rawStatus;
+      let lineFix = null;
+      if (status !== LINK_STATUS.OK) {
+        if (!deductions) {
+          deductions = lineDeductions(order, stockById, milkSwap);
+          prior = priorBackfill(order, stockById);
+        }
+        lineFix = evaluateLineFix(order, index, fixCtx, {
+          requireMenuLinks: status === LINK_STATUS.UNLINKED || status === LINK_STATUS.MODIFIER_ONLY,
+          deductions,
+          prior,
+        });
+      }
+      // แก้แล้ว (ตัดครบ/ตัดย้อนหลังแล้ว) หรือบิลยังไม่ตัด (รอตัดตอนเสร็จ) นับว่าตรงสูตร
+      if (status === LINK_STATUS.OK || status === LINK_STATUS.MODIFIER_ONLY
+        || lineFix?.state === 'resolved' || lineFix?.state === 'not_deducted') summary.unitsAccurate += qty;
 
       summary.units += qty;
       summary.revenue += num(item?.price) * qty * ratio;
@@ -325,12 +369,23 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap } 
           status,
           item: name,
           menuId: currentMenu?.id || item?.id || null,
-          fixedNow: prev.menuLinkedNow === true,
+          fixedNow: false,
           deadCount: 0,
           quantity: 0,
           bills: [],
+          lines: [],
+          fix: null,
         };
         agg.quantity += qty;
+        agg.lines.push({
+          orderId: order.id,
+          index,
+          quantity: qty,
+          state: lineFix.state,
+          missing: lineFix.missing,
+          requireMenuLinks: status === LINK_STATUS.UNLINKED || status === LINK_STATUS.MODIFIER_ONLY,
+        });
+        if (lineFix.state === 'open' && !agg.fix) agg.fix = fixTarget(lineFix.recipe, currentMenu?.id || item?.id || null);
         agg.deadCount = Math.max(agg.deadCount, dead.length);
         agg.status = worstStatus(agg.status, status);
         if (agg.status === LINK_STATUS.DEAD) agg.severity = 'error';
@@ -362,11 +417,16 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap } 
       });
       if (diffs.length) {
         summary.billsMismatch += 1;
+        // นับสต็อกของจริงหลังบิลนี้ครบทุกตัวที่คลาด = ยอดในระบบถูกแก้ด้วยการนับแล้ว
+        const at = String(record.at || '');
+        const counted = Boolean(at) && diffs.every((d) => String(stockById.get(d.stockId)?.lastCountedAt || '') > at);
         addIssue({
           severity: 'error',
           type: 'bill_mismatch',
           ...bill,
           diffs,
+          state: counted ? 'resolved' : 'open',
+          fix: { kind: 'count', stockId: diffs[0].stockId },
           message: `ตัดสต็อกไม่ตรงสูตร ${diffs.length} รายการ`,
         });
       }
@@ -374,12 +434,19 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap } 
   });
 
   itemIssues.forEach((agg) => {
+    const states = agg.lines.map((l) => l.state);
+    agg.state = states.includes('open') ? 'open'
+      : states.includes('needs_backfill') ? 'fixed_pending_backfill' : 'resolved';
+    agg.fixedNow = agg.state !== 'open';
+    agg.missingUnits = agg.lines.filter((l) => l.state === 'needs_backfill').reduce((s, l) => s + l.quantity, 0);
     const where = agg.bills.length > 1 ? ` ใน ${agg.bills.length} บิล` : '';
     let message;
     if (agg.type === 'item_unlinked') {
       message = agg.fixedNow
         ? `${agg.item} ×${agg.quantity}${where} ไม่ถูกตัดสต็อก · ตอนขายยังไม่ผูก (ตอนนี้ผูกแล้ว)`
         : `${agg.item} ×${agg.quantity}${where} ไม่ถูกตัดสต็อก เพราะเมนูยังไม่ผูกสต็อก`;
+    } else if (agg.type === 'item_modifier_only' && agg.fixedNow) {
+      message = `${agg.item} ×${agg.quantity}${where} ตัดแค่ตัวเลือก · ตอนขายเมนูยังไม่มีสูตร (ตอนนี้ผูกแล้ว)`;
     } else if (agg.type === 'item_modifier_only') {
       message = `${agg.item} ×${agg.quantity}${where} ตัดแค่ตัวเลือก (เช่นเมล็ด) · ตัวเมนูยังไม่มีสูตร แก้ว/นมไม่ถูกตัด`;
     } else if (agg.status === LINK_STATUS.DEAD) {
@@ -417,29 +484,45 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap } 
     type: 'stock_negative',
     stockId: r.stockId,
     item: r.name,
+    state: 'open',
+    fix: { kind: 'count', stockId: r.stockId },
     message: `${r.name} คงเหลือติดลบ (${roundQty(r.onHand)} ${r.unit}) · ของเข้ายังไม่ได้ลง หรือสูตรใช้เกินจริง`,
   }));
 
   // ความแม่นยำ = สัดส่วนหน่วยที่ขายแล้วตัดสต็อกได้ตามสูตรที่ร้านตั้งไว้
   // (ผูกแค่ตัวเลือกนับว่าตัดตามสูตร · แจ้งแยกเป็นข้อสังเกต ไม่ลดคะแนน)
-  const accuracy = summary.units > 0 ? (summary.unitsOk + summary.unitsModifierOnly) / summary.units : 1;
-  const errors = issues.filter((i) => i.severity === 'error').length;
-  const warnings = issues.filter((i) => i.severity === 'warn').length;
+  // accuracyBefore = ตามบิลเดิม · accuracy = หลังนับบรรทัดที่แก้แล้ว/ตัดย้อนหลังแล้วว่าตรงสูตร
+  const accuracyBefore = summary.units > 0 ? (summary.unitsOk + summary.unitsModifierOnly) / summary.units : 1;
+  const accuracy = summary.units > 0 ? Math.min(1, summary.unitsAccurate / summary.units) : 1;
+  const open = issues.filter((i) => i.state === 'open');
+  const pending = issues.filter((i) => i.state === 'fixed_pending_backfill');
+  const errors = open.filter((i) => i.severity === 'error').length;
+  // แก้สูตรแล้วแต่ยังไม่ตัดย้อนหลัง · สต็อกยังขาดอยู่จริง วันนั้นยังเป็น "warn"
+  const warnings = open.filter((i) => i.severity === 'warn').length + pending.length;
   const verdict = summary.bills === 0 ? 'empty' : errors > 0 ? 'bad' : warnings > 0 ? 'warn' : 'ok';
+  const openCount = open.filter((i) => i.severity !== 'info').length + pending.length;
+  const resolvedCount = issues.filter((i) => i.state === 'resolved').length;
 
+  const STATE_ORDER = { open: 0, fixed_pending_backfill: 1, resolved: 2 };
   const order = { error: 0, warn: 1, info: 2 };
-  issues.sort((a, b) => (order[a.severity] - order[b.severity]) || String(a.time).localeCompare(String(b.time)));
+  issues.sort((a, b) => (STATE_ORDER[a.state] - STATE_ORDER[b.state])
+    || (order[a.severity] - order[b.severity]) || String(a.time).localeCompare(String(b.time)));
 
-  return { summary: { ...summary, accuracy, errors, warnings, verdict }, sold, stockUsed, issues };
+  return {
+    summary: { ...summary, accuracy, accuracyBefore, errors, warnings, verdict, openCount, pendingCount: pending.length, resolvedCount },
+    sold,
+    stockUsed,
+    issues,
+  };
 }
 
 /**
  * สรุปหลายวันแบบย่อ · ใช้ทำแถบ "7 วันล่าสุด ตัดถูกไหม"
  * @param {string[]} dates
  */
-export function auditDays({ orders = [], stock = [], menu = [], dates = [], milkSwap } = {}) {
+export function auditDays({ orders = [], stock = [], menu = [], dates = [], milkSwap, beanModifiers = [] } = {}) {
   return dates.map((date) => {
-    const { summary } = auditDay({ orders, stock, menu, date, milkSwap });
+    const { summary } = auditDay({ orders, stock, menu, date, milkSwap, beanModifiers });
     return {
       date,
       bills: summary.bills,

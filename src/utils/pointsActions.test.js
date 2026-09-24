@@ -8,6 +8,7 @@ vi.mock('firebase/firestore', () => ({
   increment: (n) => ({ __inc: n }),
   arrayUnion: (...items) => ({ __union: items }),
   arrayRemove: (...items) => ({ __remove: items }),
+  doc: (_db, ...parts) => ({ path: parts.join('/') }),
   runTransaction: (_db, fn) => {
     const run = queue.then(() => fn({
       get: async (ref) => ({ exists: () => store.has(ref.path), data: () => structuredClone(store.get(ref.path)) }),
@@ -20,13 +21,14 @@ vi.mock('firebase/firestore', () => ({
           else cur[k] = v;
         }
       },
+      delete: (ref) => { store.delete(ref.path); },
     }));
     queue = run.catch(() => {});
     return run;
   },
 }));
 
-import { settlePendingPoints, withInFlightGuard, planEarnClawback, planBillEditPoints } from './pointsActions';
+import { settlePendingPoints, withInFlightGuard, planEarnClawback, planBillEditPoints, runDeleteOrderTransaction } from './pointsActions';
 
 const ref = { path: 'members/0839536697' };
 const seed = (data) => store.set(ref.path, { points: 45, pendingPoints: 40, pendingReason: 'order', pendingOrderIds: ['order1', 'order2'], pointsHistory: [], ...data });
@@ -115,5 +117,28 @@ describe('withInFlightGuard', () => {
     const inFlight = new Set();
     await expect(withInFlightGuard(inFlight, ['a'], async () => { throw new Error('x'); })).rejects.toThrow('x');
     expect(inFlight.size).toBe(0);
+  });
+});
+
+describe('runDeleteOrderTransaction · คืนสต็อก', () => {
+  const base = 'artifacts/app/public/data';
+  it('คืนทั้งที่ตัดตอนเสร็จ และที่ตัดย้อนหลัง (stockBackfill)', async () => {
+    store.set(`${base}/stock/milk`, { quantity: 700 });
+    store.set(`${base}/stock/bean2`, { quantity: 940 });
+    store.set(`${base}/orders/o1`, { status: 'completed' });
+    const order = {
+      id: 'o1', status: 'completed', stockDeducted: true, pointsEarned: 0,
+      items: [{ name: 'ลาเต้', quantity: 2, stockLinks: [{ stockId: 'milk', usage: 150 }, { stockId: 'gone', usage: 20 }] }],
+      stockDeduction: { applied: { milk: 300 } },
+      stockBackfill: [
+        { at: 'a', lines: [{ itemKey: '0', applied: { bean2: 40 } }] },
+        { at: 'b', lines: [{ itemKey: '0', applied: { bean2: 20 } }] },
+      ],
+    };
+    const stockList = [{ id: 'milk' }, { id: 'bean2' }];
+    await runDeleteOrderTransaction({}, 'app', order, stockList, '');
+    expect(store.get(`${base}/stock/milk`).quantity).toBe(1000);
+    expect(store.get(`${base}/stock/bean2`).quantity).toBe(1000);
+    expect(store.has(`${base}/orders/o1`)).toBe(false);
   });
 });
