@@ -120,7 +120,7 @@ export default function App() {
     isSyncing, settingsLoaded, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes,
     pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, geminiApiKey, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
-    comboEnabled, comboPercent, spendThreshold, spendDiscount, milkSwapSetting
+    comboEnabled, comboPercent, spendThreshold, spendDiscount, milkSwapSetting, packagingPresetsSetting
   } = usePosData(user, appId);
   // นมโอ๊ตตัดแทนนมวัว · ค่าที่ใช้จริง (ตั้งไว้ หรือค่าเริ่มต้นจากชื่อสต็อก)
   const milkSwap = useMemo(() => resolveMilkSwap(milkSwapSetting, stock), [milkSwapSetting, stock]);
@@ -481,11 +481,11 @@ export default function App() {
     shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
     cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
     comboEnabled, comboPercent, spendThreshold, spendDiscount,
-    milkSwap, milkSwapSetting,
+    milkSwap, milkSwapSetting, packagingPresetsSetting,
   }), [pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths,
     redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, geminiApiKey, aiReady, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
-    comboEnabled, comboPercent, spendThreshold, spendDiscount, milkSwap, milkSwapSetting]);
+    comboEnabled, comboPercent, spendThreshold, spendDiscount, milkSwap, milkSwapSetting, packagingPresetsSetting]);
 
   // ── Shell state ─────────────────────────────────────────────────────────
   const isWide = useMediaQuery('(min-width: 1024px)');

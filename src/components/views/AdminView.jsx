@@ -21,6 +21,7 @@ import ShopTab from './settings/ShopTab';
 import PromotionsTab from './settings/PromotionsTab';
 import ModifiersTab from './settings/ModifiersTab';
 import ModifierSheet from './settings/ModifierSheet';
+import PackagingPresetsCard from './settings/PackagingPresetsCard';
 import MilkSwapCard from './settings/MilkSwapCard';
 import QuickExpensesTab, { QuickExpenseSheet } from './settings/QuickExpensesTab';
 import PointsTab from './settings/PointsTab';
@@ -62,7 +63,7 @@ export default function AdminView() {
     vatEnabled, pinEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount,
     geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
     cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent,
-    spendThreshold, spendDiscount, pointsRewardsEnabled, pointsRewards, milkSwapSetting,
+    spendThreshold, spendDiscount, pointsRewardsEnabled, pointsRewards, milkSwapSetting, packagingPresetsSetting,
   } = useConfigContext();
   const { adminTab, setAdminTab, runDbAction, aiUtils, lockApp } = useUIContext();
   const params = useRouteParams();
@@ -436,6 +437,11 @@ export default function AdminView() {
     toast.success('บันทึกการตัดนมโอ๊ตแล้ว');
   }, 'บันทึกการตัดนมโอ๊ตไม่สำเร็จ');
 
+  const savePackagingPresets = (packagingPresets) => runDbAction(async () => {
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), { packagingPresets }, { merge: true });
+    toast.success('บันทึกชุดแก้ว/หลอดแล้ว');
+  }, 'บันทึกชุดแก้ว/หลอดไม่สำเร็จ');
+
   const handleTestAI = async () => {
     const key = settingsDraft.geminiApiKey;
     if (!key) {
@@ -500,6 +506,7 @@ export default function AdminView() {
         return (
           <div className="flex flex-col gap-4">
             <MilkSwapCard stock={stock} setting={milkSwapSetting} onSave={saveMilkSwap} />
+            <PackagingPresetsCard stock={stock} setting={packagingPresetsSetting} onSave={savePackagingPresets} />
             <ModifiersTab
               beanModifiers={beanModifiers}
               health={modifierHealth}

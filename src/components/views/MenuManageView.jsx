@@ -18,6 +18,7 @@ import {
 } from '../ui';
 import MenuTable from './menu/MenuTable';
 import MenuEditorSheet from './menu/MenuEditorSheet';
+import { resolvePackagingPresets } from '../../utils/packagingPresets';
 import CategoryManagerSheet from './menu/CategoryManagerSheet';
 import PromotionSheet from './menu/PromotionSheet';
 import { FeaturedOrderSheet, WasteSheet, CakeStockSheet } from './menu/ItemActionSheets';
@@ -56,7 +57,7 @@ function useHeight(ref) {
  */
 export default function MenuManageView() {
   const { menu, stock, dynamicCategories, beanModifiers, orders, expenses, isSyncing } = useDataContext();
-  const { geminiApiKey, aiReady, cakeSaleCategories } = useConfigContext();
+  const { geminiApiKey, aiReady, cakeSaleCategories, packagingPresetsSetting } = useConfigContext();
   const { runDbAction, callGeminiAPI, activePromotion, setActivePromotion } = useUIContext();
   const params = useRouteParams();
   const navigate = useNavigate();
@@ -77,6 +78,7 @@ export default function MenuManageView() {
       .map(([category, items]) => [category, items.sort((a, b) => String(a.name).localeCompare(String(b.name), 'th'))]);
   }, [stock]);
   const stockById = useMemo(() => new Map(stock.map(item => [item.id, item])), [stock]);
+  const packagingPresets = useMemo(() => resolvePackagingPresets(packagingPresetsSetting, stock).presets, [packagingPresetsSetting, stock]);
   const pickStock = useMemo(() => stock.filter(item => !isArchivedStock(item)), [stock]);
 
   // ── Editor form state ───────────────────────────────────────────────────
@@ -573,6 +575,7 @@ export default function MenuManageView() {
         cakeSaleCategories={cakeSaleCategories}
         geminiApiKey={geminiApiKey}
         aiReady={aiReady}
+        packagingPresets={packagingPresets}
         callGeminiAPI={callGeminiAPI}
         toast={toast}
         isUploading={isUploading}

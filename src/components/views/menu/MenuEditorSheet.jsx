@@ -13,6 +13,7 @@ import { compressImage } from '../../../utils/calculations';
 import { generateMenuImage } from '../../../services/aiService';
 import { uploadImageToR2 } from '../../../services/imageUpload';
 import { SheetSection, ToggleRow } from './parts';
+import { applyPackagingPreset } from '../../../utils/packagingPresets';
 
 const EDITOR_FORM_ID = 'menu-editor-form';
 
@@ -33,7 +34,7 @@ export default function MenuEditorSheet({
   open, onClose, focusSection,
   editingItem, newItem, setNewItem, onSubmit, onDelete, onCakeStock,
   menu, stock, stockById, stockLinkGroups, dynamicCategories, beanModifiers, cakeSaleCategories,
-  geminiApiKey, aiReady, callGeminiAPI, toast,
+  geminiApiKey, aiReady, callGeminiAPI, toast, packagingPresets = [],
   isUploading, isUploadingPoster, onImageUpload, onPosterUpload,
 }) {
   const [isSuggestingStock, setIsSuggestingStock] = useState(false);
@@ -100,6 +101,13 @@ export default function MenuEditorSheet({
     ...p,
     stockLinks: [...(p.stockLinks || []), p.recipeMode === 'whole' ? { stockId: '', usage: 0, perWhole: '' } : { stockId: '', usage: 1 }],
   }));
+  // ทางลัดชุดแก้ว/หลอด (ตั้งที่ ตั้งค่า → ตัวเลือกเมนู) · ของที่มีในสูตรแล้วไม่ใส่ซ้ำ
+  const addPackaging = (preset) => {
+    const whole = newItem.recipeMode === 'whole';
+    const { links: next, added } = applyPackagingPreset(newItem.stockLinks || [], preset, { whole, pieces: Number(newItem.recipePieces) || 0 });
+    setNewItem((p) => ({ ...p, stockLinks: next }));
+    if (added) toast.success(`ใส่ ${preset.label} แล้ว`); else toast.info?.(`${preset.label} มีในสูตรแล้ว`);
+  };
   const removeStockLink = (i) => setNewItem((p) => ({ ...p, stockLinks: p.stockLinks.filter((_, idx) => idx !== i) }));
   const updateStockLink = (i, f, v) => setNewItem((p) => {
     const next = [...p.stockLinks];
@@ -295,6 +303,19 @@ Return [] if no stock items match.`;
               </div>
             )}
 
+            {packagingPresets.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="ทางลัดแก้ว/หลอด">
+                <span className="text-sm text-[var(--text-muted)]">ทางลัด:</span>
+                {packagingPresets.map((p) => {
+                  const inRecipe = p.links.every((l) => (newItem.stockLinks || []).some((x) => x.stockId === l.stockId));
+                  return (
+                    <Button key={p.id} size="sm" variant={inRecipe ? 'primary' : 'secondary'} aria-pressed={inRecipe} onClick={() => addPackaging(p)}>
+                      {inRecipe ? '✓ ' : '+ '}{p.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" leftIcon={<Plus size={18} />} onClick={addStockLink}>เพิ่มวัตถุดิบ</Button>
               <Button variant="secondary" leftIcon={<CookingPot size={18} />} onClick={() => setPickSlice((v) => !v)} aria-expanded={pickSlice}>ผูกกับเค้กชิ้นที่ผลิต</Button>
