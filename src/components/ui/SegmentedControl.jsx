@@ -62,7 +62,7 @@ export default function SegmentedControl({
             }}
             className={`${fullWidth ? 'flex-1' : ''} ${h} inline-flex items-center justify-center gap-1.5 px-3 rounded-[var(--radius-sm)] font-medium leading-snug whitespace-nowrap transition-colors duration-150 outline-none focus-visible:shadow-[var(--focus-ring)] disabled:opacity-50 disabled:cursor-not-allowed ${
               active
-                ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] font-semibold shadow-[var(--elev-1)]'
+                ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] font-semibold shadow-[var(--elev-1)] ring-1 ring-inset ring-[var(--accent-emerald)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
