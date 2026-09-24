@@ -141,6 +141,11 @@ service cloud.firestore {
                       && request.resource.data.items is list;
 
         allow read, update, delete: if isStaff();
+
+        // เส้นทางสำรองอ่านบิลของตัวเอง (id = qr_{uid}_{requestId}) ในทรานแซกชันก่อนสร้าง
+        // เพื่อกันกดส่งซ้ำ · เดิมอ่านไม่ได้ ทรานแซกชันโดนปฏิเสธทุกครั้ง = สั่งไม่ได้เลยตอน function ล่ม
+        // ผูกกับ uid ของผู้เรียก จึงอ่านได้แค่บิลที่ตัวเองสร้าง ไม่เห็นบิลคนอื่น
+        allow get: if signedIn() && id.matches('qr_' + request.auth.uid + '_.*');
       }
 
       // ── ข้อมูลภายในร้าน · พนักงานเท่านั้น ────────────────────────────────
