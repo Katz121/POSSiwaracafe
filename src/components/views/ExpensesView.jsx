@@ -1,193 +1,144 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { DollarSign, Calendar, Trash2, Edit, BarChart3, RefreshCcw, Zap, X } from 'lucide-react';
-import { collection, doc, deleteDoc, serverTimestamp, updateDoc, increment, writeBatch } from 'firebase/firestore';
+import { useCallback, useMemo, useRef, useEffect, useState } from 'react';
+import { Wallet, Pencil, Trash2, Bot, PackagePlus, ReceiptText, Settings2 } from 'lucide-react';
+import { doc, deleteDoc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
-import { useAppContext } from '../../context/AppContext';
+import { useDataContext, useUIContext } from '../../context/AppContext';
+import { useNavigate, useRouteParams } from '../../navigation';
 import { getISODate, getOrderDate } from '../../utils/calculations';
-import { Button, Input, Select, EmptyState, useToast } from '../ui';
-import { EXPENSE_CATEGORIES, STOCK_CATEGORIES, getStockCategory, inferStockCategory, DEFAULT_MIN_QUANTITY } from '../../config/constants';
-import { isInventoryCategory, roundMoney, findAliasMatch, findStockCandidates, planStockIntake, buildExpenseRecord, normalizeName } from '../../utils/stockIntake';
+import { formatNumber, formatThaiDate, toISODateLocal } from '../../utils/format';
+import {
+  Badge, Banner, Button, DataTable, DateStepper, FilterChips, IconButton, Money, PageHeader, SectionCard, SegmentedControl, Sheet,
+  StatCard, useToast,
+} from '../ui';
+import ExpenseForm from './inventory/ExpenseForm';
+import TopConfirm from './inventory/TopConfirm';
+import { buildTitleSuggestions, emptyExpense, intakeFormFor, validateExpense } from './inventory/expenseModel';
+import { saveExpense, reportSave } from './inventory/expenseSave';
+
+const MODES = [
+  { value: 'daily', label: 'รายวัน' },
+  { value: 'monthly', label: 'รายเดือน' },
+  { value: 'all', label: 'ทั้งหมด' },
+];
+
+// Moving the month keeps the day-of-month (clamped), never past today.
+function shiftToMonth(isoDate, isoMonth) {
+  const [y, m] = isoMonth.split('-').map(Number);
+  const day = Number(isoDate.slice(8, 10)) || 1;
+  const last = new Date(y, m, 0).getDate();
+  const next = toISODateLocal(new Date(y, m - 1, Math.min(day, last)));
+  const today = getISODate();
+  return next > today ? today : next;
+}
 
 export default function ExpensesView() {
-  const { expenses, orders, quickExpenses, runDbAction, callGeminiAPI, handleViewChange, setAdminTab, stock } = useAppContext();
+  const { expenses, orders, quickExpenses, stock } = useDataContext();
+  const { runDbAction, callGeminiAPI, handleViewChange, setAdminTab } = useUIContext();
+  const params = useRouteParams();
+  const navigate = useNavigate();
   const toast = useToast();
 
-  // Local states
   const [expenseViewMode, setExpenseViewMode] = useState('daily');
   const [expenseFilterDate, setExpenseFilterDate] = useState(getISODate());
-  const [newExpense, setNewExpense] = useState({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
-  const [editingExpense, setEditingExpense] = useState(null);
-  const [showExpenseSuggestions, setShowExpenseSuggestions] = useState(false);
+  const [newExpense, setNewExpense] = useState(emptyExpense);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [syncMessage, setSyncMessage] = useState('');
+  const syncMessageTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(syncMessageTimerRef.current), []);
+
+  const [editing, setEditing] = useState(null); // { expense, form, errors }
+  const [toDelete, setToDelete] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [financialInsight, setFinancialInsight] = useState('');
   const [isAnalyzingFinances, setIsAnalyzingFinances] = useState(false);
 
-  // New states for UX improvements
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState('');
-  const [validationErrors, setValidationErrors] = useState({});
-  const syncMessageTimerRef = useRef(null);
-
-  // Clear the auto-hide timer on unmount so it never fires on an unmounted view
-  useEffect(() => () => clearTimeout(syncMessageTimerRef.current), []);
-
-  // Validation helper
-  const validateExpense = useCallback((expense) => {
-    const errors = {};
-
-    if (!expense.title || !expense.title.trim()) {
-      errors.title = 'กรุณากรอกชื่อรายจ่าย';
+  // `#/expenses?intake=<stockId>` · open the form prefilled for that stock item
+  // (stock may arrive after the view mounts, so adopt it once it is there).
+  const [intakeItem, setIntakeItem] = useState(null);
+  const [adoptedIntake, setAdoptedIntake] = useState(null);
+  if (params.intake && params.intake !== adoptedIntake) {
+    const item = stock.find((s) => s.id === params.intake);
+    if (item) {
+      setAdoptedIntake(params.intake);
+      setIntakeItem(item);
+      setNewExpense(intakeFormFor(item));
+      setValidationErrors({});
     }
-
-    const qty = Number(expense.quantity);
-    if (isInventoryCategory(expense.category) && qty <= 0) {
-      errors.quantity = 'จำนวนต้องมากกว่า 0';
-    }
-
-    const price = Number(expense.pricePerUnit);
-    const amount = Number(expense.amount) || (qty * price);
-    const calculatedUnitCost = qty > 0 ? amount / qty : price;
-    if (isInventoryCategory(expense.category) && calculatedUnitCost <= 0) {
-      errors.pricePerUnit = 'ราคาต้องมากกว่า 0';
-    }
-
-    if (!amount || amount <= 0) {
-      errors.amount = 'ราคารวมต้องมากกว่า 0';
-    }
-
-    return errors;
-  }, []);
-
-  // Keep names aligned with the stock master and existing expense entries.
-  const expenseTitleSuggestions = useMemo(() => {
-    const seen = new Set();
-    const suggestions = [];
-    const addSuggestion = (value) => {
-      const title = String(value || '').trim();
-      const key = title.toLocaleLowerCase();
-      if (!title || seen.has(key)) return;
-      seen.add(key);
-      suggestions.push(title);
-    };
-
-    stock.forEach(item => addSuggestion(item.name));
-    expenses.forEach(expense => addSuggestion(expense.title));
-
-    return suggestions.sort((a, b) => a.localeCompare(b, 'th'));
-  }, [stock, expenses]);
-
-  const visibleExpenseSuggestions = useMemo(() => {
-    const query = String(newExpense.title || '').trim().toLocaleLowerCase();
-    return expenseTitleSuggestions
-      .filter(title => !query || title.toLocaleLowerCase().includes(query))
-      .sort((a, b) => {
-        if (!query) return a.localeCompare(b, 'th');
-        const aValue = a.toLocaleLowerCase();
-        const bValue = b.toLocaleLowerCase();
-        const score = (value) => {
-          if (value === query) return 0;
-          if (value.startsWith(query)) return 1;
-          if (value.split(/\s+/).some(word => word.startsWith(query))) return 2;
-          return 3;
-        };
-        return score(aValue) - score(bValue) || a.localeCompare(b, 'th');
-      });
-  }, [expenseTitleSuggestions, newExpense.title]);
-
-  const applyExpenseTitle = (typedTitle) => {
-    const matchedExpenseTitle = expenseTitleSuggestions.find(
-      suggestion => suggestion.toLocaleLowerCase() === typedTitle.trim().toLocaleLowerCase()
-    );
-    const title = matchedExpenseTitle || typedTitle;
-    const exactMatches = findStockCandidates(stock, title, 1);
-    const matchedStock = (exactMatches.length > 0 && normalizeName(exactMatches[0].name) === normalizeName(title)) ? exactMatches[0] : null;
-    setNewExpense({
-      ...newExpense,
-      title,
-      ...(matchedStock
-        ? {
-            category: getStockCategory(matchedStock),
-            unit: matchedStock.unit || newExpense.unit,
-            pricePerUnit: matchedStock.unitCost || newExpense.pricePerUnit
-          }
-        : {})
-    });
+  }
+  const clearIntake = () => {
+    setIntakeItem(null);
+    if (params.intake) navigate('expenses', {}, { replace: true });
   };
 
-  // Computed stats
+  const suggestions = useMemo(() => buildTitleSuggestions(stock, expenses), [stock, expenses]);
+
   const filteredExpenseStats = useMemo(() => {
     const targetMonth = expenseFilterDate.substring(0, 7);
     let filtered = [];
-
-    if (expenseViewMode === 'daily') {
-      filtered = expenses.filter(e => e.date === expenseFilterDate);
-    } else if (expenseViewMode === 'monthly') {
-      filtered = expenses.filter(e => e.date?.startsWith(targetMonth));
-    } else {
-      filtered = [...expenses];
-    }
+    if (expenseViewMode === 'daily') filtered = expenses.filter((e) => e.date === expenseFilterDate);
+    else if (expenseViewMode === 'monthly') filtered = expenses.filter((e) => e.date?.startsWith(targetMonth));
+    else filtered = [...expenses];
 
     const total = filtered.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const byCategory = {};
-    filtered.forEach(e => {
+    filtered.forEach((e) => {
       const cat = e.category || 'อื่น ๆ';
       if (!byCategory[cat]) byCategory[cat] = 0;
       byCategory[cat] += Number(e.amount) || 0;
     });
-
     return {
       expenses: filtered.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)),
       total,
       byCategory: Object.entries(byCategory).sort((a, b) => b[1] - a[1]),
-      count: filtered.length
+      count: filtered.length,
     };
   }, [expenses, expenseViewMode, expenseFilterDate]);
 
-  // AI วิเคราะห์การเงิน - วิเคราะห์ตามช่วงเวลาที่เลือก
+  const activeCategory = filteredExpenseStats.byCategory.some(([c]) => c === categoryFilter) ? categoryFilter : 'all';
+  const listRows = activeCategory === 'all'
+    ? filteredExpenseStats.expenses
+    : filteredExpenseStats.expenses.filter((e) => (e.category || 'อื่น ๆ') === activeCategory);
+
+  const periodLabel = expenseViewMode === 'daily'
+    ? (expenseFilterDate === getISODate() ? 'วันนี้' : formatThaiDate(expenseFilterDate))
+    : expenseViewMode === 'monthly' ? formatThaiDate(expenseFilterDate, { style: 'month' }) : 'ทั้งหมด';
+
+  // AI วิเคราะห์การเงิน - วิเคราะห์ตามช่วงเวลาที่เลือก (prompt unchanged)
   const handleAnalyzeFinances = useCallback(async () => {
     setIsAnalyzingFinances(true);
     setFinancialInsight('');
-
     try {
-      // ใช้ข้อมูลที่ filter แล้วตาม expenseViewMode
       const { expenses: filteredExpenses, total: totalExpenses, byCategory } = filteredExpenseStats;
-
-      // คำนวณรายได้ตามช่วงเวลาเดียวกัน
       const targetMonth = expenseFilterDate.substring(0, 7);
       let filteredOrders = [];
-      let periodLabel = '';
+      let periodLabelEn = '';
       let periodLabelThai = '';
-
       if (expenseViewMode === 'daily') {
-        filteredOrders = orders.filter(o => o.status === 'completed' && getOrderDate(o) === expenseFilterDate);
-        periodLabel = `Daily (${expenseFilterDate})`;
+        filteredOrders = orders.filter((o) => o.status === 'completed' && getOrderDate(o) === expenseFilterDate);
+        periodLabelEn = `Daily (${expenseFilterDate})`;
         periodLabelThai = `รายวัน (${new Date(expenseFilterDate).toLocaleDateString('th-TH')})`;
       } else if (expenseViewMode === 'monthly') {
-        filteredOrders = orders.filter(o => o.status === 'completed' && (getOrderDate(o) || '').startsWith(targetMonth));
-        periodLabel = `Monthly (${targetMonth})`;
+        filteredOrders = orders.filter((o) => o.status === 'completed' && (getOrderDate(o) || '').startsWith(targetMonth));
+        periodLabelEn = `Monthly (${targetMonth})`;
         periodLabelThai = `รายเดือน (${new Date(targetMonth + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })})`;
       } else {
-        // All time
-        filteredOrders = orders.filter(o => o.status === 'completed');
-        periodLabel = 'All Time';
+        filteredOrders = orders.filter((o) => o.status === 'completed');
+        periodLabelEn = 'All Time';
         periodLabelThai = 'ทั้งหมด';
       }
-
       const totalRevenue = filteredOrders.reduce((s, o) => s + (Number(o.total || 0)), 0);
       const netProfit = totalRevenue - totalExpenses;
       const orderCount = filteredOrders.length;
       const avgOrderValue = orderCount > 0 ? Math.round(totalRevenue / orderCount) : 0;
-
-      // สร้าง expense breakdown จาก byCategory
       const expenseBreakdown = {};
-      byCategory.forEach(([cat, amount]) => {
-        expenseBreakdown[cat] = amount;
-      });
+      byCategory.forEach(([cat, amount]) => { expenseBreakdown[cat] = amount; });
 
       const prompt = `
         Role: Financial Analyst for a Cafe.
         Shop Operating Hours: 10:00 - 17:00.
 
-        **Analysis Period: ${periodLabel} (${periodLabelThai})**
+        **Analysis Period: ${periodLabelEn} (${periodLabelThai})**
 
         Financial Summary:
         - Total Revenue: ${totalRevenue.toLocaleString()} THB (${orderCount} orders)
@@ -206,12 +157,8 @@ export default function ExpensesView() {
         ${expenseViewMode === 'monthly' ? '4. Suggest monthly budget targets.' : ''}
         Language: Thai. Be concise but insightful.
       `;
-
       const result = await callGeminiAPI(prompt, false);
-      if (result.success) {
-        setFinancialInsight(result.data);
-      }
-
+      if (result.success) setFinancialInsight(result.data);
     } catch (e) {
       toast.error('วิเคราะห์ไม่สำเร็จ: ' + e.message);
     } finally {
@@ -226,504 +173,293 @@ export default function ExpensesView() {
       unit: item.unit,
       pricePerUnit: item.amount || '',
       amount: item.amount || '',
-      category: item.category
+      category: item.category,
     });
+    setValidationErrors({});
   }, []);
 
-  // Add expense handler
-  const handleAddExpense = useCallback(async (e) => {
+  const handleAddExpense = async (e) => {
     e.preventDefault();
-
     setSyncMessage('');
     setValidationErrors({});
-
     const errors = validateExpense(newExpense);
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
       toast.warning('กรุณาตรวจสอบข้อมูลให้ครบถ้วน');
       return;
     }
-
-    const finalAmount = newExpense.amount || (Number(newExpense.quantity) * Number(newExpense.pricePerUnit));
-    if (!newExpense.title || !finalAmount) return;
-
-    setIsSyncing(true);
-
+    setIsSaving(true);
     try {
-      if (editingExpense) {
-        const expenseData = {
-          title: String(newExpense.title),
-          quantity: Number(newExpense.quantity) || 0,
-          unit: String(newExpense.unit || ''),
-          pricePerUnit: Number(newExpense.quantity) > 0
-            ? Number(finalAmount) / Number(newExpense.quantity)
-            : Number(newExpense.pricePerUnit) || 0,
-          amount: roundMoney(finalAmount),
-          category: String(newExpense.category),
-          date: expenseFilterDate
-        };
-
-        await runDbAction(async () => {
-          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', editingExpense.id), expenseData);
-        }, 'แก้ไขค่าใช้จ่ายไม่สำเร็จ');
-
-        toast.success('แก้ไขรายจ่ายสำเร็จ');
-        setEditingExpense(null);
-        setNewExpense({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
-        return;
+      const result = await saveExpense({ form: newExpense, date: expenseFilterDate, stock, runDbAction });
+      if (!result.ok) return;
+      const msg = reportSave(result, toast);
+      if (msg) {
+        setSyncMessage(msg);
+        clearTimeout(syncMessageTimerRef.current);
+        syncMessageTimerRef.current = setTimeout(() => setSyncMessage(''), 5000);
       }
-
-      // CREATE PATH
-      const line = {
-        title: String(newExpense.title),
-        quantity: Number(newExpense.quantity) || 0,
-        unit: String(newExpense.unit || ''),
-        amount: Number(finalAmount),
-        category: String(newExpense.category)
-      };
-
-      let plan = null;
-      let targetStock = null;
-      let newStock = false;
-      let unitMismatch = false;
-
-      if (isInventoryCategory(line.category)) {
-        const aliasMatch = findAliasMatch(stock, { title: line.title });
-        if (aliasMatch) {
-          targetStock = aliasMatch.stock;
-          plan = planStockIntake(line, targetStock, aliasMatch.alias);
-        } else {
-          const candidates = findStockCandidates(stock, line.title, 1);
-          if (candidates.length > 0 && normalizeName(candidates[0].name) === normalizeName(line.title)) {
-            targetStock = candidates[0];
-            plan = planStockIntake(line, targetStock);
-          } else {
-            newStock = true;
-          }
-        }
-
-        if (plan && !plan.ok && plan.reason === 'unit-mismatch') {
-          unitMismatch = true;
-          plan = null;
-        }
-      }
-
-      const expenseRecord = buildExpenseRecord(line, {
-        date: expenseFilterDate,
-        plan,
-        extra: { createdAt: serverTimestamp() }
-      });
-
-      let syncAction = null;
-
-      const ok = await runDbAction(async () => {
-        const batch = writeBatch(db);
-        const expenseRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'));
-        batch.set(expenseRef, expenseRecord);
-
-        if (plan && plan.ok && targetStock) {
-          const stockRef = doc(db, 'artifacts', appId, 'public', 'data', 'stock', targetStock.id);
-          batch.update(stockRef, {
-            quantity: increment(plan.inQty),
-            unitCost: plan.newUnitCost,
-            lastPurchaseAt: serverTimestamp(),
-            lastPurchaseUnitCost: plan.inUnitCost
-          });
-          syncAction = { action: 'updated', name: targetStock.name, qty: plan.newQuantity, unit: targetStock.unit };
-        } else if (newStock) {
-          const stockRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'stock'));
-          const cat = STOCK_CATEGORIES.includes(line.category) ? line.category : inferStockCategory(line.title);
-          batch.set(stockRef, {
-            name: line.title,
-            category: cat,
-            quantity: line.quantity,
-            unit: line.unit || 'ชิ้น',
-            minQuantity: DEFAULT_MIN_QUANTITY,
-            unitCost: line.quantity > 0 ? expenseRecord.pricePerUnit : 0
-          });
-          syncAction = { action: 'created', name: line.title, qty: line.quantity, unit: line.unit || 'ชิ้น' };
-        }
-
-        await batch.commit();
-      }, 'บันทึกค่าใช้จ่ายไม่สำเร็จ');
-
-      if (ok) {
-        toast.success('บันทึกรายจ่ายสำเร็จ');
-
-        if (unitMismatch) {
-          toast.warning(`หน่วยไม่ตรงกับสต็อก (${line.unit} / ${targetStock.unit}) ยังไม่ลงสต๊อก`);
-        } else if (syncAction) {
-          if (syncAction.action === 'created') {
-            setSyncMessage(`✓ สร้างสต็อก "${syncAction.name}" ${syncAction.qty} ${syncAction.unit} สำเร็จ`);
-          } else {
-            setSyncMessage(`✓ อัพเดตสต็อก "${syncAction.name}" เป็น ${syncAction.qty} ${syncAction.unit} สำเร็จ`);
-          }
-          clearTimeout(syncMessageTimerRef.current);
-          syncMessageTimerRef.current = setTimeout(() => setSyncMessage(''), 5000);
-        }
-
-        setNewExpense({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
-      }
-
-    } catch (e) {
-      toast.error('บันทึกรายจ่ายไม่สำเร็จ: ' + e.message);
+      setNewExpense(emptyExpense());
+      if (intakeItem) clearIntake();
+    } catch (err) {
+      toast.error('บันทึกรายจ่ายไม่สำเร็จ: ' + err.message);
     } finally {
-      setIsSyncing(false);
+      setIsSaving(false);
     }
-  }, [newExpense, editingExpense, expenseFilterDate, stock, runDbAction, validateExpense, toast]);
+  };
+
+  const startEdit = (expense) => setEditing({
+    expense,
+    errors: {},
+    form: {
+      title: expense.title || '',
+      quantity: expense.quantity || '',
+      unit: expense.unit || 'ชิ้น',
+      pricePerUnit: expense.pricePerUnit || '',
+      amount: expense.amount || '',
+      category: expense.category || 'วัตถุดิบ',
+    },
+  });
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    const errors = validateExpense(editing.form);
+    if (Object.keys(errors).length > 0) {
+      setEditing({ ...editing, errors });
+      toast.warning('กรุณาตรวจสอบข้อมูลให้ครบถ้วน');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const result = await saveExpense({ form: editing.form, editingExpense: editing.expense, date: expenseFilterDate, stock, runDbAction });
+      if (result.ok) {
+        reportSave(result, toast);
+        setEditing(null);
+      }
+    } catch (err) {
+      toast.error('บันทึกรายจ่ายไม่สำเร็จ: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    const expense = toDelete;
+    setToDelete(null);
+    if (!expense) return;
+    await runDbAction(async () => {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', expense.id));
+    }, 'ลบค่าใช้จ่ายไม่สำเร็จ');
+  };
+
+  const detailLine = (e) => (e.quantity > 0
+    ? `${formatNumber(e.quantity, { maxDecimals: 3 })} ${e.unit || ''} × ฿${formatNumber(e.pricePerUnit)}`
+    : null);
+  const rowActions = (e) => (
+    <div className="flex items-center justify-end gap-1">
+      <IconButton icon={<Pencil size={18} />} size="lg" aria-label={`แก้ไข ${e.title}`} onClick={() => startEdit(e)} />
+      <IconButton icon={<Trash2 size={18} />} size="lg" aria-label={`ลบ ${e.title}`} className="hover:!text-[var(--state-danger)]" onClick={() => setToDelete(e)} />
+    </div>
+  );
+
+  const metaLine = (e) => (
+    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)]">
+      <Badge tone="neutral" size="xs">{e.category || 'อื่น ๆ'}</Badge>
+      {expenseViewMode !== 'daily' && <span className="num whitespace-nowrap">{formatThaiDate(e.date, { style: 'short' })}</span>}
+      {detailLine(e) && <span className="num whitespace-nowrap">{detailLine(e)}</span>}
+      {e.stockId && (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-[var(--state-ok)]">
+          <PackagePlus size={12} aria-hidden="true" />ลงสต็อกแล้ว
+        </span>
+      )}
+    </p>
+  );
+
+  // Title + one meta line (category · date · qty · stock) keeps the table
+  // readable in the ~480px right column on iPad without horizontal scroll.
+  const columns = [
+    {
+      key: 'title',
+      header: 'รายการ',
+      render: (_, e) => (
+        <div className="min-w-0 py-2">
+          <p className="font-medium text-[var(--text-primary)] break-words">{String(e.title)}</p>
+          {metaLine(e)}
+        </div>
+      ),
+    },
+    { key: 'amount', header: 'จำนวนเงิน', numeric: true, width: 116, render: (v) => <Money value={v} className="font-semibold" /> },
+    { key: 'actions', header: <span className="sr-only">จัดการ</span>, align: 'right', width: 108, render: (_, e) => rowActions(e) },
+  ];
+
+  const renderCard = (e) => (
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-[var(--text-primary)] break-words">{String(e.title)}</p>
+        {metaLine(e)}
+      </div>
+      <div className="flex shrink-0 flex-col items-end">
+        <Money value={e.amount} className="text-base font-semibold" />
+        <div className="-mr-2">{rowActions(e)}</div>
+      </div>
+    </div>
+  );
+
+  const dateControl = expenseViewMode === 'all' ? null : (
+    <DateStepper
+      mode={expenseViewMode === 'monthly' ? 'month' : 'day'}
+      value={expenseViewMode === 'monthly' ? expenseFilterDate.slice(0, 7) : expenseFilterDate}
+      onChange={(v) => setExpenseFilterDate(expenseViewMode === 'monthly' ? shiftToMonth(expenseFilterDate, v) : v)}
+    />
+  );
 
   return (
-    <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-[var(--text-primary)]">
-      <header className="h-16 md:h-20 lg:h-24 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-4 md:px-8 lg:px-12 flex items-center justify-between shadow-sm z-[var(--z-nav)]">
-        <div className="flex items-center gap-2 md:gap-4 text-red-600  font-semibold">
-          <DollarSign size={24} className="md:w-7 md:h-7 lg:w-8 lg:h-8" />
-          <h1 className="text-lg md:text-xl lg:text-2xl font-bold  tracking-tight text-[var(--text-primary)]">ระบบรายจ่าย</h1>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-[var(--bg-tertiary)] p-1.5 rounded-2xl border border-[var(--border-color)]">
-            <button onClick={() => setExpenseViewMode('daily')} className={`px-5 py-2.5 rounded-xl text-xs font-semibold  tracking-wider transition-all ${expenseViewMode === 'daily' ? 'bg-red-500 text-white shadow-[var(--elev-2)]' : 'text-[var(--text-muted)] hover:text-red-500'}`}>รายวัน</button>
-            <button onClick={() => setExpenseViewMode('monthly')} className={`px-5 py-2.5 rounded-xl text-xs font-semibold  tracking-wider transition-all ${expenseViewMode === 'monthly' ? 'bg-red-500 text-white shadow-[var(--elev-2)]' : 'text-[var(--text-muted)] hover:text-red-500'}`}>รายเดือน</button>
-            <button onClick={() => setExpenseViewMode('all')} className={`px-5 py-2.5 rounded-xl text-xs font-medium  tracking-wider transition-all ${expenseViewMode === 'all' ? 'bg-red-500 text-white shadow-[var(--elev-2)]' : 'text-[var(--text-muted)] hover:text-red-500'}`}>ทั้งหมด</button>
-          </div>
-          {expenseViewMode !== 'all' && (
-            <div className="relative flex items-center bg-red-50 border border-red-100 rounded-3xl p-1.5 shadow-sm">
-              <Calendar className="text-red-500 ml-4" size={22} />
-              <input type="date" value={expenseFilterDate} onChange={(e) => setExpenseFilterDate(e.target.value)} className="bg-transparent border-none py-3 pl-3 pr-6 text-base font-semibold text-red-700 outline-none cursor-pointer" />
-            </div>
-          )}
-        </div>
-      </header>
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-6 p-4 md:p-6 lg:p-6 overflow-auto">
-        {/* Left Column: Summary Cards & Form - Optimized for iPad */}
-        <div className="w-full md:w-[420px] lg:w-[480px] xl:w-[520px] space-y-4 md:space-y-5 lg:space-y-6 shrink-0">
-          {/* Total Expense Card - iPad Optimized */}
-          <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-[var(--radius)] p-6 md:p-6 text-white shadow-[var(--elev-2)] border-b-8 border-red-700/30">
-            <p className="text-xs md:text-sm font-medium  tracking-[0.3em] opacity-70 mb-3 md:mb-4">รายจ่ายรวม{expenseViewMode === 'daily' ? 'วันนี้' : expenseViewMode === 'monthly' ? 'เดือนนี้' : 'ทั้งหมด'}</p>
-            <p className="text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tighter">฿{filteredExpenseStats.total.toLocaleString()}</p>
-            <p className="text-sm md:text-base font-bold opacity-60 mt-3 md:mt-4">{filteredExpenseStats.count} รายการ</p>
-          </div>
+    <div className="h-full bg-[var(--bg-canvas)] flex flex-col overflow-hidden text-[var(--text-primary)]">
+      <PageHeader
+        title="รายจ่าย"
+        icon={Wallet}
+        sticky={false}
+        actions={(
+          <>
+            <SegmentedControl ariaLabel="ช่วงเวลา" options={MODES} value={expenseViewMode} onChange={setExpenseViewMode} />
+            {dateControl}
+          </>
+        )}
+      />
 
-          {/* Category Breakdown - iPad Optimized */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 md:p-6 shadow-sm border border-[var(--border-color)]">
-            <h3 className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-[0.3em] mb-4 md:mb-6">แยกตามหมวดหมู่</h3>
-            <div className="space-y-3 md:space-y-4">
-              {filteredExpenseStats.byCategory.length > 0 ? (
-                filteredExpenseStats.byCategory.map(([cat, amount]) => (
-                  <div key={cat} className="flex items-center justify-between p-4 md:p-4 bg-[var(--bg-tertiary)] rounded-2xl border border-[var(--border-color)]">
-                    <span className="text-sm md:text-base font-semibold text-[var(--text-primary)]">{cat}</span>
-                    <span className="text-base md:text-lg font-semibold text-red-500">฿{amount.toLocaleString()}</span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-center text-xs md:text-sm text-[var(--text-muted)] font-medium  tracking-widest py-4">ไม่มีข้อมูล</p>
+      <div className="flex-1 min-h-0 overflow-y-auto px-[var(--page-pad)] py-5 md:py-6 pb-24 md:pb-10">
+        <div className="max-w-[1400px] mx-auto grid gap-6 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:items-start">
+          {/* ── add expense (top-left on iPad) */}
+          <SectionCard title="เพิ่มรายจ่าย" description={`บันทึกเป็นวันที่ ${formatThaiDate(expenseFilterDate)}`} padding="md" className="md:p-5">
+            <div className="flex flex-col gap-4">
+              {intakeItem && (
+                <Banner tone="info" icon={PackagePlus} title={`รับของเข้า: ${intakeItem.name}`} action={{ label: 'ยกเลิก', onClick: () => { clearIntake(); setNewExpense(emptyExpense()); } }}>
+                  กรอกจำนวนและราคารวม ระบบจะเพิ่มสต็อกและคิดต้นทุนเฉลี่ยให้
+                </Banner>
               )}
-            </div>
-          </div>
-
-          {/* Add Expense Form - iPad Optimized */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 md:p-6 shadow-sm border border-[var(--border-color)] space-y-4 md:space-y-5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-[0.3em]">{editingExpense ? 'แก้ไขรายจ่าย' : 'เพิ่มรายจ่ายใหม่'}</h3>
-              {editingExpense && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingExpense(null);
-                    setNewExpense({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
-                  }}
-                  className="text-xs font-medium text-[var(--text-muted)] hover:text-red-500"
-                >
-                  ยกเลิกแก้ไข
-                </button>
+              {syncMessage && (
+                <Banner tone="ok" title={syncMessage} onDismiss={() => setSyncMessage('')} />
               )}
-              <Zap size={18} className="text-red-400 animate-pulse md:w-5 md:h-5" />
-            </div>
 
-            {/* Success Message Toast - iPad Optimized */}
-            {syncMessage && (
-              <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl p-4 md:p-4 flex items-center gap-3 md:gap-4 shadow-[var(--elev-2)] animate-in slide-in-from-top-2">
-                <div className="w-8 h-8 md:w-10 md:h-10 bg-[var(--bg-secondary)]/20 rounded-full flex items-center justify-center shrink-0">
-                  <span className="text-lg md:text-xl">✓</span>
-                </div>
-                <p className="text-xs md:text-sm font-bold leading-relaxed">{syncMessage}</p>
-              </div>
-            )}
-
-            {/* Quick Shortcuts - iPad Optimized */}
-            <div className="flex flex-wrap gap-2 md:gap-3 mb-2">
-              {quickExpenses.map((item, idx) => (
-                <button
-                  key={item.id || idx}
-                  type="button"
-                  onClick={() => applyQuickExpense(item)}
-                  className="px-4 py-3 md:px-5 md:py-3.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs md:text-sm font-medium transition-all border border-red-100 active:scale-95 flex items-center gap-2"
-                >
-                  <span className="text-base md:text-lg">{item.icon}</span>
-                  <span>{item.label}</span>
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => {
-                  setAdminTab('quickExpenses');
-                  handleViewChange('admin');
-                }}
-                className="px-4 py-3 md:px-5 md:py-3.5 bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] rounded-xl text-xs md:text-sm font-medium transition-all border border-[var(--border-color)] active:scale-95"
-                title="จัดการคีย์ลัด"
-              >
-                + แก้ไข #
-              </button>
-            </div>
-
-            <form onSubmit={handleAddExpense} className="space-y-4 md:space-y-5">
-              <div className="relative">
-                <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">ชื่อรายจ่าย</label>
-                <input
-                  type="text"
-                  placeholder="ซื้อนมสด, กาแฟ..."
-                  required
-                  value={newExpense.title}
-                  onFocus={() => setShowExpenseSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowExpenseSuggestions(false), 150)}
-                  onChange={e => {
-                    applyExpenseTitle(e.target.value);
-                    setShowExpenseSuggestions(true);
-                    if (validationErrors.title) setValidationErrors({ ...validationErrors, title: '' });
-                  }}
-                  className={`w-full bg-[var(--bg-tertiary)] border rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner focus:bg-[var(--bg-secondary)] transition-all ${validationErrors.title ? 'border-red-300 bg-red-50' : 'border-[var(--border-color)]'}`}
-                  aria-label="ชื่อรายจ่าย"
-                  aria-invalid={!!validationErrors.title}
-                />
-                {showExpenseSuggestions && visibleExpenseSuggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full z-[var(--z-dropdown)] mt-2 max-h-72 overflow-y-auto rounded-2xl border border-emerald-100 bg-[var(--bg-secondary)] shadow-[var(--elev-2)]">
-                    {visibleExpenseSuggestions.map(title => (
-                      <button
-                        key={title}
-                        type="button"
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          applyExpenseTitle(title);
-                          setShowExpenseSuggestions(false);
-                        }}
-                        className="block w-full border-b border-gray-50 px-5 py-4 text-left text-sm font-semibold text-[var(--text-primary)] last:border-b-0 hover:bg-emerald-50 active:bg-emerald-100"
-                      >
-                        {title}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {isInventoryCategory(newExpense.category) && expenseTitleSuggestions.length > 0 && (
-                  <p className="text-emerald-600 text-xs md:text-sm font-bold ml-4 mt-1.5">
-                    เลือกชื่อจากรายการแนะนำ เพื่อให้ชื่อวัตถุดิบตรงกับคลัง
-                  </p>
-                )}
-                {validationErrors.title && (
-                  <p className="text-red-500 text-xs md:text-sm font-bold ml-4 mt-1.5">{validationErrors.title}</p>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-4 md:gap-4">
-                <div>
-                    <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">ต้นทุน/หน่วย (คำนวณอัตโนมัติ)</label>
-                  <input
-                    type="number"
-                    placeholder="0.00"
-                    value={newExpense.quantity > 0 && newExpense.amount > 0
-                      ? (Number(newExpense.amount) / Number(newExpense.quantity)).toFixed(4)
-                      : newExpense.pricePerUnit}
-                    onChange={e => {
-                      setNewExpense({ ...newExpense, pricePerUnit: e.target.value });
-                      if (validationErrors.pricePerUnit) setValidationErrors({ ...validationErrors, pricePerUnit: '' });
-                    }}
-                    className={`w-full bg-[var(--bg-tertiary)] border rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner ${validationErrors.pricePerUnit ? 'border-red-300 bg-red-50' : 'border-[var(--border-color)]'}`}
-                    aria-label="ราคาต่อหน่วย"
-                    readOnly={isInventoryCategory(newExpense.category) && Number(newExpense.quantity) > 0}
-                  />
-                  {validationErrors.pricePerUnit && (
-                    <p className="text-red-500 text-xs md:text-sm font-bold ml-4 mt-1.5">{validationErrors.pricePerUnit}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">จำนวน</label>
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={newExpense.quantity}
-                    onChange={e => {
-                      setNewExpense({ ...newExpense, quantity: e.target.value });
-                      if (validationErrors.quantity) setValidationErrors({ ...validationErrors, quantity: '' });
-                    }}
-                    className={`w-full bg-[var(--bg-tertiary)] border rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner ${validationErrors.quantity ? 'border-red-300 bg-red-50' : 'border-[var(--border-color)]'}`}
-                    aria-label="จำนวน"
-                  />
-                  {validationErrors.quantity && (
-                    <p className="text-red-500 text-xs md:text-sm font-bold ml-4 mt-1.5">{validationErrors.quantity}</p>
-                  )}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4 md:gap-4">
-                <div>
-                  <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">หน่วยเรียก</label>
-                  <input
-                    type="text"
-                    placeholder="กล่อง, ถุง..."
-                    value={newExpense.unit}
-                    onChange={e => setNewExpense({ ...newExpense, unit: e.target.value })}
-                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner"
-                    aria-label="หน่วยเรียก"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">ราคารวม</label>
-                  <input
-                    type="number"
-                    placeholder="กรอกยอดซื้อรวม..."
-                    value={newExpense.amount || (Number(newExpense.quantity) * Number(newExpense.pricePerUnit)) || ''}
-                    onChange={e => {
-                      setNewExpense({ ...newExpense, amount: e.target.value });
-                      if (validationErrors.amount) setValidationErrors({ ...validationErrors, amount: '' });
-                    }}
-                    className={`w-full bg-[var(--bg-tertiary)] border rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner focus:bg-[var(--bg-secondary)] transition-all text-red-500 ${validationErrors.amount ? 'border-red-300 bg-red-50' : 'border-[var(--border-color)]'}`}
-                    aria-label="ราคารวม"
-                  />
-                  {validationErrors.amount && (
-                    <p className="text-red-500 text-xs md:text-sm font-bold ml-4 mt-1.5">{validationErrors.amount}</p>
-                  )}
-                </div>
-              </div>
               <div>
-                <label className="text-xs md:text-sm font-medium text-[var(--text-muted)]  tracking-widest ml-4 mb-2 block">หมวดหมู่</label>
-                <select
-                  value={newExpense.category}
-                  onChange={e => setNewExpense({ ...newExpense, category: e.target.value })}
-                  className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 md:p-4 text-sm md:text-base font-semibold outline-none shadow-inner cursor-pointer text-[var(--text-primary)]"
-                  aria-label="หมวดหมู่"
-                >
-                  {EXPENSE_CATEGORIES.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
+                <p className="mb-2 text-sm font-medium text-[var(--text-secondary)]">คีย์ลัด</p>
+                <div className="flex flex-wrap gap-2">
+                  {quickExpenses.map((item, idx) => (
+                    <button
+                      key={item.id || idx}
+                      type="button"
+                      onClick={() => applyQuickExpense(item)}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3.5 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[var(--focus-ring)]"
+                    >
+                      {item.icon && <span aria-hidden="true">{item.icon}</span>}
+                      <span>{item.label}</span>
+                    </button>
                   ))}
-                </select>
-                {isInventoryCategory(newExpense.category) && (
-                  <div className="mt-3 p-3 md:p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 md:gap-3">
-                    <div className="w-6 h-6 md:w-7 md:h-7 bg-emerald-500 rounded-full flex items-center justify-center shrink-0">
-                      <span className="text-white text-sm md:text-base">✓</span>
-                    </div>
-                    <p className="text-xs md:text-sm font-bold text-emerald-700">จะอัพเดตสต็อกอัตโนมัติ</p>
-                  </div>
-                )}
-              </div>
-              <Button
-                type="submit"
-                variant="danger"
-                size="xl"
-                fullWidth
-                loading={isSyncing}
-                className="!mt-4"
-              >
-                {editingExpense ? 'อัปเดตรายจ่าย' : 'บันทึกรายจ่าย'}
-              </Button>
-            </form>
-          </div>
-        </div>
-
-        {/* Right Column: Expense List */}
-        <div className="flex-1 bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-2)] border border-[var(--border-color)] overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-[var(--bg-secondary)] sticky top-0 z-[var(--z-nav)]">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]  tracking-tight">รายการค่าใช้จ่าย</h2>
-            <button
-              onClick={handleAnalyzeFinances}
-              disabled={isAnalyzingFinances}
-              className="bg-[var(--bg-tertiary)] hover:bg-emerald-50 text-[var(--text-muted)] hover:text-emerald-500 p-3 rounded-2xl transition-all active:scale-95 border border-transparent hover:border-emerald-100"
-              title="วิเคราะห์การเงินด้วย AI"
-            >
-              {isAnalyzingFinances ? <RefreshCcw size={20} className="animate-spin text-emerald-500" /> : <Zap size={20} fill="currentColor" />}
-            </button>
-          </div>
-
-          {/* AI Financial Insight Card */}
-          {financialInsight && (
-            <div className="mx-6 mt-6 p-6 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-[var(--radius)] text-white shadow-[var(--elev-2)] shadow-emerald-500/20 animate-in slide-in-from-top-4 relative overflow-hidden">
-              <div className="flex items-start gap-4 relative z-[var(--z-nav)]">
-                <div className="w-12 h-12 bg-[var(--bg-secondary)]/20 backdrop-blur-sm rounded-2xl flex items-center justify-center shrink-0">
-                  <BarChart3 size={24} className="text-white" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-semibold text-sm  tracking-widest opacity-90">AI วิเคราะห์การเงิน</h3>
-                    <button onClick={() => setFinancialInsight('')} aria-label="ปิดการวิเคราะห์" className="p-1 hover:bg-[var(--bg-secondary)]/20 rounded-lg transition-colors"><X size={16} /></button>
-                  </div>
-                  <p className="text-sm font-medium leading-relaxed opacity-95 whitespace-pre-wrap">{financialInsight}</p>
-                </div>
-              </div>
-              <Zap size={100} className="absolute -bottom-4 -right-4 text-white/5 rotate-[-15deg]" />
-            </div>
-          )}
-
-          <div className="flex-1 overflow-y-auto p-6 space-y-3 scrollbar-hide">
-            {filteredExpenseStats.expenses.length === 0 && (
-              <EmptyState
-                icon={DollarSign}
-                title="ไม่มีรายจ่ายในช่วงนี้"
-                description="เพิ่มรายจ่ายใหม่จากฟอร์มด้านซ้าย"
-              />
-            )}
-            {filteredExpenseStats.expenses.map(e => (
-              <div key={e.id} className="flex items-center justify-between p-6 bg-[var(--bg-tertiary)] rounded-[var(--radius)] border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-all group">
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-red-500 shrink-0">
-                    <DollarSign size={24} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-[var(--text-primary)] text-base truncate">{String(e.title)}</p>
-                    <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                      <span className="text-xs font-medium text-[var(--text-muted)] ">{e.date}</span>
-                      <span className="text-xs font-medium text-red-500 bg-red-50 px-2 py-0.5 rounded-lg border border-red-100">{e.category}</span>
-                      {e.quantity > 0 && (
-                        <span className="text-xs font-medium text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">
-                          {Number(e.quantity).toLocaleString()} {e.unit} (@฿{Number(e.pricePerUnit).toLocaleString()})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="text-xl font-semibold text-red-500">฿{Number(e.amount).toLocaleString()}</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      setEditingExpense(e);
-                      setNewExpense({
-                        title: e.title || '',
-                        quantity: e.quantity || '',
-                        unit: e.unit || 'ชิ้น',
-                        pricePerUnit: e.pricePerUnit || '',
-                        amount: e.amount || '',
-                        category: e.category || 'วัตถุดิบ'
-                      });
-                      setValidationErrors({});
-                      setSyncMessage('');
-                    }}
-                    className="text-[var(--text-muted)] hover:text-blue-500 transition-colors active:scale-90 opacity-0 group-hover:opacity-100"
-                    aria-label="แก้ไขค่าใช้จ่าย"
-                    title="แก้ไขค่าใช้จ่าย"
+                    onClick={() => { setAdminTab('quickExpenses'); handleViewChange('admin'); }}
+                    className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[var(--focus-ring)]"
                   >
-                    <Edit size={18} />
-                  </button>
-                  <button
-                    onClick={async () => {
-                      await runDbAction(async () => {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', e.id));
-                      }, 'ลบค่าใช้จ่ายไม่สำเร็จ');
-                    }}
-                    className="text-[var(--text-muted)] hover:text-red-500 transition-colors active:scale-90 opacity-0 group-hover:opacity-100"
-                  >
-                    <Trash2 size={18} />
+                    <Settings2 size={16} aria-hidden="true" /> จัดการคีย์ลัด
                   </button>
                 </div>
               </div>
-            ))}
+
+              <ExpenseForm
+                value={newExpense}
+                onChange={setNewExpense}
+                errors={validationErrors}
+                onClearError={(f) => setValidationErrors((v) => ({ ...v, [f]: '' }))}
+                onSubmit={handleAddExpense}
+                suggestions={suggestions}
+                stock={stock}
+              >
+                <Button type="submit" size="xl" fullWidth loading={isSaving && !editing}>บันทึกรายจ่าย</Button>
+              </ExpenseForm>
+            </div>
+          </SectionCard>
+
+          {/* ── totals + list */}
+          <div className="flex min-w-0 flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <StatCard label={`รายจ่าย${periodLabel === 'ทั้งหมด' ? 'ทั้งหมด' : ` · ${periodLabel}`}`} value={<Money value={filteredExpenseStats.total} />} icon={Wallet} />
+              <StatCard label="จำนวนรายการ" value={formatNumber(filteredExpenseStats.count)} unit="รายการ" icon={ReceiptText} />
+            </div>
+
+            <section aria-labelledby="expense-list-title" className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 id="expense-list-title" className="text-[length:var(--fs-lg)] leading-[var(--lh-lg)] font-semibold">รายการค่าใช้จ่าย</h2>
+                <Button variant="ai" leftIcon={<Bot size={18} />} loading={isAnalyzingFinances} onClick={handleAnalyzeFinances}>วิเคราะห์ด้วย AI</Button>
+              </div>
+
+              {filteredExpenseStats.byCategory.length > 1 && (
+                <FilterChips
+                  className="[&>button]:min-h-11"
+                  ariaLabel="กรองตามหมวด"
+                  value={activeCategory}
+                  onChange={setCategoryFilter}
+                  chips={[
+                    { value: 'all', label: 'ทุกหมวด', count: filteredExpenseStats.count },
+                    ...filteredExpenseStats.byCategory.map(([cat, amount]) => ({ value: cat, label: <>{cat} <Money value={amount} className="text-[var(--text-muted)] font-normal" /></> })),
+                  ]}
+                />
+              )}
+
+              {financialInsight && (
+                <SectionCard padding="md" title={<span className="inline-flex items-center gap-2"><Bot size={18} className="text-[var(--accent-ai)]" /> AI วิเคราะห์การเงิน</span>}
+                  actions={<Button variant="ghost" size="md" onClick={() => setFinancialInsight('')}>ปิด</Button>}
+                >
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-secondary)]">{financialInsight}</p>
+                </SectionCard>
+              )}
+
+              <DataTable
+                caption="รายการค่าใช้จ่าย"
+                columns={columns}
+                rows={listRows}
+                renderCard={renderCard}
+                emptyState={{ icon: Wallet, title: `ยังไม่มีรายจ่าย${periodLabel === 'ทั้งหมด' ? '' : ` ${periodLabel}`}`, description: 'เพิ่มจากฟอร์ม "เพิ่มรายจ่าย"' }}
+              />
+            </section>
           </div>
         </div>
       </div>
+
+      <Sheet
+        open={!!editing}
+        onClose={() => setEditing(null)}
+        title="แก้ไขรายจ่าย"
+        description={editing ? `วันที่จะบันทึก ${formatThaiDate(expenseFilterDate)}` : undefined}
+        footer={(
+          <>
+            <Button variant="secondary" size="lg" onClick={() => setEditing(null)}>ยกเลิก</Button>
+            <Button type="submit" form="expense-edit-form" size="lg" loading={isSaving && !!editing}>บันทึกการแก้ไข</Button>
+          </>
+        )}
+      >
+        {editing && (
+          <ExpenseForm
+            formId="expense-edit-form"
+            value={editing.form}
+            onChange={(form) => setEditing((cur) => ({ ...cur, form }))}
+            errors={editing.errors}
+            onClearError={(f) => setEditing((cur) => ({ ...cur, errors: { ...cur.errors, [f]: '' } }))}
+            onSubmit={handleSaveEdit}
+            suggestions={suggestions}
+            stock={stock}
+          />
+        )}
+      </Sheet>
+
+      <TopConfirm
+        isOpen={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+        title="ลบรายจ่าย"
+        message={`ลบ "${toDelete?.title || 'รายการนี้'}"${toDelete ? ` (${formatNumber(toDelete.amount)} บาท)` : ''}?${toDelete?.stockId ? ' สต็อกที่รับเข้าจากรายการนี้จะไม่ถูกหักคืนให้ ต้องปรับยอดในหน้าสต็อกเอง' : ''}`}
+        confirmText="ลบ"
+        cancelText="ยกเลิก"
+        variant="danger"
+      />
     </div>
   );
 }

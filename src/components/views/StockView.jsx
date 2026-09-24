@@ -1,61 +1,83 @@
-import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronDown, ChevronRight, Box, Plus, Minus, Edit, Trash2, Package, AlertTriangle, AlertCircle, Search, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Package, PackagePlus, PackageMinus, Pencil, Plus, Trash2, SearchX } from 'lucide-react';
 import { collection, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
-import { useAppContext } from '../../context/AppContext';
+import { useDataContext, useUIContext } from '../../context/AppContext';
+import { useNavigate, useRouteParams } from '../../navigation';
 import { getISODate } from '../../utils/calculations';
-import { Button, Modal, Input, Badge, Card, EmptyState, ConfirmModal, Skeleton, useToast } from '../ui';
-import { DEFAULT_STOCK_UNIT, DEFAULT_MIN_QUANTITY, STOCK_CATEGORIES, getStockCategory } from '../../config/constants';
+import { formatNumber } from '../../utils/format';
+import {
+  Button, DataTable, EmptyState, FilterChips, NumberStepper, PageHeader, Skeleton, Toolbar,
+  useMediaQuery, useToast,
+} from '../ui';
+import { STOCK_CATEGORIES, getStockCategory } from '../../config/constants';
+import StockSheet from './inventory/StockSheet';
+import StockStatusPill from './inventory/StockStatusPill';
+import RowMenu from './inventory/RowMenu';
+import UnitCost from './inventory/UnitCost';
+import TopConfirm from './inventory/TopConfirm';
+import { saveExpense, reportSave, syncMessage } from './inventory/expenseSave';
+import {
+  isOut, matchesStockFilter, matchesStockSearch, needsRestock, normalizeStockFilter, reorderPoint, sortStockForReview, stockStatus,
+} from './inventory/stockStatus';
+
+const qty = (n) => formatNumber(n, { maxDecimals: 3 });
+// Keeps taps on the stepper / menu from also opening the row sheet.
+const stop = { onClick: (e) => e.stopPropagation(), onKeyDown: (e) => e.stopPropagation() };
 
 export default function StockView() {
-  const { stock, isSyncing, runDbAction, handleViewChange } = useAppContext();
+  const { stock, isSyncing } = useDataContext();
+  const { runDbAction } = useUIContext();
+  const params = useRouteParams();
+  const navigate = useNavigate();
   const toast = useToast();
+  const wide = useMediaQuery('(min-width: 768px)');
 
-  // Show the most-depleted items first (furthest below their reorder point) so
-  // anything near/out of stock surfaces at the top for quick action.
-  const sortedStock = useMemo(() => {
-    const categoryIndex = new Map(STOCK_CATEGORIES.map((category, index) => [category, index]));
-    return [...stock].sort((a, b) => {
-      const aCategory = getStockCategory(a);
-      const bCategory = getStockCategory(b);
-      const categoryOrder = (categoryIndex.get(aCategory) ?? STOCK_CATEGORIES.length)
-        - (categoryIndex.get(bCategory) ?? STOCK_CATEGORIES.length);
-      if (categoryOrder !== 0) return categoryOrder;
-      return (Number(b.minQuantity) - Number(b.quantity)) - (Number(a.minQuantity) - Number(a.quantity));
-    });
-  }, [stock]);
-
-  // Local states
-  const [newStockItem, setNewStockItem] = useState({ name: '', category: 'อื่น ๆ', quantity: 0, unit: DEFAULT_STOCK_UNIT, minQuantity: DEFAULT_MIN_QUANTITY, unitCost: 0 });
-  const [editingStockItem, setEditingStockItem] = useState(null);
-  const [showAdjustStockModal, setShowAdjustStockModal] = useState(false);
-  const [stockToAdjust, setStockToAdjust] = useState(null);
-  const [adjustmentInput, setAdjustmentInput] = useState({ amount: '', reason: 'waste' });
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [stockToDelete, setStockToDelete] = useState(null);
-  const [collapsedCategories, setCollapsedCategories] = useState({});
-  const [stockSearch, setStockSearch] = useState('');
-  const searchQuery = stockSearch.toLowerCase();
-  const isSearching = stockSearch.length > 0;
-  const filteredStock = useMemo(() => sortedStock.filter(item => (
-    String(item.name ?? '').toLowerCase().includes(searchQuery)
-    || getStockCategory(item).toLowerCase().includes(searchQuery)
-  )), [sortedStock, searchQuery]);
-
-  // Handlers
-  const saveStockItem = async (e) => {
-    e.preventDefault();
-    const col = collection(db, 'artifacts', appId, 'public', 'data', 'stock');
-    const data = { ...newStockItem, quantity: Number(newStockItem.quantity), minQuantity: Number(newStockItem.minQuantity), unitCost: Number(newStockItem.unitCost) || 0 };
-    await runDbAction(async () => {
-      if (editingStockItem) await updateDoc(doc(col, editingStockItem.id), data);
-      else await addDoc(col, data);
-      toast.success(editingStockItem ? 'แก้ไขสต็อกสำเร็จ' : 'เพิ่มสต็อกใหม่สำเร็จ');
-      setEditingStockItem(null);
-      setNewStockItem({ name: '', quantity: 0, unit: DEFAULT_STOCK_UNIT, minQuantity: DEFAULT_MIN_QUANTITY, unitCost: 0 });
-    }, 'บันทึกสต็อกไม่สำเร็จ');
+  // ── filters · `#/stock?filter=low` pre-selects, and the URL follows the chips
+  const paramFilter = normalizeStockFilter(params.filter);
+  const [filter, setFilterState] = useState(paramFilter);
+  const [seenParam, setSeenParam] = useState(paramFilter);
+  if (paramFilter !== seenParam) { // a deep link arrived while this view was open
+    setSeenParam(paramFilter);
+    setFilterState(paramFilter);
+  }
+  const setFilter = (next) => {
+    const value = normalizeStockFilter(next);
+    setFilterState(value);
+    setSeenParam(value);
+    navigate('stock', value === 'all' ? {} : { filter: value }, { replace: true });
   };
+  const [category, setCategory] = useState('all');
+  const [search, setSearch] = useState('');
 
+  const sorted = useMemo(() => sortStockForReview(stock), [stock]);
+  const counts = useMemo(() => ({
+    all: stock.length,
+    low: stock.filter(needsRestock).length,
+    out: stock.filter(isOut).length,
+  }), [stock]);
+  const categories = useMemo(() => {
+    const present = new Set(stock.map(getStockCategory));
+    return STOCK_CATEGORIES.filter((c) => present.has(c)).concat([...present].filter((c) => !STOCK_CATEGORIES.includes(c)));
+  }, [stock]);
+  const rows = useMemo(() => sorted.filter((item) => (
+    matchesStockFilter(item, filter)
+    && (category === 'all' || getStockCategory(item) === category)
+    && matchesStockSearch(item, search)
+  )), [sorted, filter, category, search]);
+  const filtering = filter !== 'all' || category !== 'all' || search.trim() !== '';
+  const clearFilters = () => { setFilter('all'); setCategory('all'); setSearch(''); };
+
+  // ── sheet + confirm state
+  const [sheet, setSheet] = useState(null); // { mode, id, back, pick }
+  const [busy, setBusy] = useState(false);
+  const [toDelete, setToDelete] = useState(null);
+  const openSheet = (mode, item, extra = {}) => setSheet({ mode, id: item?.id || null, back: false, ...extra });
+  const closeSheet = () => setSheet(null);
+  const switchMode = (mode, id) => setSheet((s) => (s ? { ...s, mode, id: id ?? s.id, back: s.back || s.mode === 'detail' } : s));
+  const afterAction = () => setSheet((s) => (s?.back ? { ...s, mode: 'detail' } : null));
+
+  // ── Firestore writes (unchanged payloads) ────────────────────────────────
   const updateStockQuantity = async (item, delta) => {
     await runDbAction(async () => {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stock', item.id), {
@@ -64,432 +86,287 @@ export default function StockView() {
     }, 'อัปเดตสต็อกไม่สำเร็จ');
   };
 
-  const handleAdjustStock = async () => {
-    if (!stockToAdjust || !adjustmentInput.amount) return;
-    const amount = Number(adjustmentInput.amount);
+  const saveStockItem = async (form, editingItem) => {
+    const col = collection(db, 'artifacts', appId, 'public', 'data', 'stock');
+    const data = { ...form, quantity: Number(form.quantity), minQuantity: Number(form.minQuantity), unitCost: Number(form.unitCost) || 0 };
+    setBusy(true);
+    const ok = await runDbAction(async () => {
+      if (editingItem) await updateDoc(doc(col, editingItem.id), data);
+      else await addDoc(col, data);
+    }, 'บันทึกสต็อกไม่สำเร็จ');
+    setBusy(false);
+    if (ok) {
+      toast.success(editingItem ? 'แก้ไขสต็อกสำเร็จ' : 'เพิ่มสต็อกใหม่สำเร็จ');
+      afterAction();
+    }
+  };
+
+  const handleAdjustStock = async (item, input) => {
+    if (!item || !input.amount) return;
+    const amount = Number(input.amount);
     // Guard: a negative/zero/NaN amount would INCREASE stock and book a
     // negative expense — only positive numbers are a valid cut.
     if (!Number.isFinite(amount) || amount <= 0) {
       toast.error('จำนวนที่ตัดออกต้องเป็นตัวเลขมากกว่า 0');
       return;
     }
-    await runDbAction(async () => {
+    setBusy(true);
+    const ok = await runDbAction(async () => {
       // 1. Update stock quantity
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockToAdjust.id), {
-        quantity: Math.max(0, (Number(stockToAdjust.quantity) || 0) - amount)
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stock', item.id), {
+        quantity: Math.max(0, (Number(item.quantity) || 0) - amount)
       });
       // 2. Record as expense if it's waste
-      if (adjustmentInput.reason === 'waste') {
-        const costPerUnit = Number(stockToAdjust.unitCost) || 0;
+      if (input.reason === 'waste') {
+        const costPerUnit = Number(item.unitCost) || 0;
         const totalLoss = costPerUnit * amount;
-
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'), {
-          title: `ของเสีย: ${stockToAdjust.name} (x${amount} ${stockToAdjust.unit})`,
+          title: `ของเสีย: ${item.name} (x${amount} ${item.unit})`,
           amount: totalLoss,
           category: 'ของเสีย (Waste)',
           date: getISODate(),
           createdAt: serverTimestamp()
         });
       }
-      toast.success('ปรับปรุงสต็อกสำเร็จ');
-      setShowAdjustStockModal(false);
-      setStockToAdjust(null);
-      setAdjustmentInput({ amount: '', reason: 'waste' });
     }, 'ปรับปรุงสต็อกไม่สำเร็จ');
+    setBusy(false);
+    if (ok) {
+      toast.success('ปรับปรุงสต็อกสำเร็จ');
+      afterAction();
+    }
   };
 
-  return (
-    <>
-      <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-[var(--text-primary)]">
-        <header className="h-16 md:h-20 lg:h-24 bg-[var(--bg-secondary)] bg-[var(--bg-secondary)] border-b border-[var(--border-color)] border-[var(--border-color)] px-4 md:px-8 lg:px-12 flex items-center justify-between shadow-sm z-[var(--z-nav)]">
-          <div className="flex items-center gap-2 md:gap-4 text-emerald-600 cursor-pointer" onClick={() => handleViewChange('admin')}>
-            <ChevronLeft size={24} className="md:w-7 md:h-7 lg:w-8 lg:h-8" />
-            <h1 className="text-base md:text-xl lg:text-2xl font-semibold tracking-tight text-[var(--text-primary)] text-[var(--text-primary)]">คลังพัสดุ</h1>
-          </div>
-          <Button
-            variant="primary"
-            size="lg"
-            leftIcon={<Plus size={18} />}
-            onClick={() => {
-              setEditingStockItem(null);
-              setNewStockItem({ name: '', category: 'อื่น ๆ', quantity: 0, unit: DEFAULT_STOCK_UNIT, minQuantity: DEFAULT_MIN_QUANTITY, unitCost: 0 });
-            }}
-          >
-            เพิ่มสต็อก
-          </Button>
-        </header>
-        <div className="shrink-0 px-4 md:px-6 pt-4">
-          <Input
-            aria-label="ค้นหาวัตถุดิบ"
-            placeholder="ค้นหาวัตถุดิบ..."
-            value={stockSearch}
-            onChange={e => setStockSearch(e.target.value)}
-            leftIcon={<Search size={18} aria-hidden="true" />}
-            rightIcon={isSearching && (
-              <button
-                type="button"
-                aria-label="ล้างคำค้น"
-                onClick={() => setStockSearch('')}
-                className="p-1 rounded hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500"
-              >
-                <X size={18} aria-hidden="true" />
-              </button>
-            )}
-          />
-          {isSearching && (
-            <p role="status" className="mt-2 text-xs text-[var(--text-muted)]">
-              เจอ {filteredStock.length} จาก {stock.length} รายการ
-            </p>
-          )}
+  // รับของเข้า = the Expenses purchase path (same batch, same average cost).
+  const handleIntake = async (form) => {
+    setBusy(true);
+    try {
+      const result = await saveExpense({ form, date: getISODate(), stock, runDbAction });
+      if (!result.ok) return;
+      const msg = syncMessage(result);
+      if (msg && !result.unitMismatch) toast.success(`รับของเข้าแล้ว · ${msg}`);
+      else reportSave(result, toast);
+      afterAction();
+    } catch (e) {
+      toast.error('บันทึกรายจ่ายไม่สำเร็จ: ' + e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    const item = toDelete;
+    setToDelete(null);
+    if (!item) return;
+    const ok = await runDbAction(async () => {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stock', item.id));
+    }, 'ลบสต็อกไม่สำเร็จ');
+    if (ok && sheet?.id === item.id) closeSheet();
+  };
+
+  // ── rendering helpers
+  const menuItems = (item) => [
+    { key: 'intake', label: 'รับของเข้า', icon: PackagePlus, onSelect: () => openSheet('intake', item) },
+    { key: 'adjust', label: 'ตัดของเสีย / ปรับยอด', icon: PackageMinus, onSelect: () => openSheet('adjust', item) },
+    { key: 'edit', label: 'แก้ไข', icon: Pencil, onSelect: () => openSheet('edit', item) },
+    { key: 'delete', label: 'ลบวัตถุดิบ', icon: Trash2, danger: true, onSelect: () => setToDelete(item) },
+  ];
+  const stepper = (item, size = 'md') => (
+    <NumberStepper
+      size={size}
+      value={Number(item.quantity) || 0}
+      min={0}
+      ariaLabel={`จำนวน ${item.name}`}
+      onChange={(next) => updateStockQuantity(item, next - (Number(item.quantity) || 0))}
+    />
+  );
+  const qtyInk = (item) => (stockStatus(item).rank >= 2 ? 'text-[var(--state-danger)]' : 'text-[var(--text-primary)]');
+
+  const columns = [
+    {
+      key: 'name',
+      header: 'วัตถุดิบ',
+      render: (_, r) => (
+        <div className="min-w-0 py-1.5">
+          <p className="truncate font-semibold text-[var(--text-primary)]">{String(r.name)}</p>
+          <p className="truncate text-xs text-[var(--text-muted)]">{getStockCategory(r)}</p>
         </div>
-        <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 md:gap-6 p-4 md:p-6 lg:p-6 overflow-hidden text-[var(--text-primary)]">
-          {/* Stock List */}
-          <div className="flex-1 min-w-0 bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[var(--radius)] shadow-sm border border-[var(--border-color)] overflow-hidden flex flex-col shadow-emerald-500/5">
-            <div className="p-4 md:p-4 lg:p-6 xl:p-6 bg-[var(--bg-tertiary)]/50 border-b font-semibold text-[var(--text-muted)] text-xs md:text-xs flex justify-between px-4 md:px-6 lg:px-8 xl:px-10 tracking-[0.2em] leading-none">
-              <span>รายการในสต็อกทั้งหมด ({stock.length})</span>
-              {stock.some(s => Number(s.quantity) <= Number(s.minQuantity)) && (
-                      <span className="text-[var(--state-warn)] flex items-center gap-2 animate-pulse">
-                  <AlertTriangle size={16} /> วัตถุดิบใกล้หมด!
-                </span>
-              )}
-            </div>
-            <div className="flex-1 overflow-y-auto divide-y divide-gray-50 scrollbar-hide px-3 md:px-4 lg:px-6">
-              {isSyncing && (
-                <div className="py-6 px-4">
-                  <Skeleton.Table rows={6} cols={4} />
-                </div>
-              )}
-              {!isSyncing && !isSearching && stock.length === 0 && (
-                <EmptyState
-                  icon={Package}
-                  title="ไม่มีข้อมูลสต็อก"
-                  description="เพิ่มวัตถุดิบหรือพัสดุเพื่อเริ่มต้นใช้งาน"
-                  actionLabel="เพิ่มสต็อกใหม่"
-                  onAction={() => setNewStockItem({ name: '', category: 'อื่น ๆ', quantity: 0, unit: DEFAULT_STOCK_UNIT, minQuantity: DEFAULT_MIN_QUANTITY, unitCost: 0 })}
-                />
-              )}
-              {!isSyncing && isSearching && filteredStock.length === 0 && (
-                <EmptyState
-                  icon={Search}
-                  title={`ไม่พบวัตถุดิบที่ตรงกับ "${stockSearch}"`}
-                  actionLabel="ล้างคำค้น"
-                  onAction={() => setStockSearch('')}
-                  className="break-words [overflow-wrap:anywhere]"
-                />
-              )}
-              {filteredStock.map((item, index) => (
-                <React.Fragment key={item.id}>
-                  {(index === 0 || getStockCategory(item) !== getStockCategory(filteredStock[index - 1])) && (
+      ),
+    },
+    { key: 'status', header: 'สถานะ', width: 104, render: (_, r) => <StockStatusPill item={r} /> },
+    {
+      key: 'quantity',
+      header: 'คงเหลือ',
+      numeric: true,
+      width: 132,
+      render: (_, r) => (
+        <span className="whitespace-nowrap">
+          <span className={`text-lg font-semibold ${qtyInk(r)}`}>{qty(r.quantity)}</span>
+          <span className="ml-1 text-xs text-[var(--text-muted)]">{r.unit}</span>
+        </span>
+      ),
+    },
+    { key: 'min', header: 'ขั้นต่ำ', numeric: true, width: 84, render: (_, r) => <span className="text-[var(--text-secondary)]">{qty(reorderPoint(r))}</span> },
+    { key: 'unitCost', header: 'ต้นทุน/หน่วย', numeric: true, width: 112, render: (v) => <UnitCost value={v || 0} muted={!Number(v)} /> },
+    {
+      key: 'actions',
+      header: <span className="sr-only">ปรับจำนวนและตัวเลือก</span>,
+      align: 'right',
+      width: 212,
+      render: (_, r) => (
+        <div className="flex items-center justify-end gap-1" {...stop}>
+          {stepper(r)}
+          <RowMenu items={menuItems(r)} label={`ตัวเลือกของ ${r.name}`} />
+        </div>
+      ),
+    },
+  ];
+
+  const emptyNode = stock.length === 0 ? (
+    <EmptyState
+      icon={Package}
+      title="ยังไม่มีวัตถุดิบในคลัง"
+      description="เพิ่มวัตถุดิบ หรือบันทึกซื้อของในหน้ารายจ่าย ระบบจะสร้างให้"
+      actionLabel="เพิ่มวัตถุดิบ"
+      onAction={() => openSheet('create', null)}
+    />
+  ) : (
+    <EmptyState
+      icon={SearchX}
+      size="sm"
+      title={filter === 'low' && !search && category === 'all' ? 'ไม่มีวัตถุดิบที่ต้องเติม' : 'ไม่พบวัตถุดิบที่ตรงกับตัวกรอง'}
+      actionLabel="ดูทั้งหมด"
+      onAction={clearFilters}
+      className="break-words [overflow-wrap:anywhere]"
+    />
+  );
+
+  return (
+    <div className="h-full bg-[var(--bg-canvas)] flex flex-col overflow-hidden text-[var(--text-primary)]">
+      <PageHeader
+        title="สต็อก"
+        subtitle={counts.low > 0 ? `ต้องเติม ${counts.low} รายการ · หมด ${counts.out}` : `${counts.all} รายการในคลัง`}
+        icon={Package}
+        sticky={false}
+        actions={(
+          <>
+            <Button variant="secondary" leftIcon={<PackagePlus size={18} />} onClick={() => openSheet('intake', null, { pick: true })}>
+              รับของเข้า
+            </Button>
+            <Button leftIcon={<Plus size={18} />} onClick={() => openSheet('create', null)}>
+              เพิ่มวัตถุดิบ
+            </Button>
+          </>
+        )}
+      />
+
+      <Toolbar
+        search={{ value: search, onChange: setSearch, placeholder: 'ค้นหาวัตถุดิบหรือหมวด' }}
+        actions={(
+          <label className="relative">
+            <span className="sr-only">หมวดหมู่</span>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="min-h-11 max-w-[11rem] rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 text-sm text-[var(--text-primary)] outline-none focus-visible:shadow-[var(--focus-ring)] cursor-pointer"
+            >
+              <option value="all">ทุกหมวด</option>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+        )}
+        filters={(
+          <FilterChips
+            className="[&>button]:min-h-11"
+            ariaLabel="สถานะสต็อก"
+            value={filter}
+            onChange={setFilter}
+            chips={[
+              { value: 'all', label: 'ทั้งหมด', count: counts.all },
+              { value: 'low', label: 'ต้องเติม', count: counts.low, tone: 'warn' },
+              { value: 'out', label: 'หมด/ติดลบ', count: counts.out, tone: 'danger' },
+            ]}
+          />
+        )}
+      >
+        {filtering && !isSyncing && (
+          <p role="status" className="text-xs text-[var(--text-muted)]">แสดง {rows.length} จาก {stock.length} รายการ</p>
+        )}
+      </Toolbar>
+
+      <div className="flex-1 min-h-0 overflow-y-auto px-[var(--page-pad)] pb-24 md:pb-10">
+        <div className="max-w-[1400px] mx-auto">
+          {wide ? (
+            <DataTable
+              caption="รายการวัตถุดิบในสต็อก"
+              columns={columns}
+              rows={rows}
+              loading={isSyncing}
+              cardBreakpoint={false}
+              onRowClick={(r) => openSheet('detail', r)}
+              selectedKey={sheet?.id}
+              emptyState={emptyNode}
+            />
+          ) : isSyncing ? (
+            <div className="flex flex-col gap-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height="6rem" rounded="lg" />)}</div>
+          ) : rows.length === 0 ? (
+            emptyNode
+          ) : (
+            <ul className="flex flex-col gap-2" aria-label="รายการวัตถุดิบในสต็อก">
+              {rows.map((item) => (
+                <li key={item.id} className="rounded-[var(--radius)] bg-[var(--bg-surface)] shadow-[var(--elev-1)]">
+                  <div className="flex items-start gap-1 pr-1">
                     <button
                       type="button"
-                      // คงค่าพับหมวดเดิมไว้ เพื่อให้ล้างคำค้นแล้วกลับไปดูต่อได้เหมือนก่อนค้นหา
-                      disabled={isSearching}
-                      onClick={() => setCollapsedCategories(current => ({
-                        ...current,
-                        [getStockCategory(item)]: !current[getStockCategory(item)]
-                      }))}
-                      className="sticky top-0 z-[var(--z-dropdown)] w-full flex items-center justify-between px-3 md:px-4 lg:px-5 py-3 mt-2 bg-emerald-50/90 border-y border-emerald-100 text-emerald-700 text-xs font-semibold tracking-wider text-left"
-                      aria-expanded={isSearching || !collapsedCategories[getStockCategory(item)]}
+                      onClick={() => openSheet('detail', item)}
+                      className="min-w-0 flex-1 rounded-[var(--radius)] px-4 pt-3 pb-1 text-left outline-none focus-visible:shadow-[var(--focus-ring)]"
                     >
-                      <span>{getStockCategory(item)}</span>
-                      {!isSearching && collapsedCategories[getStockCategory(item)] ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                      <span className="flex items-center gap-2">
+                        <span className="min-w-0 truncate font-semibold text-[var(--text-primary)]">{String(item.name)}</span>
+                        <StockStatusPill item={item} />
+                      </span>
+                      <span className="block truncate text-xs text-[var(--text-muted)]">{getStockCategory(item)}</span>
                     </button>
-                  )}
-                  {(isSearching || !collapsedCategories[getStockCategory(item)]) && <div
-                  className={`p-3 md:p-4 lg:p-4 xl:p-6 flex flex-col sm:flex-row items-center gap-3 md:gap-4 lg:gap-6 xl:gap-6 group rounded-2xl md:rounded-[var(--radius)] xl:rounded-[var(--radius)] transition-all my-2 md:my-3 border shadow-sm ${Number(item.quantity) <= Number(item.minQuantity)
-                      ? 'bg-red-50 border-red-100'
-                      : 'bg-[var(--bg-secondary)] border-gray-50 hover:border-emerald-100'
-                    }`}
-                >
-                  <div
-                    className={`w-14 h-14 md:w-16 md:h-16 lg:w-18 lg:h-18 xl:w-20 xl:h-20 rounded-2xl md:rounded-3xl flex items-center justify-center shadow-inner shrink-0 ${Number(item.quantity) <= Number(item.minQuantity)
-                        ? 'bg-[var(--state-danger)]/10 text-[var(--state-danger)]'
-                        : 'bg-emerald-50 text-emerald-600'
-                      }`}
-                  >
-                    <Box size={24} className="md:w-7 md:h-7 lg:w-8 lg:h-8 xl:w-9 xl:h-9" />
+                    <span className="pt-1"><RowMenu items={menuItems(item)} label={`ตัวเลือกของ ${item.name}`} /></span>
                   </div>
-                  <div className="flex-1 min-w-0 text-[var(--text-primary)] text-center sm:text-left">
-                    <div className="flex items-center gap-2 md:gap-3 mb-1 justify-center sm:justify-start">
-                      <h3 className="font-semibold text-[var(--text-primary)] text-base md:text-lg lg:text-xl xl:text-2xl truncate tracking-tighter leading-none">
-                        {String(item.name)}
-                      </h3>
-                    </div>
-                    <p className="text-xs md:text-xs lg:text-sm font-bold text-[var(--text-muted)] tracking-wider leading-none hidden sm:block">
-                      ขั้นต่ำ: <span className="num text-right">{Number(item.minQuantity)}</span> {String(item.unit)}
+                  <div className="flex items-center justify-between gap-3 px-4 pb-3">
+                    <p className="num min-w-0">
+                      <span className={`text-2xl font-semibold ${qtyInk(item)}`}>{qty(item.quantity)}</span>
+                      <span className="ml-1 text-sm text-[var(--text-secondary)]">{item.unit}</span>
+                      <span className="block text-xs text-[var(--text-muted)]">ขั้นต่ำ {qty(reorderPoint(item))}</span>
                     </p>
+                    {stepper(item)}
                   </div>
-                  <div className="flex items-center gap-4 md:gap-6 lg:gap-6 xl:gap-12 text-[var(--text-primary)]">
-                    <div className="text-right">
-                      <p className="num text-right text-2xl md:text-3xl lg:text-4xl font-semibold text-[var(--text-primary)] mb-1 tracking-tighter leading-none">
-                        {(Number(item.quantity) || 0).toLocaleString()}
-                      </p>
-                      <p className="text-xs md:text-xs font-semibold text-[var(--text-muted)] tracking-[0.2em] leading-none">
-                        {String(item.unit)}
-                      </p>
-                    </div>
-                    <div className="flex items-center bg-[var(--bg-tertiary)]/50 rounded-xl md:rounded-2xl p-1 md:p-2 shadow-inner border border-[var(--border-color)]">
-                      <button
-                        onClick={() => updateStockQuantity(item, -1)}
-                        aria-label="ลดจำนวนสต็อก"
-                        className="p-2 md:p-3 lg:p-4 hover:bg-red-50 text-red-400 transition-all active:scale-90"
-                      >
-                        <Minus size={18} className="md:w-5 md:h-5 lg:w-[22px] lg:h-[22px]" />
-                      </button>
-                    <div className="w-[1px] h-8 md:h-10 lg:h-12 bg-[var(--border-color)] mx-1 md:mx-2 lg:mx-3"></div>
-                      <button
-                        onClick={() => updateStockQuantity(item, 1)}
-                        aria-label="เพิ่มจำนวนสต็อก"
-                        className="p-2 md:p-3 lg:p-4 hover:bg-emerald-50 text-emerald-400 transition-all active:scale-90"
-                      >
-                        <Plus size={18} className="md:w-5 md:h-5 lg:w-[22px] lg:h-[22px]" />
-                      </button>
-                    </div>
-                    <div className="flex gap-1 md:gap-2">
-                      <button
-                        onClick={() => {
-                          setStockToAdjust(item);
-                          setShowAdjustStockModal(true);
-                        }}
-                        className="p-2 md:p-3 lg:p-4 bg-orange-50 text-orange-500 rounded-xl md:rounded-2xl shadow-sm border border-orange-100 active:scale-90"
-                        title="ตัดของเสีย"
-                        aria-label="ตัดของเสีย"
-                      >
-                        <Trash2 size={18} className="md:w-5 md:h-5 lg:w-6 lg:h-6" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingStockItem(item);
-                          setNewStockItem({
-                            name: item.name || '',
-                            category: getStockCategory(item),
-                            quantity: item.quantity || 0,
-                            unit: item.unit || DEFAULT_STOCK_UNIT,
-                            minQuantity: item.minQuantity || DEFAULT_MIN_QUANTITY,
-                            unitCost: item.unitCost || 0
-                          });
-                        }}
-                        aria-label="แก้ไขสต็อก"
-                        className="p-2 md:p-3 lg:p-4 bg-blue-50 text-blue-500 rounded-xl md:rounded-2xl shadow-sm border border-blue-100 active:scale-90"
-                      >
-                        <Edit size={18} className="md:w-5 md:h-5 lg:w-6 lg:h-6" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setStockToDelete(item);
-                          setShowDeleteConfirm(true);
-                        }}
-                        aria-label="ลบสต็อก"
-                        className="p-2 md:p-3 lg:p-4 bg-red-50 text-red-500 rounded-xl md:rounded-2xl shadow-sm border border-red-100 active:scale-90"
-                      >
-                        <Trash2 size={18} className="md:w-5 md:h-5 lg:w-6 lg:h-6" />
-                      </button>
-                    </div>
-                  </div>
-                </div>}
-                </React.Fragment>
+                </li>
               ))}
-            </div>
-          </div>
-
-          {/* Add/Edit Form */}
-          <div className="w-full lg:w-[320px] xl:w-[380px] 2xl:w-[450px] shrink-0 bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[var(--radius)] shadow-[var(--elev-3)] border border-emerald-50 p-4 md:p-4 lg:p-6 xl:p-6 overflow-y-auto flex flex-col animate-in slide-in-from-right duration-500 shadow-emerald-500/10 text-[var(--text-primary)] order-first lg:order-last">
-            <h2 className="font-semibold text-base md:text-lg lg:text-xl xl:text-2xl text-[var(--text-primary)] mb-4 md:mb-5 lg:mb-6 flex items-center gap-2 md:gap-3 leading-none">
-              <div
-                className={`p-2 md:p-2.5 lg:p-3 rounded-xl md:rounded-2xl shadow-[var(--elev-2)] ${editingStockItem ? 'bg-blue-500 shadow-blue-500/20' : 'bg-emerald-500 shadow-emerald-500/20'
-                  } text-white`}
-              >
-                <Package size={20} className="md:w-6 md:h-6 lg:w-7 lg:h-7" />
-              </div>
-              {editingStockItem ? 'แก้ไขสต็อก' : 'เพิ่มสต็อกใหม่'}
-            </h2>
-            <form onSubmit={saveStockItem} className="space-y-4 lg:space-y-6">
-              <div>
-                <label className="text-xs lg:text-xs font-semibold text-[var(--text-muted)] tracking-[0.15em] block mb-2 ml-2 leading-none">
-                  ชื่อรายการพัสดุ
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newStockItem.name}
-                  onChange={e => setNewStockItem({ ...newStockItem, name: e.target.value })}
-                  className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl lg:rounded-2xl p-3 lg:p-4 text-sm lg:text-base font-semibold outline-none focus:bg-[var(--bg-secondary)] transition-all shadow-inner leading-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs lg:text-xs font-semibold text-[var(--text-muted)] tracking-[0.15em] block mb-2 ml-2 leading-none">
-                  หมวดหมู่
-                </label>
-                <select
-                  value={newStockItem.category || 'อื่น ๆ'}
-                  onChange={e => setNewStockItem({ ...newStockItem, category: e.target.value })}
-                  className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl lg:rounded-2xl p-3 lg:p-4 text-sm lg:text-base font-semibold outline-none focus:bg-[var(--bg-secondary)] transition-all shadow-inner"
-                >
-                  {STOCK_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3 lg:gap-4">
-                <div>
-                  <label className="text-xs lg:text-xs font-semibold text-[var(--text-muted)] tracking-[0.15em] block mb-2 ml-2 leading-none">
-                    ต้นทุนต่อหน่วย (บาท)
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={newStockItem.unitCost}
-                    onChange={e => setNewStockItem({ ...newStockItem, unitCost: e.target.value })}
-                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl lg:rounded-2xl p-3 lg:p-4 text-sm lg:text-base font-semibold outline-none transition-all shadow-inner leading-none"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs lg:text-xs font-semibold text-[var(--text-muted)] tracking-[0.15em] block mb-2 ml-2 leading-none">
-                    หน่วยเรียก (ชิ้น, กรัม)
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newStockItem.unit}
-                    onChange={e => setNewStockItem({ ...newStockItem, unit: e.target.value })}
-                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl lg:rounded-2xl p-3 lg:p-4 text-sm lg:text-base font-semibold outline-none transition-all shadow-inner leading-none"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="text-xs font-semibold text-[var(--text-muted)] tracking-[0.2em] block mb-4 ml-3 leading-none">
-                    ปริมาณคงเหลือ
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={newStockItem.quantity}
-                    onChange={e => setNewStockItem({ ...newStockItem, quantity: e.target.value })}
-                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[var(--radius)] p-6 text-base font-semibold outline-none transition-all shadow-inner leading-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-[var(--text-muted)] tracking-[0.2em] block mb-4 ml-3 leading-none">
-                    จุดสั่งซื้อขั้นต่ำ
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={newStockItem.minQuantity}
-                    onChange={e => setNewStockItem({ ...newStockItem, minQuantity: e.target.value })}
-                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[var(--radius)] p-6 text-base font-semibold outline-none transition-all shadow-inner leading-none"
-                  />
-                </div>
-              </div>
-              <Button
-                type="submit"
-                variant="primary"
-                size="xl"
-                fullWidth
-                className="!py-6 !rounded-[var(--radius)] !mt-8"
-              >
-                {editingStockItem ? 'อัปเดตข้อมูลพัสดุ' : 'บันทึกเข้าคลังสินค้า'}
-              </Button>
-            </form>
-          </div>
+            </ul>
+          )}
         </div>
       </div>
 
-      {/* Adjust Stock Modal */}
-      <Modal
-        isOpen={showAdjustStockModal && !!stockToAdjust}
-        onClose={() => {
-          setShowAdjustStockModal(false);
-          setStockToAdjust(null);
-        }}
-        title="ตัดของเสีย / ปรับสต็อก"
-        size="sm"
-      >
-        {stockToAdjust && (
-          <div className="space-y-6">
-            <div className="text-center">
-                  <div className="w-20 h-20 bg-[var(--bg-tertiary)] rounded-full mx-auto flex items-center justify-center text-[var(--state-warn)] mb-4">
-                <Trash2 size={40} />
-              </div>
-              <p className="text-[var(--text-secondary)] text-[var(--text-muted)] font-medium">{stockToAdjust.name}</p>
-            </div>
+      <StockSheet
+        state={sheet}
+        stock={stock}
+        busy={busy}
+        intakeDate={getISODate()}
+        onClose={closeSheet}
+        onMode={switchMode}
+        onStep={updateStockQuantity}
+        onDelete={(item) => setToDelete(item)}
+        onSaveItem={saveStockItem}
+        onAdjust={handleAdjustStock}
+        onIntake={handleIntake}
+      />
 
-            <Input
-              type="number"
-              label={`จำนวนที่ต้องการตัดออก (${stockToAdjust.unit})`}
-              value={adjustmentInput.amount}
-              onChange={(e) => setAdjustmentInput({ ...adjustmentInput, amount: e.target.value })}
-              placeholder="0"
-            />
-
-            <div className="grid grid-cols-2 gap-3">
-              <Button
-                variant={adjustmentInput.reason === 'waste' ? 'danger' : 'secondary'}
-                fullWidth
-                onClick={() => setAdjustmentInput({ ...adjustmentInput, reason: 'waste' })}
-              >
-                ของเสีย (ทิ้ง)
-              </Button>
-              <Button
-                variant={adjustmentInput.reason === 'correction' ? 'primary' : 'secondary'}
-                fullWidth
-                onClick={() => setAdjustmentInput({ ...adjustmentInput, reason: 'correction' })}
-              >
-                ปรับปรุงยอด
-              </Button>
-            </div>
-
-            {adjustmentInput.reason === 'waste' && !Number(stockToAdjust.unitCost) && (
-              <Card variant="danger" padding="sm">
-                <div className="flex items-center gap-2 text-[var(--state-danger)] text-sm">
-                  <AlertCircle size={16} />
-                  <span>คำเตือน: รายการนี้ไม่มีต้นทุน (฿0) มูลค่าของเสียจะเป็น 0</span>
-                </div>
-              </Card>
-            )}
-
-            <div className="grid grid-cols-2 gap-4 pt-4">
-              <Button
-                variant="secondary"
-                size="lg"
-                onClick={() => {
-                  setShowAdjustStockModal(false);
-                  setStockToAdjust(null);
-                }}
-              >
-                ยกเลิก
-              </Button>
-              <Button
-                variant="warning"
-                size="lg"
-                onClick={handleAdjustStock}
-                disabled={!adjustmentInput.amount}
-              >
-                ยืนยันการตัด
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Delete Stock Confirm Modal */}
-      <ConfirmModal
-        isOpen={showDeleteConfirm}
-        onClose={() => { setShowDeleteConfirm(false); setStockToDelete(null); }}
-        onConfirm={async () => {
-          setShowDeleteConfirm(false);
-          if (!stockToDelete) return;
-          await runDbAction(async () => {
-            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockToDelete.id));
-          }, 'ลบสต็อกไม่สำเร็จ');
-          setStockToDelete(null);
-        }}
-        title="ลบสต็อก"
-        message={`ต้องการลบ "${stockToDelete?.name || 'สต็อก'}" ออกจากระบบใช่หรือไม่?`}
+      <TopConfirm
+        isOpen={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+        title="ลบวัตถุดิบ"
+        message={`ลบ "${toDelete?.name || 'วัตถุดิบ'}" ออกจากคลังถาวร? สูตรเมนูที่ผูกไว้จะตัดสต็อกตัวนี้ไม่ได้อีก`}
         confirmText="ลบ"
         cancelText="ยกเลิก"
         variant="danger"
       />
-    </>
+    </div>
   );
 }
