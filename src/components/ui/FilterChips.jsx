@@ -51,7 +51,7 @@ export default function FilterChips({
             type="button"
             aria-pressed={on}
             onClick={() => toggle(chip.value)}
-            className={`shrink-0 inline-flex items-center gap-1.5 min-h-10 px-3.5 rounded-full border text-sm leading-snug whitespace-nowrap transition-colors duration-150 outline-none focus-visible:shadow-[var(--focus-ring)] ${
+            className={`shrink-0 inline-flex items-center gap-1.5 min-h-11 px-3.5 rounded-full border text-sm leading-snug whitespace-nowrap transition-colors duration-150 outline-none focus-visible:shadow-[var(--focus-ring)] ${
               on
                 ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--accent-soft-fg)] font-semibold'
                 : 'bg-[var(--bg-surface)] border-[var(--border-strong)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
@@ -69,7 +69,7 @@ export default function FilterChips({
         <button
           type="button"
           onClick={onClear}
-          className="shrink-0 inline-flex items-center gap-1 min-h-10 px-3 rounded-full text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[var(--focus-ring)]"
+          className="shrink-0 inline-flex items-center gap-1 min-h-11 px-3 rounded-full text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[var(--focus-ring)]"
         >
           <X size={14} /> ล้างตัวกรอง
         </button>

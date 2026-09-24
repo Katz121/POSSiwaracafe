@@ -50,7 +50,7 @@ export default function Sheet({
     const t = setTimeout(() => {
       const panel = panelRef.current;
       if (!panel) return;
-      const target = initialFocus?.current || panel.querySelector(`[data-sheet-body] ${FOCUSABLE}`) || panel;
+      const target = initialFocus?.current || panel.querySelector(FOCUSABLE.split(',').map((sel) => `[data-sheet-body] ${sel}`).join(',')) || panel;
       target.focus?.({ preventScroll: true });
     }, 30);
     const onKey = (e) => {
