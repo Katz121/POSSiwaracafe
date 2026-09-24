@@ -153,6 +153,11 @@ service cloud.firestore {
         allow read, write: if isStaff();
       }
 
+      // ประวัติตรวจนับสต็อกหน้างาน (ตรง/ไม่ตรง + ส่วนต่าง) · พนักงานเท่านั้น
+      match /stockCounts/{id} {
+        allow read, write: if isStaff();
+      }
+
       match /expenses/{id} {
         allow read, write: if isStaff();
       }

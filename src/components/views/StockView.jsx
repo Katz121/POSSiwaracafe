@@ -20,6 +20,12 @@ import { saveExpense, reportSave, syncMessage } from './inventory/expenseSave';
 import {
   isOut, matchesStockFilter, matchesStockSearch, needsRestock, normalizeStockFilter, reorderPoint, sortStockForReview, stockStatus,
 } from './inventory/stockStatus';
+// ── ตรวจนับสต็อกหน้างาน (stock count) ──
+import { ClipboardCheck, ClipboardList } from 'lucide-react';
+import CountSheet from './stockcount/CountSheet';
+import CountModeSheet from './stockcount/CountModeSheet';
+import CountStatusPill from './stockcount/CountStatusPill';
+import { COUNT_FILTER, matchesCountFilter, normalizeFilterWithCount } from '../../utils/stockCount';
 
 const qty = (n) => formatNumber(n, { maxDecimals: 3 });
 // Keeps taps on the stepper / menu from also opening the row sheet.
@@ -34,7 +40,7 @@ export default function StockView() {
   const wide = useMediaQuery('(min-width: 768px)');
 
   // ── filters · `#/stock?filter=low` pre-selects, and the URL follows the chips
-  const paramFilter = normalizeStockFilter(params.filter);
+  const paramFilter = normalizeFilterWithCount(params.filter, normalizeStockFilter);
   const [filter, setFilterState] = useState(paramFilter);
   const [seenParam, setSeenParam] = useState(paramFilter);
   if (paramFilter !== seenParam) { // a deep link arrived while this view was open
@@ -42,7 +48,7 @@ export default function StockView() {
     setFilterState(paramFilter);
   }
   const setFilter = (next) => {
-    const value = normalizeStockFilter(next);
+    const value = normalizeFilterWithCount(next, normalizeStockFilter);
     setFilterState(value);
     setSeenParam(value);
     navigate('stock', value === 'all' ? {} : { filter: value }, { replace: true });
@@ -50,21 +56,26 @@ export default function StockView() {
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
 
+  const today = getISODate(); // stock count: "ตรวจแล้ววันนี้"
+  const [countId, setCountId] = useState(null);
+  const [countMode, setCountMode] = useState(false);
   const sorted = useMemo(() => sortStockForReview(stock), [stock]);
   const counts = useMemo(() => ({
     all: stock.length,
     low: stock.filter(needsRestock).length,
     out: stock.filter(isOut).length,
-  }), [stock]);
+    uncounted: stock.filter((s) => matchesCountFilter(s, COUNT_FILTER, today)).length,
+  }), [stock, today]);
   const categories = useMemo(() => {
     const present = new Set(stock.map(getStockCategory));
     return STOCK_CATEGORIES.filter((c) => present.has(c)).concat([...present].filter((c) => !STOCK_CATEGORIES.includes(c)));
   }, [stock]);
   const rows = useMemo(() => sorted.filter((item) => (
     matchesStockFilter(item, filter)
+    && matchesCountFilter(item, filter, today)
     && (category === 'all' || getStockCategory(item) === category)
     && matchesStockSearch(item, search)
-  )), [sorted, filter, category, search]);
+  )), [sorted, filter, category, search, today]);
   const filtering = filter !== 'all' || category !== 'all' || search.trim() !== '';
   const clearFilters = () => { setFilter('all'); setCategory('all'); setSearch(''); };
 
@@ -166,6 +177,7 @@ export default function StockView() {
   // ── rendering helpers
   const menuItems = (item) => [
     { key: 'intake', label: 'รับของเข้า', icon: PackagePlus, onSelect: () => openSheet('intake', item) },
+    { key: 'count', label: 'ตรวจนับ', icon: ClipboardCheck, onSelect: () => setCountId(item.id) },
     { key: 'adjust', label: 'ตัดของเสีย / ปรับยอด', icon: PackageMinus, onSelect: () => openSheet('adjust', item) },
     { key: 'edit', label: 'แก้ไข', icon: Pencil, onSelect: () => openSheet('edit', item) },
     { key: 'delete', label: 'ลบวัตถุดิบ', icon: Trash2, danger: true, onSelect: () => setToDelete(item) },
@@ -188,7 +200,10 @@ export default function StockView() {
       render: (_, r) => (
         <div className="min-w-0 py-1.5">
           <p className="truncate font-semibold text-[var(--text-primary)]">{String(r.name)}</p>
-          <p className="truncate text-xs text-[var(--text-muted)]">{getStockCategory(r)}</p>
+          <p className="flex min-w-0 items-center gap-2 text-xs text-[var(--text-muted)]">
+            <span className="truncate">{getStockCategory(r)}</span>
+            <CountStatusPill item={r} today={today} size="xs" />
+          </p>
         </div>
       ),
     },
@@ -233,7 +248,8 @@ export default function StockView() {
     <EmptyState
       icon={SearchX}
       size="sm"
-      title={filter === 'low' && !search && category === 'all' ? 'ไม่มีวัตถุดิบที่ต้องเติม' : 'ไม่พบวัตถุดิบที่ตรงกับตัวกรอง'}
+      title={filter === 'low' && !search && category === 'all' ? 'ไม่มีวัตถุดิบที่ต้องเติม'
+        : filter === COUNT_FILTER && !search && category === 'all' ? 'ตรวจนับครบทุกรายการแล้ววันนี้' : 'ไม่พบวัตถุดิบที่ตรงกับตัวกรอง'}
       actionLabel="ดูทั้งหมด"
       onAction={clearFilters}
       className="break-words [overflow-wrap:anywhere]"
@@ -249,6 +265,9 @@ export default function StockView() {
         sticky={false}
         actions={(
           <>
+            <Button variant="secondary" leftIcon={<ClipboardList size={18} />} onClick={() => setCountMode(true)} disabled={!stock.length}>
+              โหมดตรวจนับ
+            </Button>
             <Button variant="secondary" leftIcon={<PackagePlus size={18} />} onClick={() => openSheet('intake', null, { pick: true })}>
               รับของเข้า
             </Button>
@@ -284,6 +303,7 @@ export default function StockView() {
               { value: 'all', label: 'ทั้งหมด', count: counts.all },
               { value: 'low', label: 'ต้องเติม', count: counts.low, tone: 'warn' },
               { value: 'out', label: 'หมด/ติดลบ', count: counts.out, tone: 'danger' },
+              { value: COUNT_FILTER, label: 'ยังไม่ตรวจวันนี้', count: counts.uncounted, tone: 'info' },
             ]}
           />
         )}
@@ -324,7 +344,10 @@ export default function StockView() {
                         <span className="min-w-0 truncate font-semibold text-[var(--text-primary)]">{String(item.name)}</span>
                         <StockStatusPill item={item} />
                       </span>
-                      <span className="block truncate text-xs text-[var(--text-muted)]">{getStockCategory(item)}</span>
+                      <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-[var(--text-muted)]">
+                        <span className="truncate">{getStockCategory(item)}</span>
+                        <CountStatusPill item={item} today={today} size="xs" />
+                      </span>
                     </button>
                     <span className="pt-1"><RowMenu items={menuItems(item)} label={`ตัวเลือกของ ${item.name}`} /></span>
                   </div>
@@ -355,7 +378,11 @@ export default function StockView() {
         onSaveItem={saveStockItem}
         onAdjust={handleAdjustStock}
         onIntake={handleIntake}
+        onCount={(item) => { closeSheet(); setCountId(item.id); }}
       />
+
+      <CountSheet itemId={countId} stock={stock} today={today} onClose={() => setCountId(null)} />
+      <CountModeSheet open={countMode} stock={stock} today={today} onClose={() => setCountMode(false)} />
 
       <TopConfirm
         isOpen={!!toDelete}

@@ -9,6 +9,11 @@ import { auditDay, auditDays, auditMenuLinks, negativeStock, STATUS_LABEL } from
 import { AuditEmpty, IssueList, MenuHealth, SoldList, StockUsedList } from './inventory/AuditSections';
 import { pct, qtyText } from './inventory/auditFormat';
 import { auditDateFromParam, auditParams, auditTabFromParam } from './inventory/stockStatus';
+// ── ตรวจนับสต็อกหน้างาน (stock count) ──
+import { ClipboardList } from 'lucide-react';
+import CountAuditSection from './stockcount/CountAuditSection';
+import useStockCounts from './stockcount/useStockCounts';
+import { summarizeCounts } from '../../utils/stockCount';
 
 const WEEKDAY_SHORT = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
 const dayLabel = (iso) => {
@@ -51,7 +56,7 @@ export default function StockAuditView() {
   // `#/stock-audit?date=YYYY-MM-DD&tab=links` pre-selects; the URL follows
   // the date/tab (replace, so stepping days does not spam history).
   const paramDate = auditDateFromParam(params.date, today);
-  const paramTab = auditTabFromParam(params.tab);
+  const paramTab = params.tab === 'count' ? 'count' : auditTabFromParam(params.tab);
   const [date, setDateState] = useState(paramDate);
   const [tab, setTabState] = useState(paramTab);
   const [seen, setSeen] = useState(`${paramDate}|${paramTab}`);
@@ -88,6 +93,8 @@ export default function StockAuditView() {
   }, [orders, stock, menu, date, today]);
   const links = useMemo(() => auditMenuLinks({ menu, stock, beanModifiers }), [menu, stock, beanModifiers]);
   const negatives = useMemo(() => negativeStock(stock), [stock]);
+  const stockCounts = useStockCounts(date);
+  const countedItems = useMemo(() => summarizeCounts(stockCounts.counts).items, [stockCounts.counts]);
 
   const { summary, sold, stockUsed, issues } = audit;
   const verdict = VERDICT[summary.verdict] || VERDICT.empty;
@@ -132,6 +139,7 @@ export default function StockAuditView() {
     { value: 'stock', label: 'สต็อกที่ตัด', icon: <Package size={16} />, count: stockUsed.length },
     { value: 'issues', label: 'ต้องแก้', icon: <AlertTriangle size={16} />, count: actionable },
     { value: 'menu', label: 'ผูกสต็อก', icon: <Link2 size={16} />, count: links.needsAttention + links.modifiers.length },
+    { value: 'count', label: 'ตรวจนับ', icon: <ClipboardList size={16} />, count: countedItems },
   ];
   const searchable = tab === 'sold' || tab === 'stock';
 
@@ -237,6 +245,13 @@ export default function StockAuditView() {
             {tab === 'stock' && <StockUsedList rows={stockFiltered} />}
             {tab === 'issues' && <IssueList issues={issues} onFix={goFix} />}
             {tab === 'menu' && <MenuHealth links={links} negatives={negatives} onFix={goFix} />}
+            {tab === 'count' && (
+              <CountAuditSection
+                {...stockCounts}
+                isToday={date === today}
+                onStartCount={() => handleViewChange?.('stock', { filter: 'uncounted' })}
+              />
+            )}
           </div>
         </div>
       </div>
