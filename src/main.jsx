@@ -1,6 +1,10 @@
 import React, { Suspense, lazy } from 'react'
 import ReactDOM from 'react-dom/client'
-import { ToastProvider, Spinner } from './components/ui'
+// Direct imports (not the ./components/ui barrel): the barrel re-exports every UI
+// component (Modal, Table, Select, StockUsageInput → utils/wastage, ...), which
+// would all land in the entry chunk that every page — including /order — loads.
+import { ToastProvider } from './components/ui/Toast'
+import Spinner from './components/ui/Spinner'
 import './index.css'
 import { sendQrBeacon } from './services/qrBeacon'
 

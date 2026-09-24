@@ -41,14 +41,12 @@ import {
   shouldApplyLookupResult,
   writeRememberedPhone,
 } from '../utils/memberAutofill';
-import {
-  doc,
-  getDoc,
-} from 'firebase/firestore';
-import { auth, db, functions, appId } from '../services/firebase';
+// Full Firestore SDK (~95 KB gzip) is NOT imported statically: the menu is read
+// via firestore/lite, and the full SDK is only needed for writes (funnel counters,
+// checkout fallback), so it loads lazily after the menu has painted.
+import { auth, functions, appId } from '../services/firebaseCore';
 import { liteDb, menuLiteReader, fetchMenuCollectionsLite } from '../services/firebaseLite';
 import { buildCheckoutItems, shouldKeepRequestId, submitTrustedCheckout } from '../services/checkoutService';
-import { isBackendDown, submitCheckoutDirect } from '../services/checkoutFallback';
 import { fetchPublicMenu, readCachedPublicMenu, writeCachedPublicMenu, SENSITIVE_SETTINGS_KEYS } from '../utils/publicMenu';
 import { sendQrBeacon } from '../services/qrBeacon';
 import {
@@ -61,7 +59,13 @@ import {
   shouldShowQrSpinner,
   withTimeout,
 } from '../utils/qrMenuLoad';
-import { Button, Modal, Input, Spinner, EmptyState } from '../components/ui';
+// Direct imports, not the ../components/ui barrel (which drags Table, Select,
+// Tabs, StockUsageInput → utils/wastage, ... onto the customer page).
+import Button from '../components/ui/Button';
+import Modal from '../components/ui/Modal';
+import Input from '../components/ui/Input';
+import Spinner from '../components/ui/Spinner';
+import EmptyState from '../components/ui/EmptyState';
 import { formatCurrency, roundUpTo5, getModifierGroups, isBaseModifier, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH, normalizeThaiPhoneInput } from '../config/constants';
 import { getItemSalePrice, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory, supportsSweetnessChoice } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
@@ -71,6 +75,19 @@ import { trackFunnelStep } from '../utils/qrFunnel';
 import { readCartDraft, restoreCartDraft, saveCartDraft, clearCartDraft, readLastSweetness, rememberSweetness } from '../utils/cartDraft';
 import { applyCustomerSEO } from '../utils/seo';
 import { getEligibleRewards, toggleRewardSelection } from '../utils/rewards';
+
+// Lazy full-SDK helpers (see the firebaseCore import above).
+const loadFullDb = () => import('../services/firebase').then((m) => m.db);
+const loadCheckoutFallback = () => import('../services/checkoutFallback');
+const trackStep = (step) => { loadFullDb().then((db) => trackFunnelStep(db, appId, step)).catch(() => {}); };
+const whenIdle = (fn) => {
+  if (typeof window.requestIdleCallback === 'function') {
+    const id = window.requestIdleCallback(fn, { timeout: 2000 });
+    return () => window.cancelIdleCallback(id);
+  }
+  const id = setTimeout(fn, 300);
+  return () => clearTimeout(id);
+};
 
 // ---------------------------------------------------------------------------
 // i18n: Thai/English UI chrome for the customer-facing QR ordering page.
@@ -361,7 +378,9 @@ function LanguageToggle({ lang, onToggle }) {
 // ---------------------------------------------------------------------------
 // Sub-component: MenuItemCard
 // ---------------------------------------------------------------------------
-function MenuItemCard({ item, onAdd, onView, settingsData, isBestSeller = false, t, lang = 'th' }) {
+// `priority`: first above-the-fold cards (cake rail) · the LCP element on /order,
+// so load eagerly with high fetch priority instead of loading="lazy".
+function MenuItemCard({ item, onAdd, onView, settingsData, isBestSeller = false, t, lang = 'th', priority = false }) {
   const hasImage = Boolean(item.image);
   const sale = getItemSalePrice(item, settingsData);
   // Coffee menus display prices rounded up to the nearest 5 baht.
@@ -390,7 +409,9 @@ className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1
             src={item.image}
             alt={item.name}
             className="w-full h-full object-cover"
-            loading="lazy"
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
+            decoding="async"
           />
         ) : (
           <Coffee size={36} className="text-emerald-300" strokeWidth={1.5} />
@@ -1824,7 +1845,7 @@ function CustomerOrderApp() {
       // ค่าที่ลูกค้าต้องใช้อยู่ใน config/publicMenu อยู่แล้ว ทางนี้เป็นแค่ตาข่ายรอง
       // สำหรับกรณีที่ยังไม่เคยเผยแพร่ bundle
       // Don't let a hung settings read keep the spinner up — menu already painted.
-      getDoc(doc(db, ...base, 'config', 'settings')).then((settingsSnap) => {
+      menuLiteReader.getDoc(menuLiteReader.doc(liteDb, ...base, 'config', 'settings')).then((settingsSnap) => {
         if (isStale()) return;
         const settingsRaw = settingsSnap.exists() ? { ...settingsSnap.data() } : {};
         for (const key of SENSITIVE_SETTINGS_KEYS) delete settingsRaw[key];
@@ -2167,16 +2188,21 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   // Anonymous funnel counters (see utils/qrFunnel.js) · each step once per session,
   // fire-and-forget so a failed write can never affect ordering.
-  useEffect(() => { if (authed && (menuReady || hasPainted)) trackFunnelStep(db, appId, 'view'); }, [authed, menuReady, hasPainted]);
-  useEffect(() => { if (cartDrawerOpen) trackFunnelStep(db, appId, 'cart'); }, [cartDrawerOpen]);
+  // 'view' waits for an idle moment so the lazy full-SDK download never competes
+  // with the first paint; it also warms the SDK + checkout fallback for later.
   useEffect(() => {
-    if (view === 'checkout') trackFunnelStep(db, appId, 'checkout');
-    if (view === 'success') trackFunnelStep(db, appId, 'order');
+    if (!(authed && (menuReady || hasPainted))) return undefined;
+    return whenIdle(() => { trackStep('view'); loadCheckoutFallback().catch(() => {}); });
+  }, [authed, menuReady, hasPainted]);
+  useEffect(() => { if (cartDrawerOpen) trackStep('cart'); }, [cartDrawerOpen]);
+  useEffect(() => {
+    if (view === 'checkout') trackStep('checkout');
+    if (view === 'success') trackStep('order');
   }, [view]);
 
   const addToCart = useCallback((item, modifier = null, sweetness = null, milkType = null) => {
     const line = buildCartLine(item, modifier, sweetness, milkType, settingsData);
-    trackFunnelStep(db, appId, 'add'); // once per session · never blocks
+    trackStep('add'); // once per session · never blocks
     setCart((prev) => {
       const existing = prev.find((c) => (c.cartId || c.id) === line.cartId);
       return existing ? prev.map((c) => c === existing ? { ...c, quantity: c.quantity + 1 } : c) : [...prev, line];
@@ -2282,9 +2308,10 @@ function CustomerOrderApp() {
 
       // Backend ล่ม (เช่น billing ปิด → Cloud Run ไม่รับ request) ไม่ใช่ความผิดลูกค้า
       // เขียนออเดอร์ลง Firestore ตรงๆ แทน ร้านจะได้ไม่ต้องหยุดรับออเดอร์ทั้งวัน
-      if (isBackendDown(code)) {
+      const checkoutFallback = await loadCheckoutFallback().catch(() => null);
+      if (checkoutFallback?.isBackendDown(code)) {
         try {
-          const fallback = await submitCheckoutDirect(db, appId, {
+          const fallback = await checkoutFallback.submitCheckoutDirect(await loadFullDb(), appId, {
             uid: auth.currentUser?.uid,
             requestId: checkoutRequestIdRef.current,
             customerName: customerName.trim(),
@@ -2617,9 +2644,9 @@ function CustomerOrderApp() {
               <p className="text-xs text-[var(--text-muted)]">{t('cakeRailSubtitle')}</p>
             </div>
             <div className="flex gap-3 overflow-x-auto px-4 pb-1 snap-x">
-              {cakeItems.map(item => (
+              {cakeItems.map((item, i) => (
                 <div key={item.id} className="w-48 flex-shrink-0 snap-start">
-                  <MenuItemCard item={item} onAdd={handleMenuItemClick} onView={setDetailItem} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} />
+                  <MenuItemCard item={item} onAdd={handleMenuItemClick} onView={setDetailItem} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} priority={i < 2} />
                 </div>
               ))}
             </div>

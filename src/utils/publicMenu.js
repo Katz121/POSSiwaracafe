@@ -12,14 +12,19 @@
  * Bonus: this strips admin-only secrets (adminPin, geminiApiKey) that the old
  * full-settings read was leaking to every customer device.
  */
-import { doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+// The full Firestore SDK is imported lazily: the customer QR page imports this
+// module (cache helpers + fetchPublicMenu with a firestore/lite reader) and must
+// not download the full SDK (~95 KB gzip) before first paint. Staff pages have
+// it loaded already, so the dynamic import resolves instantly there.
+const loadFirestore = () => import('firebase/firestore');
 
 // Fields in config/settings that must NEVER be exposed to customers.
 // (The customer page only needs display + promo config — never the admin PIN,
 //  API key, or the cash float.)
 export const SENSITIVE_SETTINGS_KEYS = ['adminPin', 'geminiApiKey', 'startingCash'];
 
-export function publicMenuDocRef(db, appId) {
+export async function publicMenuDocRef(db, appId) {
+  const { doc } = await loadFirestore();
   return doc(db, 'artifacts', appId, 'public', 'data', 'config', 'publicMenu');
 }
 
@@ -75,11 +80,15 @@ export async function publishPublicMenu(db, appId, input, prevSerialized) {
     // Remove any previously-published (now-stale) bundle, otherwise customers
     // would keep reading the old smaller doc forever and never see updates —
     // deleting it forces them onto the live per-collection fallback instead.
-    try { await deleteDoc(publicMenuDocRef(db, appId)); } catch { /* already gone / no perms */ }
+    try {
+      const { deleteDoc } = await loadFirestore();
+      await deleteDoc(await publicMenuDocRef(db, appId));
+    } catch { /* already gone / no perms */ }
     return serialized; // remember it so we don't warn + delete again until the menu changes
   }
 
-  await setDoc(publicMenuDocRef(db, appId), { ...bundle, updatedAt: serverTimestamp() });
+  const { setDoc, serverTimestamp } = await loadFirestore();
+  await setDoc(await publicMenuDocRef(db, appId), { ...bundle, updatedAt: serverTimestamp() });
   return serialized;
 }
 
@@ -88,7 +97,11 @@ export async function publishPublicMenu(db, appId, input, prevSerialized) {
  * @returns the bundle data ({ menu, categories, beanModifiers, settings, updatedAt })
  *          or null if it has not been published yet (caller should fall back).
  */
-export async function fetchPublicMenu(db, appId, reader = { doc, getDoc }) {
+export async function fetchPublicMenu(db, appId, reader) {
+  if (!reader) {
+    const { doc, getDoc } = await loadFirestore();
+    reader = { doc, getDoc };
+  }
   // The QR page supplies Lite; member-card reads and admin writes stay full SDK.
   const snap = await reader.getDoc(reader.doc(db, 'artifacts', appId, 'public', 'data', 'config', 'publicMenu'));
   if (!snap.exists()) return null;

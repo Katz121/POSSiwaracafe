@@ -12,7 +12,10 @@
  * Firestore rules (config: qrFunnel/{day}) only let a customer add exactly +1 to
  * one known step per write; only staff can read.
  */
-import { doc, setDoc, increment } from 'firebase/firestore';
+// Full Firestore SDK is imported lazily: this module is on the customer QR page's
+// critical path, which reads via firestore/lite and should not download the full
+// SDK (~95 KB gzip) before first paint. Staff pages already have it loaded.
+const loadFirestore = () => import('firebase/firestore');
 
 export const FUNNEL_STEPS = ['view', 'add', 'cart', 'checkout', 'order'];
 
@@ -45,6 +48,7 @@ export async function trackFunnelStep(db, appId, step, { storage = globalThis.se
     // storage blocked (private mode) → still count, may over-count slightly
   }
   try {
+    const { doc, setDoc, increment } = await loadFirestore();
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'qrFunnel', day), { [step]: increment(1) }, { merge: true });
   } catch {
     // offline / rules not deployed yet — ignore

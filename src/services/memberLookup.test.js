@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('./firebase', () => ({ auth: {}, functions: {} }));
+vi.mock('./firebaseCore', () => ({ auth: {}, functions: {} }));
 vi.mock('firebase/functions', () => ({ httpsCallable: vi.fn() }));
 vi.mock('firebase/auth', () => ({ signInAnonymously: vi.fn() }));
 

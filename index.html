@@ -47,6 +47,11 @@
     <link rel="preconnect" href="https://firebase.googleapis.com" />
     <link rel="preconnect" href="https://pub-d463619a014848819bdac456d1d599a2.r2.dev" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- index.css @imports this stylesheet, so without a hint it is only discovered
+         after the main CSS downloads (CSS → font CSS → woff2 chain). Fetch it early.
+         URL must stay identical to the @import in src/index.css. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" />
     <link rel="preconnect" href="https://identitytoolkit.googleapis.com" />
 
     <!-- Fix iPad viewport: Safari may report narrow device-width in mobile mode -->
@@ -68,7 +73,8 @@
   </head>
   <body>
     <script>
-      if (location.pathname === '/order') {
+      // Vite replaces %VITE_USE_EMULATOR% at build time · emulator builds never ping the real beacon.
+      if (location.pathname === '/order' && '%VITE_USE_EMULATOR%' !== '1') {
         try {
           if (!sessionStorage.getItem('qrBeacon_sent_open')) {
             sessionStorage.setItem('qrBeacon_sent_open', '1');

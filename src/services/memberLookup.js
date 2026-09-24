@@ -1,6 +1,6 @@
 import { httpsCallable } from 'firebase/functions';
 import { signInAnonymously } from 'firebase/auth';
-import { auth, functions } from './firebase';
+import { auth, functions } from './firebaseCore';
 
 // Callables don't wait for the anonymous sign-in the way Firestore reads do — a lookup
 // fired before useAuth finishes goes out without a token and the backend says

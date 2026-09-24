@@ -1,5 +1,5 @@
 import { getFirestore, doc, getDoc, collection, getDocs, connectFirestoreEmulator } from 'firebase/firestore/lite';
-import { auth } from './firebase';
+import { auth } from './firebaseCore';
 import { ensureSignedIn } from './memberLookup';
 
 // Reuse the initialized app and its Auth provider; keep the full SDK for writes.

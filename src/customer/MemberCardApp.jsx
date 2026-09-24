@@ -12,7 +12,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { lookupMemberByPhone } from '../services/memberLookup';
 import { Coffee, Search, Star, ArrowRight } from 'lucide-react';
-import { db, appId } from '../services/firebase';
+// firestore/lite read (1 doc) · keeps the full Firestore SDK off this page.
+import { appId } from '../services/firebaseCore';
+import { liteDb, menuLiteReader } from '../services/firebaseLite';
 import useAuth from '../hooks/useAuth';
 import { fetchPublicMenu } from '../utils/publicMenu';
 import { MEMBER_MIN_PHONE_LENGTH } from '../config/constants';
@@ -44,7 +46,7 @@ export default function MemberCardApp() {
     let cancelled = false;
     (async () => {
       try {
-        const bundle = await fetchPublicMenu(db, appId);
+        const bundle = await fetchPublicMenu(liteDb, appId, menuLiteReader);
         if (cancelled || !bundle?.settings) return;
         setThreshold(Number(bundle.settings.redeemPointsThreshold) || 50);
         setDiscount(Number(bundle.settings.redeemDiscountValue) || 50);

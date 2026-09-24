@@ -10,8 +10,9 @@
  * by menu id so bean-modifier variants (which share one menu doc) count once.
  */
 
-import { doc, updateDoc, increment } from 'firebase/firestore';
-import { db, appId } from '../services/firebase';
+// Loaded lazily: the customer QR page imports this module but must not pull the
+// full Firestore SDK onto its critical path (it only writes after checkout).
+const loadDeps = () => Promise.all([import('firebase/firestore'), import('../services/firebase')]);
 
 /**
  * Recompute soldCount for every menu item from the full order history and write
@@ -35,6 +36,7 @@ export async function recomputeAllSoldCounts(menu = [], orders = []) {
     }
   }
 
+  const [{ doc, updateDoc }, { db, appId }] = await loadDeps();
   const base = ['artifacts', appId, 'public', 'data', 'menu'];
   const results = await Promise.allSettled(
     menu.map((m) => updateDoc(doc(db, ...base, m.id), { soldCount: totals[m.id] || 0 })),
@@ -61,6 +63,7 @@ export async function bumpMenuSoldCount(items = []) {
   const ids = Object.keys(totals);
   if (ids.length === 0) return;
 
+  const [{ doc, updateDoc, increment }, { db, appId }] = await loadDeps();
   const base = ['artifacts', appId, 'public', 'data', 'menu'];
   // Per-item updates wrapped in allSettled: one missing/stale menu doc must
   // not drop the counts for the rest of the cart.

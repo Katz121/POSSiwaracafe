@@ -14,9 +14,19 @@ export default function useReceiptPdf({ menu, settings }) {
   useEffect(() => {
     mounted.current = true;
     // โหลดล่วงหน้าโดยไม่รวมไลบรารีไว้ใน bundle หลัก และลองใหม่ตอนกดได้หากโหลดไม่สำเร็จ
-    void import('jspdf').catch(() => {});
-    void import('html2canvas-pro').catch(() => {});
+    // ~190 KB gzip (jspdf + html2canvas-pro) — importing EVALUATES the modules, a
+    // long main-thread task. Do it at idle so it never lands on the Bills view switch.
+    const prefetch = () => {
+      void import('jspdf').catch(() => {});
+      void import('html2canvas-pro').catch(() => {});
+    };
+    const idleId = typeof window.requestIdleCallback === 'function'
+      ? window.requestIdleCallback(prefetch, { timeout: 5000 })
+      : null;
+    const timerId = idleId == null ? setTimeout(prefetch, 2000) : null;
     return () => {
+      if (idleId != null) window.cancelIdleCallback(idleId);
+      if (timerId != null) clearTimeout(timerId);
       mounted.current = false;
       // เก็บ URL ให้แท็บใหม่โหลดเสร็จ ไม่ revoke ทันทีหลังเปลี่ยนหน้า
       if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);

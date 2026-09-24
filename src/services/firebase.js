@@ -1,6 +1,3 @@
-import { initializeApp } from 'firebase/app';
-import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence, connectAuthEmulator } from 'firebase/auth';
-import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import {
   connectFirestoreEmulator,
   initializeFirestore,
@@ -8,28 +5,11 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
+// App + Auth + Functions live in ./firebaseCore so the customer pages can use
+// them without pulling in the full Firestore SDK. Re-exported here unchanged.
+import { app, auth, functions, appId, IS_EMULATOR } from './firebaseCore';
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
-};
-
-// Validate required config
-['apiKey', 'projectId'].forEach(key => {
-  if (!firebaseConfig[key]) {
-    console.error(`Missing Firebase config: VITE_FIREBASE_${key.replace(/([A-Z])/g, '_$1').toUpperCase()}`);
-  }
-});
-
-const app = initializeApp(firebaseConfig);
-
-export const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence] });
-export const functions = getFunctions(app, 'asia-southeast1');
+export { auth, functions, appId, IS_EMULATOR };
 
 // Firestore with an IndexedDB-backed offline cache. WHY: every `onSnapshot`
 // listener in usePosData loads its whole collection (orders ~1k + expenses ~0.5k
@@ -62,14 +42,11 @@ export const db = initializeFirestore(app, {
     ? memoryLocalCache()
     : persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 });
-export const appId = 'siwara-pos-v1';
 
 // โหมดทดสอบในเครื่อง (`npm run dev:emu`) · ต่อ Firestore/Auth emulator แทนระบบจริง
 // ใช้เทสต์ UI, Lighthouse และตัดสต็อกกับสำเนาข้อมูล โดยไม่แตะร้านจริงแม้แต่ record เดียว
 // Functions ไม่ได้ emulate · checkout จะตกไปเส้นทางสำรอง (checkoutFallback) เอง
-export const IS_EMULATOR = import.meta.env.VITE_USE_EMULATOR === '1';
+// (Auth/Functions emulator hookup lives in ./firebaseCore, IS_EMULATOR re-exported above)
 if (IS_EMULATOR) {
-  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   connectFirestoreEmulator(db, '127.0.0.1', 8181);
-  connectFunctionsEmulator(functions, '127.0.0.1', 5999);
 }

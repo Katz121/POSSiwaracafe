@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   app: {}, db: {}, ensureSignedIn: vi.fn(), getDoc: vi.fn(), getDocs: vi.fn(),
 }));
-vi.mock('./firebase', () => ({ auth: { app: mocks.app } }));
+vi.mock('./firebaseCore', () => ({ auth: { app: mocks.app } }));
 vi.mock('./memberLookup', () => ({ ensureSignedIn: mocks.ensureSignedIn }));
 vi.mock('firebase/firestore/lite', () => ({
   getFirestore: (app) => { expect(app).toBe(mocks.app); return mocks.db; },

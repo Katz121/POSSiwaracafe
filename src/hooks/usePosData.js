@@ -15,6 +15,26 @@ import {
   DEFAULT_COMBO_PERCENT
 } from '../config/constants';
 
+// Map a collection snapshot to `{ id, ...data }` rows, re-using the previous row
+// object for every doc that did not change. WHY: the whole-collection listeners
+// (orders ~2.3k, expenses ~1k, members ~300) fire on every write/ack; calling
+// d.data() + spreading for all N docs each time allocates N fresh objects and
+// burns main-thread time on the POS iPad. Only docChanges() are rebuilt now.
+// Output (content + order) is identical to the old s.docs.map(...).
+function mapDocsReusing(s, cache, { includeMetadataChanges = false, extra } = {}) {
+  const changed = new Set();
+  for (const c of s.docChanges({ includeMetadataChanges })) changed.add(c.doc.id);
+  const next = new Map();
+  const rows = s.docs.map((d) => {
+    let row = changed.has(d.id) ? undefined : cache.current.get(d.id);
+    if (!row) row = extra ? { id: d.id, ...d.data(), ...extra(d) } : { id: d.id, ...d.data() };
+    next.set(d.id, row);
+    return row;
+  });
+  cache.current = next;
+  return rows;
+}
+
 export default function usePosData(user, appId) {
   const [isSyncing, setIsSyncing] = useState(true);
   const [syncError, setSyncError] = useState(null);
@@ -64,6 +84,11 @@ export default function usePosData(user, appId) {
   const [spendDiscount, setSpendDiscount] = useState(0);
   const [settingsRaw, setSettingsRaw] = useState(null);
 
+  // Row caches for mapDocsReusing (reset whenever the listeners re-subscribe).
+  const ordersCache = useRef(new Map());
+  const expensesCache = useRef(new Map());
+  const membersCache = useRef(new Map());
+
   // Serialized bundle this device last published to config/publicMenu (skip no-op writes).
   const lastPublishedRef = useRef(null);
 
@@ -75,6 +100,9 @@ export default function usePosData(user, appId) {
     if (!userId) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: show loading state while (re)subscribing to Firestore listeners
     setIsSyncing(true);
+    ordersCache.current = new Map();
+    expensesCache.current = new Map();
+    membersCache.current = new Map();
 
     const handleSnapshotError = (err) => {
       console.error("Firestore Error:", err);
@@ -110,18 +138,18 @@ export default function usePosData(user, appId) {
       collection(db, 'artifacts', appId, 'public', 'data', 'orders'),
       { includeMetadataChanges: true },
       (s) => {
-        setOrders(s.docs.map(d => ({
-          id: d.id,
-          ...d.data(),
+        setOrders(mapDocsReusing(s, ordersCache, {
+          includeMetadataChanges: true,
           // Not a stored field — derived per snapshot. Nothing writes an order doc
-          // back by spreading it, so this can't leak into Firestore.
-          hasPendingWrites: d.metadata.hasPendingWrites,
-        })));
+          // back by spreading it, so this can't leak into Firestore. (A flip of
+          // hasPendingWrites is a metadata docChange, so that row is rebuilt.)
+          extra: (d) => ({ hasPendingWrites: d.metadata.hasPendingWrites }),
+        }));
       },
       handleSnapshotError
     );
-    const unsubExp = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'), (s) => setExpenses(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
-    const unsubMem = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'members'), (s) => setMembers(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
+    const unsubExp = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'), (s) => setExpenses(mapDocsReusing(s, expensesCache)), handleSnapshotError);
+    const unsubMem = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'members'), (s) => setMembers(mapDocsReusing(s, membersCache)), handleSnapshotError);
     const unsubBeans = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'beanModifiers'), (s) => setBeanModifiers(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
     const unsubQuickExp = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'quickExpenses'), (s) => setQuickExpenses(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
 
