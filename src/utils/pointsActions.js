@@ -1,5 +1,6 @@
 import { arrayUnion, arrayRemove, increment, runTransaction, doc } from 'firebase/firestore';
 import { computeOrderStockUsage } from './wastage.js';
+import { resolveStockId } from './stockMerge.js';
 
 // Points a bill earned are taken back from pending first, then the balance; never below zero.
 export function planEarnClawback({ points = 0, pendingPoints = 0 }, earned) {
@@ -26,11 +27,17 @@ export async function runDeleteOrderTransaction(db, appId, order, stockList, mem
 
     if (order?.stockDeducted) {
       // คืนตามที่ตัดไปจริง (บันทึกไว้ในบิลตอนกดเสร็จ) · บิลเก่าไม่มีบันทึกค่อยคำนวณจากสูตร
+      // สต็อกที่ถูกรวมไปแล้ว (mergedInto) คืนเข้าตัวที่เก็บไว้ ไม่ใช่ตัวที่เก็บเข้ากรุ
       const usageByStock = order.stockDeduction?.applied || computeOrderStockUsage(order);
+      const stockById = new Map(stockList.map(s => [s.id, s]));
+      const restore = {};
       Object.entries(usageByStock).forEach(([stockId, used]) => {
         if (used <= 0) return;
-        const stockItem = stockList.find(s => s.id === stockId);
-        if (!stockItem) return;
+        const target = resolveStockId(stockId, stockById);
+        if (!stockById.has(target)) return;
+        restore[target] = (restore[target] || 0) + used;
+      });
+      Object.entries(restore).forEach(([stockId, used]) => {
         transaction.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), {
           quantity: increment(used)
         });

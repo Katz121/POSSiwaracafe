@@ -173,3 +173,48 @@ describe('auditDays / negativeStock', () => {
     expect(negativeStock(stock)).toEqual([{ id: 'cup', name: 'แก้ว', unit: 'ใบ', quantity: -3 }]);
   });
 });
+
+describe('merged stock (mergedInto)', () => {
+  const mStock = [
+    { id: 'egg', name: 'ไข่ไก่', unit: 'ฟอง', quantity: 100, unitCost: 5 },
+    { id: 'egg-old', name: 'ไขไก่', unit: 'ฟอง', quantity: 0, unitCost: 5.1, mergedInto: 'egg', archived: true },
+    { id: 'egg-older', name: 'ไข่', unit: 'ฟอง', quantity: 0, mergedInto: 'egg-old', archived: true },
+  ];
+  const mById = new Map(mStock.map((s) => [s.id, s]));
+
+  it('classifyLinks treats merged ids as alive and points them at the keeper', () => {
+    const res = classifyLinks([{ stockId: 'egg-old', usage: 0.2 }, { stockId: 'egg-older', usage: 1 }], mById);
+    expect(res.status).toBe(LINK_STATUS.OK);
+    expect(res.dead).toHaveLength(0);
+    expect(res.alive.map((a) => a.stockId)).toEqual(['egg', 'egg']);
+    expect(res.alive[0].name).toBe('ไข่ไก่');
+  });
+
+  it('planOrderDeduction deducts from the keeper, not the archived doc', () => {
+    const order = { items: [
+      { name: 'มูส', quantity: 2, stockLinks: [{ stockId: 'egg-old', usage: 0.2 }] },
+      { name: 'ทาร์ต', quantity: 1, stockLinks: [{ stockId: 'egg', usage: 1 }] },
+    ] };
+    const plan = planOrderDeduction(order, mById);
+    expect(plan.applied).toEqual({ egg: 1.4 });
+    expect(plan.skipped).toEqual([]);
+  });
+
+  it('auditMenuLinks does not report merged links as broken', () => {
+    const res = auditMenuLinks({ menu: [{ id: 'm', name: 'มูส', stockLinks: [{ stockId: 'egg-old', usage: 0.2 }] }], stock: mStock });
+    expect(res.items[0].status).toBe(LINK_STATUS.OK);
+    expect(res.needsAttention).toBe(0);
+  });
+
+  it('auditDay: an old bill deducted before the merge is not a mismatch', () => {
+    const order = {
+      id: 'o1', date: '2026-09-24', status: 'completed', stockDeducted: true,
+      stockDeduction: { applied: { 'egg-old': 0.4 } },
+      items: [{ id: 'm', name: 'มูส', price: 50, quantity: 2, stockLinks: [{ stockId: 'egg-old', usage: 0.2 }] }],
+    };
+    const res = auditDay({ orders: [order], stock: mStock, date: '2026-09-24' });
+    expect(res.summary.billsMismatch).toBe(0);
+    expect(res.summary.verdict).toBe('ok');
+    expect(res.stockUsed.map((s) => s.stockId)).toEqual(['egg']);
+  });
+});

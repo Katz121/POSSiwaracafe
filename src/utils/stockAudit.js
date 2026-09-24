@@ -10,10 +10,16 @@
  * 3. **บิลเสร็จแต่ไม่ถูกตัด** · `status === 'completed'` แต่ไม่มีธง `stockDeducted`
  * 4. **ตัดไม่ตรงกับที่ควร** · บิลที่ตัดหลังมีบันทึก `stockDeduction` เทียบของที่ตัดจริงกับสูตรได้ตรงๆ
  *
+ * สต็อกที่ถูกรวมเข้ากับอีกตัว (`mergedInto` · ดู stockMerge.js) ยังมีเอกสารอยู่ ·
+ * ทุกฟังก์ชันที่นี่เดินตาม `mergedInto` ไปตัวปลายทางก่อนเสมอ บิลเก่าที่ชี้ตัวเดิมจึงไม่ขึ้น
+ * ลิงก์เสีย และบิลที่ค้างตอนรวมจะไปตัดตัวที่เก็บไว้ ไม่ใช่ตัวที่เก็บเข้ากรุ
+ * (ผู้เรียกต้องส่งสต็อก "ทั้งหมด" รวมตัวที่ถูกรวมแล้ว ไม่ใช่เฉพาะที่แสดงบนจอ)
+ *
  * ทั้งไฟล์เป็นฟังก์ชันบริสุทธิ์ ไม่แตะ Firestore · เทสต์ใน stockAudit.test.js
  */
 
 import { getOrderDate } from './calculations.js';
+import { resolveStockId } from './stockMerge.js';
 
 const num = (value) => {
   const n = Number(value);
@@ -58,9 +64,10 @@ export function classifyLinks(links, stockById) {
   const alive = [];
   const dead = [];
   valid.forEach((link) => {
-    const stock = stockById.get(link.stockId);
+    const stockId = resolveStockId(link.stockId, stockById);
+    const stock = stockById.get(stockId);
     const row = {
-      stockId: link.stockId,
+      stockId,
       usage: num(link.usage),
       name: stock?.name || '',
       unit: stock?.unit || '',
@@ -146,11 +153,12 @@ export function planOrderDeduction(order, stockById) {
     links.forEach((link) => {
       const used = qty * num(link.usage);
       if (used <= 0) return;
-      if (!stockById.has(link.stockId)) {
+      const stockId = resolveStockId(link.stockId, stockById);
+      if (!stockById.has(stockId)) {
         skipped.push({ stockId: link.stockId, used: roundQty(used), item: String(item?.name || '') });
         return;
       }
-      applied[link.stockId] = roundQty((applied[link.stockId] || 0) + used);
+      applied[stockId] = roundQty((applied[stockId] || 0) + used);
     });
   });
   return { applied, skipped, unlinked };
@@ -329,11 +337,17 @@ export function auditDay({ orders = [], stock = [], menu = [], date } = {}) {
     if (deducted && record && record.applied) {
       summary.billsRecorded += 1;
       const expected = planOrderDeduction(order, stockById).applied;
-      const ids = new Set([...Object.keys(expected), ...Object.keys(record.applied)]);
+      // บิลที่ตัดก่อนรวมสต็อกบันทึก id เดิมไว้ · แปลงไปตัวปลายทางก่อนเทียบ
+      const recorded = {};
+      Object.entries(record.applied).forEach(([id, used]) => {
+        const rid = resolveStockId(id, stockById);
+        recorded[rid] = (recorded[rid] || 0) + num(used);
+      });
+      const ids = new Set([...Object.keys(expected), ...Object.keys(recorded)]);
       const diffs = [];
       ids.forEach((id) => {
         const want = roundQty(expected[id] || 0);
-        const got = roundQty(record.applied[id] || 0);
+        const got = roundQty(recorded[id] || 0);
         // สต็อกที่ตอนนี้ถูกลบไปแล้ว ถือว่าตอนตัดยังอยู่ ไม่นับเป็นความคลาดเคลื่อน
         if (want !== got && stockById.has(id)) {
           diffs.push({ stockId: id, name: stockById.get(id)?.name || id, expected: want, applied: got });
