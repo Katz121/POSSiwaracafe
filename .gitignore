@@ -28,3 +28,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# สำเนาข้อมูลร้านสำหรับ emulator (มีเบอร์สมาชิก)
+.claude/snapshot/
+dist-emu

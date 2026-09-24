@@ -1,7 +1,8 @@
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
-import { getFunctions } from 'firebase/functions';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence, connectAuthEmulator } from 'firebase/auth';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import {
+  connectFirestoreEmulator,
   initializeFirestore,
   memoryLocalCache,
   persistentLocalCache,
@@ -62,3 +63,13 @@ export const db = initializeFirestore(app, {
     : persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 });
 export const appId = 'siwara-pos-v1';
+
+// โหมดทดสอบในเครื่อง (`npm run dev:emu`) · ต่อ Firestore/Auth emulator แทนระบบจริง
+// ใช้เทสต์ UI, Lighthouse และตัดสต็อกกับสำเนาข้อมูล โดยไม่แตะร้านจริงแม้แต่ record เดียว
+// Functions ไม่ได้ emulate · checkout จะตกไปเส้นทางสำรอง (checkoutFallback) เอง
+export const IS_EMULATOR = import.meta.env.VITE_USE_EMULATOR === '1';
+if (IS_EMULATOR) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, '127.0.0.1', 8181);
+  connectFunctionsEmulator(functions, '127.0.0.1', 5999);
+}

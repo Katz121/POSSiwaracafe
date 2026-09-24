@@ -6,6 +6,7 @@ export function uaClass(ua) {
 }
 
 export function sendQrBeacon(event) {
+  if (import.meta.env.VITE_USE_EMULATOR === '1') return; // โหมดทดสอบ · ไม่ปนสถิติจริง
   try {
     if (event !== 'retry') {
       const sentKey = `qrBeacon_sent_${event}`;

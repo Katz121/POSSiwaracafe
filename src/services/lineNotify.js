@@ -27,6 +27,7 @@ const NOTIFY_SECRET = import.meta.env.VITE_LINE_NOTIFY_SECRET;
  */
 export async function notifyNewOrderToLine({ queueNumber, customerName, items = [], total, time }) {
   if (!NOTIFY_URL || !NOTIFY_SECRET) return; // not configured — skip silently
+  if (import.meta.env.VITE_USE_EMULATOR === '1') return; // โหมดทดสอบ · ห้ามเด้งแจ้งเตือนจริงเข้ากลุ่มร้าน
 
   try {
     // Send only the structured fields the worker needs; it formats + validates.

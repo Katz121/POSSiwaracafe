@@ -8,7 +8,11 @@
     "build": "vite build",
     "lint": "eslint .",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "emu": "firebase emulators:start --only firestore,auth --project siwarapos --config firebase.emu.json",
+    "emu:seed": "node scripts/claude-emu-seed.mjs",
+    "dev:emu": "vite --mode emulator",
+    "preview:emu": "vite build --mode emulator --outDir dist-emu && vite preview --outDir dist-emu --port 4173"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",
