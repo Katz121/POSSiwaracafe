@@ -27,18 +27,18 @@ import {
   mergeQrBeaconIntoSummary,
 } from './src/qrBeacon.js';
 /**
- * Cloudflare Worker - Gemini API Proxy + shop notifier
+ * Cloudflare Worker - shop notifier (+ retired Gemini route)
  * ซ่อน API key / LINE token ฝั่ง server ไม่เปิดเผยให้ client
  *
  * Routes:
- *   POST /         -> Gemini text generation (body: { prompt, ... })
+ *   POST /         -> 410 · AI moved to Meta Muse on the shop PC (see scripts/MUSE_BRIDGE.md)
  *   POST /notify   -> push an order alert to Telegram (LINE fallback)
  *   POST /qr-beacon -> public QR-page health counters (KV FOLLOWERS)
  *   GET  /qr-beacon/stats -> admin daily totals (WORKER_ADMIN_SECRET / ADMIN_SECRET)
  *
  * Deploy: wrangler deploy
  * Secrets:
- *   wrangler secret put GEMINI_API_KEY       # Gemini proxy
+ *   wrangler secret put GEMINI_API_KEY       # Telegram receipt OCR (src/telegram/ocr.js)
  *   wrangler secret put NOTIFY_SHARED_SECRET # gate /notify; mirror in client VITE_LINE_NOTIFY_SECRET
  *
  *   # LINE auth — pick ONE:
@@ -62,14 +62,6 @@ const ALLOWED_ORIGINS = [
   'http://192.168.1.152:5173'
 ];
 
-const AI_MODELS = [
-  'gemini-3.5-flash',
-  'gemini-3.5-flash-lite',
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash-lite',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash'
-];
 function corsHeaders(origin) {
   const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
@@ -1052,84 +1044,11 @@ export default {
       return handleNotify(request, env, headers);
     }
 
-    // Validate API key exists in env
-    const apiKey = env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return Response.json(
-        { error: 'API key not configured on server' },
-        { status: 500, headers }
-      );
-    }
-
-    // Parse request body
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return Response.json(
-        { error: 'Invalid JSON body' },
-        { status: 400, headers }
-      );
-    }
-
-    // Note: parseAsJson is sent by the client but parsing happens client-side
-    // json: true → บังคับให้ตอบเป็น JSON ล้วน (ไม่งั้นโมเดลรุ่นคิดได้เขียนความคิดปนมากับคำตอบ)
-    const { prompt, temperature = 0.7, json = false } = body;
-    const maxOutputTokens = Math.min(Math.max(Number(body.maxOutputTokens) || 4096, 256), 8192);
-
-    if (!prompt) {
-      return Response.json(
-        { error: 'Missing prompt' },
-        { status: 400, headers }
-      );
-    }
-
-    // Try each model until one succeeds
-    let lastError = null;
-
-    for (const model of AI_MODELS) {
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature, maxOutputTokens, ...(json ? { responseMimeType: 'application/json' } : {}) }
-            })
-          }
-        );
-
-        const data = await response.json();
-
-        if (data.error) {
-          lastError = data.error.message;
-          if (data.error.message.includes('quota') || data.error.message.includes('rate')) {
-            continue; // Try next model
-          }
-          throw new Error(data.error.message);
-        }
-
-        // รวมทุก part ที่ไม่ใช่ความคิดของโมเดล · เดิมอ่านแค่ parts[0] คำตอบยาวจึงขาดกลางทาง
-        const parts = data?.candidates?.[0]?.content?.parts || [];
-        const text = parts.filter((part) => !part.thought && typeof part.text === 'string').map((part) => part.text).join('');
-
-        if (text) {
-          return Response.json(
-            { success: true, text, model },
-            { status: 200, headers }
-          );
-        }
-      } catch (e) {
-        lastError = e.message;
-        continue;
-      }
-    }
-
+    // เส้นเดิม POST / = Gemini proxy · AI ของแอปย้ายไปใช้ Muse บนคอมที่ร้านแล้ว (คิว Firestore aiJobs)
+    // GEMINI_API_KEY ยังใช้อยู่ที่ OCR ใบเสร็จของบอท Telegram (src/telegram/ocr.js) ห้ามลบ secret
     return Response.json(
-      { error: lastError || 'All models failed' },
-      { status: 502, headers }
+      { error: 'AI ย้ายไปใช้ Muse แล้ว' },
+      { status: 410, headers }
     );
   }
 };
