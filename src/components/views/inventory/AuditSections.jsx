@@ -249,6 +249,7 @@ export function IssueList({ issues, onAction, onRecheck, onBackfill, stockById }
       <div className={`${PANEL} flex flex-wrap items-center justify-between gap-3 px-4 py-3`}>
         <p className="min-w-0 text-sm text-[var(--text-secondary)]">
           เหลือ <b className="num text-[var(--text-primary)]">{formatNumber(openCount)}</b> จุดที่ต้องแก้
+          {open.length + pending.length > openCount && <> · ข้อสังเกต <b className="num text-[var(--text-primary)]">{formatNumber(open.length + pending.length - openCount)}</b></>}
           {resolved.length > 0 && <> · แก้แล้ว <b className="num text-[var(--state-ok)]">{formatNumber(resolved.length)}</b></>}
           <span className="block text-xs text-[var(--text-muted)]">แก้สูตรเสร็จแล้ว กด "ตรวจใหม่" เพื่อดูผลล่าสุด</span>
         </p>
