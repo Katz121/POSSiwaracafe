@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-export default function SearchSelect({ value, onChange, groups, getOptionValue, getOptionLabel, placeholder = 'พิมพ์ค้นหาวัตถุดิบ...', className = 'w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl px-5 h-14 text-base font-semibold outline-none focus:ring-2 focus:ring-emerald-500 text-[var(--text-primary)]' }) {
+export default function SearchSelect({ value, onChange, groups, getOptionValue, getOptionLabel, placeholder = 'พิมพ์ค้นหาวัตถุดิบ...', className = 'w-full bg-[var(--bg-sunken)] border border-[var(--border-strong)] rounded-[var(--radius-sm)] px-4 h-12 text-base font-semibold outline-none focus:border-[var(--accent)] focus-visible:shadow-[var(--focus-ring)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]' }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -31,13 +31,26 @@ export default function SearchSelect({ value, onChange, groups, getOptionValue, 
       setPosition({ position: 'fixed', left: rect.left, width: rect.width, top: upwards ? undefined : rect.bottom + 4, bottom: upwards ? window.innerHeight - rect.top + 4 : undefined, maxHeight, zIndex: 10000 });
     };
     // Portal ช่วยให้ลิสต์ไม่ถูกขอบ Modal ตัด และต้องตามช่องเมื่อเลื่อนหรือคีย์บอร์ดมือถือเปิด
-    reposition();
+    // ช่องที่อยู่ใน Sheet ยังเลื่อนเข้าจอตอนเปิด (autofocus ระหว่าง animation) ·
+    // ตามตำแหน่งช่องทุกเฟรมที่มันขยับ ไม่งั้นลิสต์ค้างตำแหน่งกลาง animation แล้วล้นขอบจอ
+    let frame = 0;
+    let last = '';
+    const follow = () => {
+      const rect = root.current?.getBoundingClientRect();
+      if (rect) {
+        const key = `${rect.left}|${rect.top}|${rect.width}|${rect.height}`;
+        if (key !== last) { last = key; reposition(); }
+      }
+      frame = requestAnimationFrame(follow);
+    };
+    follow();
     document.addEventListener('pointerdown', outside);
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
     window.visualViewport?.addEventListener('resize', reposition);
     window.visualViewport?.addEventListener('scroll', reposition);
     return () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener('pointerdown', outside);
       window.removeEventListener('scroll', reposition, true);
       window.removeEventListener('resize', reposition);
@@ -85,11 +98,11 @@ export default function SearchSelect({ value, onChange, groups, getOptionValue, 
         className={className}
       />
       {open && createPortal(
-        <div ref={list} id={id} role="listbox" aria-label={placeholder} style={position} className="overflow-y-auto overscroll-contain rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] shadow-xl">
+        <div ref={list} id={id} role="listbox" aria-label={placeholder} style={position} className="overflow-y-auto overscroll-contain rounded-[var(--radius-sm)] border border-[var(--border-color)] bg-[var(--bg-raised)] text-[var(--text-primary)] shadow-[var(--elev-3)]">
           {options.length === 0 && <p className="p-4 text-sm">ไม่พบวัตถุดิบที่ค้นหา</p>}
           {filtered.map(([category, items]) => (
             <div key={category} role="group" aria-label={category}>
-              <div className="sticky top-0 bg-[var(--bg-tertiary)] px-4 py-2 text-xs font-bold">{category}</div>
+              <div className="sticky top-0 bg-[var(--bg-sunken)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)]">{category}</div>
               {items.map(item => {
                 const index = options.indexOf(item);
                 return <div key={getOptionValue(item)} id={`${id}-${index}`} role="option" aria-selected={getOptionValue(item) === value} data-highlight={index === highlight}
