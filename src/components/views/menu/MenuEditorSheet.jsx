@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Link2, Plus, Trash2, Sparkles, PackagePlus, Coffee, Candy, Star, TrendingUp, Store, Clock,
-  ImagePlus, Upload, FileText, Settings2, Tag,
+  ImagePlus, Upload, FileText, Settings2, Tag, CookingPot,
 } from 'lucide-react';
-import { Banner, Button, Input, Textarea, SearchSelect, StockUsageInput, Money, Sheet, Spinner } from '../../ui';
+import { Banner, Button, Input, Textarea, SearchSelect, SegmentedControl, StockUsageInput, Money, Sheet, Spinner } from '../../ui';
+import { isPieceUnit, isPrep, usagePerPiece } from '../../../utils/production';
+import { formatNumber } from '../../../utils/format';
 import { getModifierGroups } from '../../../config/constants';
 import { supportsSweetnessChoice } from '../../../utils/promotions';
 import { compressImage } from '../../../utils/calculations';
@@ -50,8 +52,53 @@ export default function MenuEditorSheet({
   const deadLinks = links.filter((l) => l?.stockId && !stockById.has(l.stockId)).length;
   const aliveLinks = links.filter((l) => l?.stockId && stockById.has(l.stockId)).length;
 
+  // "สูตรทั้งก้อน ÷ ตัดได้กี่ชิ้น" · usage stays per piece (what the POS deducts);
+  // the per-cake amounts live only in the form (`perWhole`) and are stripped on save.
+  const wholeMode = newItem.recipeMode === 'whole';
+  const pieces = Number(newItem.recipePieces) || 0;
+  const wholeFromUsage = (usage, n) => (n > 0 && Number(usage) > 0 ? String(Math.round(Number(usage) * n * 1000) / 1000) : '');
+  const perWholeOf = (link) => (link.perWhole !== undefined ? link.perWhole : wholeFromUsage(link.usage, pieces));
+  const setLinkMode = (mode) => setNewItem((p) => {
+    if (mode === 'whole') {
+      const n = Number(p.recipePieces) || 0;
+      return {
+        ...p,
+        recipeMode: 'whole',
+        recipePieces: p.recipePieces || '',
+        stockLinks: (p.stockLinks || []).map((l) => ({ ...l, perWhole: wholeFromUsage(l.usage, n) })),
+      };
+    }
+    return { ...p, recipeMode: null, recipePieces: null, stockLinks: (p.stockLinks || []).map((l) => { const { perWhole: _pw, ...rest } = l; return rest; }) };
+  });
+  const setPieces = (value) => setNewItem((p) => ({
+    ...p,
+    recipePieces: value,
+    stockLinks: (p.stockLinks || []).map((l) => {
+      const whole = l.perWhole !== undefined ? l.perWhole : wholeFromUsage(l.usage, Number(p.recipePieces) || 0);
+      return { ...l, perWhole: whole, usage: usagePerPiece(whole, value) };
+    }),
+  }));
+  const setPerWhole = (i, value) => setNewItem((p) => {
+    const next = [...p.stockLinks];
+    next[i] = { ...next[i], perWhole: value, usage: usagePerPiece(value, p.recipePieces) };
+    return { ...p, stockLinks: next };
+  });
+  // Cake slices made on the production screen · link 1 piece and nothing else
+  // (the raw ingredients were already deducted when the cake was made).
+  const producedSlices = stock.filter((s) => isPrep(s) && isPieceUnit(s.unit));
+  const [pickSlice, setPickSlice] = useState(false);
+  const linkProducedSlice = (id) => {
+    if (!id) return;
+    setNewItem((p) => ({ ...p, recipeMode: null, recipePieces: null, stockLinks: [{ stockId: id, usage: 1 }] }));
+    setPickSlice(false);
+    toast.success('ผูกกับเค้กชิ้นที่ผลิต 1 ชิ้นแล้ว · ถ้าใช้กล่อง/ส้อม เพิ่มวัตถุดิบเองได้');
+  };
+
   // Stock link handlers (same shape as v1)
-  const addStockLink = () => setNewItem((p) => ({ ...p, stockLinks: [...(p.stockLinks || []), { stockId: '', usage: 1 }] }));
+  const addStockLink = () => setNewItem((p) => ({
+    ...p,
+    stockLinks: [...(p.stockLinks || []), p.recipeMode === 'whole' ? { stockId: '', usage: 0, perWhole: '' } : { stockId: '', usage: 1 }],
+  }));
   const removeStockLink = (i) => setNewItem((p) => ({ ...p, stockLinks: p.stockLinks.filter((_, idx) => idx !== i) }));
   const updateStockLink = (i, f, v) => setNewItem((p) => {
     const next = [...p.stockLinks];
@@ -200,13 +247,58 @@ Return [] if no stock items match.`;
               </Banner>
             ) : null}
 
+            <SegmentedControl
+              fullWidth
+              ariaLabel="วิธีกรอกปริมาณ"
+              value={wholeMode ? 'whole' : 'piece'}
+              onChange={setLinkMode}
+              options={[{ value: 'piece', label: 'ต่อ 1 ที่' }, { value: 'whole', label: 'สูตรทั้งก้อน ÷ ชิ้น' }]}
+            />
+            {wholeMode && (
+              <div className="rounded-[var(--radius)] border-2 border-[var(--accent)] p-3">
+                <Input
+                  label="ตัดได้กี่ชิ้น"
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  value={newItem.recipePieces ?? ''}
+                  placeholder="เช่น 10"
+                  onChange={(e) => setPieces(e.target.value)}
+                  hint={pieces > 0 ? 'กรอกปริมาณวัตถุดิบทั้งก้อนด้านล่าง ระบบหารเป็นต่อชิ้นให้' : undefined}
+                  error={pieces > 0 ? undefined : 'ใส่จำนวนชิ้นที่ตัดได้จากเค้ก 1 ก้อน'}
+                />
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" leftIcon={<Plus size={18} />} onClick={addStockLink}>เพิ่มวัตถุดิบ</Button>
+              <Button variant="secondary" leftIcon={<CookingPot size={18} />} onClick={() => setPickSlice((v) => !v)} aria-expanded={pickSlice}>ผูกกับเค้กชิ้นที่ผลิต</Button>
               <Button variant="ai" leftIcon={<Sparkles size={18} />} loading={isSuggestingStock} onClick={suggestStock}>AI แนะนำ</Button>
               {editingItem && !links.length && onCakeStock && (
                 <Button variant="secondary" leftIcon={<PackagePlus size={18} />} onClick={() => onCakeStock(editingItem)}>สร้างสต็อกก้อน</Button>
               )}
             </div>
+            {pickSlice && (
+              <div className="rounded-[var(--radius)] border border-[var(--border-color)] bg-[var(--bg-canvas)] p-3 flex flex-col gap-2">
+                {producedSlices.length ? (
+                  <>
+                    <span className={LABEL}>เลือกเค้กชิ้นที่ผลิต (ตัด 1 ชิ้นต่อที่ แทนสูตรเดิม)</span>
+                    <SearchSelect
+                      className={SEARCH_SELECT}
+                      value=""
+                      onChange={linkProducedSlice}
+                      groups={[['ของเตรียม หน่วยชิ้น', producedSlices]]}
+                      getOptionLabel={(s) => `${s.name} · มี ${formatNumber(s.quantity, { maxDecimals: 2 })} ชิ้น`}
+                      getOptionValue={(s) => s.id}
+                      placeholder="พิมพ์ชื่อเค้กชิ้น..."
+                    />
+                  </>
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)]">ยังไม่มีเค้กชิ้นที่ผลิต · สร้างของเตรียมหน่วย "ชิ้น" ที่หน้า "ผลิตวันนี้" ก่อน</p>
+                )}
+              </div>
+            )}
+
             {candidates.length > 0 && (
               <div>
                 <span className={LABEL}>คัดลอกสูตรจากเมนูในหมวดเดียวกัน</span>
@@ -267,12 +359,36 @@ Return [] if no stock items match.`;
                           {usage > 0 && <span className="font-semibold text-[var(--text-primary)]">ต้นทุน <Money value={unitCost * usage} decimals={2} /></span>}
                         </p>
                       )}
-                      <StockUsageInput
-                        key={String(editingItem?.id || 'new') + '-' + link.stockId + '-' + idx}
-                        usage={link.usage}
-                        unit={s?.unit || 'หน่วย'}
-                        onChange={(value) => updateStockLink(idx, 'usage', value)}
-                      />
+                      {wholeMode ? (
+                        <div>
+                          <label htmlFor={`whole-${idx}`} className={LABEL}>ปริมาณทั้งก้อน</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              id={`whole-${idx}`}
+                              type="number"
+                              inputMode="decimal"
+                              step="any"
+                              min="0"
+                              value={perWholeOf(link)}
+                              onChange={(e) => setPerWhole(idx, e.target.value)}
+                              className={`${FIELD} num text-right`}
+                            />
+                            <span className="shrink-0 text-sm text-[var(--text-secondary)]">{s?.unit || 'หน่วย'}</span>
+                          </div>
+                          <p className="num mt-1 text-sm text-[var(--text-secondary)]">
+                            {pieces > 0
+                              ? <>= <b className="text-[var(--text-primary)]">{formatNumber(link.usage, { maxDecimals: 4 })} {s?.unit || 'หน่วย'}</b> ต่อชิ้น (÷ {formatNumber(pieces)} ชิ้น)</>
+                              : 'ใส่จำนวนชิ้นด้านบนก่อน'}
+                          </p>
+                        </div>
+                      ) : (
+                        <StockUsageInput
+                          key={String(editingItem?.id || 'new') + '-' + link.stockId + '-' + idx}
+                          usage={link.usage}
+                          unit={s?.unit || 'หน่วย'}
+                          onChange={(value) => updateStockLink(idx, 'usage', value)}
+                        />
+                      )}
                     </li>
                   );
                 })}

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { isArchivedStock } from '../../utils/stockMerge';
 import {
   ClipboardList, Plus, Wrench, FolderCog, Zap, Languages, ListOrdered, Upload, Star,
 } from 'lucide-react';
@@ -65,7 +66,8 @@ export default function MenuManageView() {
   const stockLinkGroups = useMemo(() => {
     const categoryOrder = new Map(STOCK_CATEGORIES.map((category, index) => [category, index]));
     const groups = new Map();
-    stock.forEach(item => {
+    // สต็อกที่ถูกรวมไปแล้ว (mergedInto) ไม่ให้เลือกผูกใหม่
+    stock.filter(item => !isArchivedStock(item)).forEach(item => {
       const category = getStockCategory(item);
       if (!groups.has(category)) groups.set(category, []);
       groups.get(category).push(item);
@@ -75,6 +77,7 @@ export default function MenuManageView() {
       .map(([category, items]) => [category, items.sort((a, b) => String(a.name).localeCompare(String(b.name), 'th'))]);
   }, [stock]);
   const stockById = useMemo(() => new Map(stock.map(item => [item.id, item])), [stock]);
+  const pickStock = useMemo(() => stock.filter(item => !isArchivedStock(item)), [stock]);
 
   // ── Editor form state ───────────────────────────────────────────────────
   const [newItem, setNewItem] = useState(emptyMenuItem);
@@ -293,6 +296,10 @@ export default function MenuManageView() {
   }, []);
 
   // Menu CRUD
+  const withoutPerWhole = (link) => {
+    const { perWhole: _perWhole, ...rest } = link;
+    return rest;
+  };
   const saveMenuItem = async (e) => {
     e.preventDefault();
     const col = collection(db, 'artifacts', appId, 'public', 'data', 'menu');
@@ -310,10 +317,20 @@ export default function MenuManageView() {
       additionalCost: Number(newItem.additionalCost) || 0,
       beanExtra: Number(newItem.beanExtra) || 0,
       baseBeanIds: Array.isArray(newItem.baseBeanIds) ? newItem.baseBeanIds : [],
-      stockLinks: (newItem.stockLinks || []).map(l => ({ ...l, usage: Number(l.usage) || 0 })),
+      // perWhole = form-only helper of the "สูตรทั้งก้อน ÷ ชิ้น" mode · usage (per piece) is what gets deducted
+      stockLinks: (newItem.stockLinks || []).map(l => ({ ...withoutPerWhole(l), usage: Number(l.usage) || 0 })),
+
       modifierGroups: groups,
       modifierGroup: groups[0]
     };
+    // "สูตรทั้งก้อน ÷ ชิ้น" remembers the piece count so the editor reopens in that mode
+    if (newItem.recipeMode === 'whole' && Number(newItem.recipePieces) > 0) {
+      data.recipeMode = 'whole';
+      data.recipePieces = Number(newItem.recipePieces);
+    } else if ('recipeMode' in data || 'recipePieces' in data || editingItem?.recipeMode) {
+      data.recipeMode = null;
+      data.recipePieces = null;
+    }
     if (!data.category && dynamicCategories.length > 0) data.category = dynamicCategories[0].name;
     await runDbAction(async () => {
       if (editingItem) await updateDoc(doc(col, editingItem.id), data); else await addDoc(col, data);
@@ -546,7 +563,7 @@ export default function MenuManageView() {
         onDelete={askDeleteMenu}
         onCakeStock={openCakeStock}
         menu={menu}
-        stock={stock}
+        stock={pickStock}
         stockById={stockById}
         stockLinkGroups={stockLinkGroups}
         dynamicCategories={dynamicCategories}
