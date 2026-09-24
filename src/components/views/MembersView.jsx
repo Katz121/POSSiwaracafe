@@ -1,32 +1,35 @@
-import React, { useState, useMemo, useRef } from 'react';
-import { Users, Search, User, UserMinus, UserX, Phone, RefreshCcw, Edit, Trash2, Heart, ShoppingBag, TrendingUp, Star, History, Check, X, Calculator, GitMerge, AlertTriangle, ChevronDown } from 'lucide-react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Coins, Edit, GitMerge, Gift, RefreshCcw, User, UserPlus, Users, Wallet, Wrench } from 'lucide-react';
 import { doc, setDoc, updateDoc, writeBatch, serverTimestamp, increment, arrayUnion, runTransaction } from 'firebase/firestore';
 import { db, appId, auth } from '../../services/firebase';
-import { useAppContext } from '../../context/AppContext';
+import { useConfigContext, useDataContext, useUIContext } from '../../context/AppContext';
 import { getNameKey } from '../../utils/calculations';
 import { settlePendingPoints, withInFlightGuard, planEarnClawback } from '../../utils/pointsActions';
 import useDebounce from '../../hooks/useDebounce';
-import { Button, Modal, Input, Select, EmptyState, useToast, ConfirmModal, InputModal, Skeleton } from '../ui';
+import {
+  Button, ConfirmModal, CountBadge, IconButton, InputModal, Modal, Money, PageHeader, StatCard, Toolbar, useToast,
+} from '../ui';
+import { formatNumber, formatThaiDate, formatTime, toDate } from '../../utils/format';
 import { DEFAULT_REDEEM_POINTS_THRESHOLD } from '../../config/constants';
+import {
+  auditMemberEarn, buildMemberDetail, buildMemberOrderIndex, buildMenuImageLookup, filterMembers, findDuplicateGroups,
+  getOrderMs, isNameOnlyId, nameOnlyOrders, ordersForMember, processMembers,
+} from './members/memberData';
+import MemberTable from './members/MemberTable';
+import MemberSheet from './members/MemberSheet';
+import MemberToolsSheet from './members/MemberToolsSheet';
+import PendingApprovals from './members/PendingApprovals';
+import Layer from './members/Layer';
 
-// Milliseconds for an order, handling Firestore Timestamp ({seconds}), ISO
-// strings, or the plain `date` field — used to sort orders newest-first.
-const getOrderMs = (o) => {
-  const t = o?.timestamp ?? o?.createdAt;
-  if (t && typeof t === 'object' && t.seconds != null) return t.seconds * 1000;
-  const ms = new Date(t || o?.date || 0).getTime();
-  return Number.isFinite(ms) ? ms : 0;
-};
+// Name groups the owner has confirmed are DIFFERENT people (same nickname,
+// different customers) — kept out of the duplicate list for good.
+const IGNORED_DUP_STORAGE_KEY = 'pos.ignoredDuplicateNameKeys';
+const memberKey = (m) => m?.phone || m?.id;
 
 export default function MembersView() {
-  const {
-    members,
-    orders,
-    isSyncing,
-    redeemPointsThreshold,
-    runDbAction,
-    setOrderToCancel
-  } = useAppContext();
+  const { members, orders, menu, isSyncing } = useDataContext();
+  const { redeemPointsThreshold } = useConfigContext();
+  const { runDbAction, setOrderToCancel } = useUIContext();
 
   const toast = useToast();
   const pointsInFlight = useRef(new Set());
@@ -34,7 +37,7 @@ export default function MembersView() {
   const withMembers = (targets, action) => withInFlightGuard(
     pointsInFlight.current, targets.filter(Boolean).map(resolveMemberId), action, setBusyMembers
   );
-  const memberBusy = member => !!member && busyMembers.has(resolveMemberId(member));
+  const memberBusy = (member) => !!member && busyMembers.has(resolveMemberId(member));
 
   const REDEEM_POINTS_THRESHOLD = Number(redeemPointsThreshold) || DEFAULT_REDEEM_POINTS_THRESHOLD;
 
@@ -42,9 +45,11 @@ export default function MembersView() {
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
   const debouncedMemberSearchTerm = useDebounce(memberSearchTerm, 200);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedMemberForFavorites, setSelectedMemberForFavorites] = useState(null);
-  const [historyMember, setHistoryMember] = useState(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetSnapshot, setSheetSnapshot] = useState(null); // row as it was when opened
+  const [sheetSession, setSheetSession] = useState(0);      // resets the sheet's inner tab
   const [pendingOrdersMember, setPendingOrdersMember] = useState(null);
+  const [showTools, setShowTools] = useState(false);
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -53,9 +58,6 @@ export default function MembersView() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingMember, setDeletingMember] = useState(null);
 
-  // Name groups the owner has confirmed are DIFFERENT people (same nickname,
-  // different customers) — kept out of the duplicate list for good.
-  const IGNORED_DUP_STORAGE_KEY = 'pos.ignoredDuplicateNameKeys';
   const [ignoredDupKeys, setIgnoredDupKeys] = useState(() => {
     try {
       const raw = localStorage.getItem(IGNORED_DUP_STORAGE_KEY);
@@ -77,118 +79,21 @@ export default function MembersView() {
   };
 
   // Reconciliation + merge tools
-  const [showReconcile, setShowReconcile] = useState(false);
   const [creditTarget, setCreditTarget] = useState(null); // member awaiting credit confirm
   const [mergeGroup, setMergeGroup] = useState(null);      // { key, members } awaiting merge confirm
   const [mergePrimaryId, setMergePrimaryId] = useState(null);
   const [reconcileDays, setReconcileDays] = useState(14);  // only reconcile the last N days
 
-  // An order counts toward a member's purchase history as soon as it is placed
-  // (pending) — not only once completed — so today's orders show immediately.
-  // Points are NOT derived from this history; they are mutated in real time at
-  // checkout (earn → pendingPoints awaiting approval, redeem → points).
-  const orderCounts = (o) => o.status !== 'cancelled';
+  // ── Data · one pass over orders, then Map lookups per member ──────────────
+  const orderIndex = useMemo(() => buildMemberOrderIndex(orders), [orders]);
+  const imageFor = useMemo(() => buildMenuImageLookup(menu), [menu]);
 
-  // Points earned by a single bill = ฿10 spent → 1 point (same rule the POS and
-  // QR checkout use: Math.floor(total / 10)).
-  const orderEarn = (o) => Math.floor(Number(o.total || 0) / 10);
-
-  // History reasons that represent a POSITIVE earn credit (order/review approval,
-  // a previous reconciliation, or a manual top-up). Redeem entries are NOT here,
-  // so redemptions never count as earn on either side of the audit.
-  const EARN_REASONS = new Set(['order', 'review', 'recalc', 'manual']);
-  const parseAt = (at) => {
-    const ms = at ? Date.parse(at) : NaN;
-    return Number.isFinite(ms) ? ms : NaN;
-  };
-
-  // Earn audit for a single member, scoped to a time window [cutoff, now]:
-  //   expected = Σ orderEarn over the member's orders placed inside the window
-  //   credited = current pendingPoints + positive earn credits logged inside the
-  //              window (pendingPoints has no timestamp, so it always counts —
-  //              it offsets recent expected earn that hasn't been approved yet)
-  // Because both sides look only at EARN (never redeem), a member who spent their
-  // points is not flagged as "short", and confirming a credit can never refund a
-  // redemption — it only fills purchases that produced no points at all.
-  const auditMemberEarn = (m, memberOrders, cutoff) => {
-    const expected = memberOrders.reduce((s, o) => s + (getOrderMs(o) >= cutoff ? orderEarn(o) : 0), 0);
-    const history = Array.isArray(m.pointsHistory) ? m.pointsHistory : [];
-    const creditedInWindow = history.reduce((s, e) => {
-      const d = Number(e?.delta || 0);
-      const at = parseAt(e?.at);
-      const inWindow = Number.isNaN(at) ? true : at >= cutoff; // undated entries count (conservative)
-      return s + (d > 0 && inWindow && EARN_REASONS.has(e?.reason) ? d : 0);
-    }, 0);
-    // Points the owner explicitly REJECTED count as settled too — they were
-    // deliberately declined, so they must not reappear as a gap.
-    const rejectedInWindow = history.reduce((s, e) => {
-      const at = parseAt(e?.at);
-      const inWindow = Number.isNaN(at) ? true : at >= cutoff;
-      return s + (e?.reason === 'rejected' && inWindow ? Number(e?.amount || 0) : 0);
-    }, 0);
-    const credited = Number(m.pendingPoints || 0) + creditedInWindow + rejectedInWindow;
-    // Points redeemed inside the window — shown to the owner for a sanity check,
-    // not used in the gap maths.
-    const redeemedNet = history.reduce((s, e) => {
-      const at = parseAt(e?.at);
-      const inWindow = Number.isNaN(at) ? false : at >= cutoff;
-      return s + ((e?.reason === 'redeem' || e?.reason === 'redeem-refund') && inWindow ? Number(e?.delta || 0) : 0);
-    }, 0);
-    return { expectedEarn: expected, earnGap: expected - credited, redeemed: Math.max(0, -redeemedNet) };
-  };
-
-  // Memos
   const processedMembers = useMemo(() => {
     // The earn audit only looks back this far (default 14 days) — recent
     // "bought but points didn't show" cases, not the whole bill history.
     const cutoff = Date.now() - reconcileDays * 24 * 60 * 60 * 1000;
-
-    // 1. Calculate stats for members in the collection
-    const memberStats = members.map(m => {
-      const nameKey = getNameKey(m.name);
-      const phone = String(m.phone || '').trim();
-      const memberOrders = orders.filter(o => {
-        if (!orderCounts(o)) return false;
-        if (phone && o.memberPhone === phone) return true;
-        if (!nameKey) return false;
-        return !o.memberPhone && getNameKey(o.memberNickname) === nameKey;
-      });
-      // Purchase totals stay all-time (display); the earn audit is windowed.
-      const totalPurchases = memberOrders.reduce((sum, o) => sum + (o.items?.reduce((s, i) => s + Number(i.quantity), 0) || 0), 0);
-      const totalSpent = memberOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-      const audit = auditMemberEarn(m, memberOrders, cutoff);
-
-      return { ...m, totalPurchases, totalSpent, ...audit };
-    });
-
-    // 2. Identify orders that don't belong to any member in the collection
-    const nameOnlyMap = new Map();
-    orders
-      .filter(o => orderCounts(o) && !o.memberPhone && o.memberNickname)
-      .forEach((o) => {
-        const key = getNameKey(o.memberNickname);
-        if (!key) return;
-
-        // Skip if this name already belongs to a registered member to avoid duplication
-        const alreadyRegistered = members.some(m => getNameKey(m.name) === key);
-        if (alreadyRegistered) return;
-
-        const current = nameOnlyMap.get(key) || { id: `name-only:${key}`, name: key, phone: '', points: 0, totalPurchases: 0, totalSpent: 0, expectedEarn: 0, earnGap: 0, redeemed: 0 };
-        const orderPurchases = o.items?.reduce((s, i) => s + Number(i.quantity), 0) || 0;
-        current.totalPurchases += orderPurchases;
-        current.totalSpent += Number(o.total) || 0;
-        // Name-only customers have no member doc → nothing was ever recorded, so
-        // the whole expected earn (within the window) is the gap.
-        if (getOrderMs(o) >= cutoff) {
-          current.expectedEarn += orderEarn(o);
-          current.earnGap = current.expectedEarn;
-        }
-        nameOnlyMap.set(key, current);
-      });
-
-    return [...memberStats, ...nameOnlyMap.values()].sort((a, b) => b.totalPurchases - a.totalPurchases);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [members, orders, reconcileDays]);
+    return processMembers({ members, orders, index: orderIndex, cutoff });
+  }, [members, orders, orderIndex, reconcileDays]);
 
   // A member IS a phone number. Everything else — a legacy `name:xxx` doc, a
   // bill that only carries a nickname — is a guest: real revenue, real name on
@@ -214,87 +119,32 @@ export default function MembersView() {
     [memberRows]
   );
 
-  // Duplicate identities: the same person split across a phone doc and a
-  // name doc (or several name variants). Grouped by normalised name; only
-  // groups with more than one distinct identity are surfaced. Groups the owner
-  // marked "ไม่ใช่คนเดียวกัน" (e.g. three different customers all nicknamed
-  // "แพรว") stay hidden — that choice lives in localStorage, per device.
-  const duplicateGroups = useMemo(() => {
-    const byName = new Map();
-    processedMembers.forEach(m => {
-      const key = getNameKey(m.name);
-      if (!key) return;
-      const arr = byName.get(key) || [];
-      arr.push(m);
-      byName.set(key, arr);
-    });
-    return [...byName.entries()]
-      .filter(([key, arr]) => arr.length > 1 && !ignoredDupKeys.includes(key))
-      .map(([key, arr]) => ({ key, members: arr }));
-  }, [processedMembers, ignoredDupKeys]);
+  // Duplicate identities: the same person split across a phone doc and a name
+  // doc (or several name variants). Groups the owner marked "ไม่ใช่คนเดียวกัน"
+  // stay hidden — that choice lives in localStorage, per device.
+  const duplicateGroups = useMemo(() => findDuplicateGroups(processedMembers, ignoredDupKeys), [processedMembers, ignoredDupKeys]);
 
-  const filteredMembers = useMemo(() => {
-    const term = String(debouncedMemberSearchTerm || '').trim();
-    return memberRows.filter((m) => {
-      const phone = String(m.phone || '');
-      const name = String(m.name || '');
-      if (!term) return phone !== '' || name !== '';
-      return phone.includes(term) || name.includes(term);
-    });
-  }, [memberRows, debouncedMemberSearchTerm]);
+  const filteredMembers = useMemo(() => filterMembers(memberRows, debouncedMemberSearchTerm), [memberRows, debouncedMemberSearchTerm]);
+  const pendingRows = useMemo(() => memberRows.filter(m => Number(m.pendingPoints) > 0), [memberRows]);
 
-  // Calculate member's favorite items
-  const getMemberFavorites = useMemo(() => {
-    return (member) => {
-      const nameKey = getNameKey(member.name);
-      const phone = String(member.phone || '').trim();
+  // The sheet follows live data (points change while it is open); falls back to
+  // the snapshot if the row moved (e.g. its phone was edited).
+  const selectedMember = useMemo(() => {
+    if (!sheetSnapshot) return null;
+    const key = memberKey(sheetSnapshot);
+    return processedMembers.find(m => memberKey(m) === key) || sheetSnapshot;
+  }, [sheetSnapshot, processedMembers]);
+  const selectedDetail = useMemo(
+    () => (sheetOpen && selectedMember ? buildMemberDetail(ordersForMember(orderIndex, selectedMember), imageFor) : null),
+    [sheetOpen, selectedMember, orderIndex, imageFor]
+  );
 
-      // Get all orders for this member (pending orders included so today's
-      // purchases appear immediately).
-      const memberOrders = orders.filter(o => {
-        if (!orderCounts(o)) return false;
-        if (phone && o.memberPhone === phone) return true;
-        if (!nameKey) return false;
-        return !o.memberPhone && getNameKey(o.memberNickname) === nameKey;
-      });
-
-      // Count items
-      const itemCounts = {};
-      memberOrders.forEach(order => {
-        (order.items || []).forEach(item => {
-          const key = item.name;
-          if (!itemCounts[key]) {
-            itemCounts[key] = {
-              name: item.name,
-              image: item.image || '',
-              category: item.category || '',
-              count: 0,
-              totalSpent: 0
-            };
-          }
-          itemCounts[key].count += Number(item.quantity || 1);
-          itemCounts[key].totalSpent += Number(item.price || 0) * Number(item.quantity || 1);
-        });
-      });
-
-      // Convert to array and sort by count
-      const favorites = Object.values(itemCounts).sort((a, b) => b.count - a.count);
-
-      // Get recent orders (newest first). createdAt is a Firestore Timestamp
-      // ({seconds}), not a date string — new Date() on it yields Invalid Date,
-      // which made the previous sort a no-op (hence the random order).
-      const recentOrders = [...memberOrders]
-        .sort((a, b) => getOrderMs(b) - getOrderMs(a))
-        .slice(0, 10);
-
-      return {
-        favorites,
-        recentOrders,
-        totalOrders: memberOrders.length,
-        uniqueItems: Object.keys(itemCounts).length
-      };
-    };
-  }, [orders]);
+  const openMember = useCallback((m) => {
+    setSheetSnapshot(m);
+    setSheetSession(s => s + 1);
+    setSheetOpen(true);
+  }, []);
+  const closeMember = () => setSheetOpen(false);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -306,7 +156,7 @@ export default function MembersView() {
   // name-only rows have no doc yet → name:key).
   const resolveMemberId = (member) => {
     const nameKey = getNameKey(member.name);
-    const isNameOnly = String(member.id || '').startsWith('name-only:');
+    const isNameOnly = isNameOnlyId(member.id);
     return isNameOnly
       ? (nameKey ? `name:${nameKey}` : null)
       : (member.id || member.phone || (nameKey ? `name:${nameKey}` : null));
@@ -357,7 +207,7 @@ export default function MembersView() {
         };
         const phone = String(member.phone || '').trim();
         if (phone) payload.phone = phone;
-        if (String(member.id || '').startsWith('name-only:')) payload.createdAt = serverTimestamp();
+        if (isNameOnlyId(member.id)) payload.createdAt = serverTimestamp();
         transaction.set(ref, payload, { merge: true });
         return freshGap;
       });
@@ -392,23 +242,17 @@ export default function MembersView() {
         addPending += Number(loser.pendingPoints || 0);
         (Array.isArray(loser.pointsHistory) ? loser.pointsHistory : []).forEach(e => historyAdd.push(e));
 
-        // Re-point this loser's orders onto the primary identity so purchase
-        // history follows the merge.
-        const loserPhone = String(loser.phone || '').trim();
-        const loserNameKey = getNameKey(loser.name);
-        orders.forEach(o => {
-          const matchByPhone = loserPhone && o.memberPhone === loserPhone;
-          const matchByName = !o.memberPhone && loserNameKey && getNameKey(o.memberNickname) === loserNameKey;
-          if (matchByPhone || matchByName) {
-            batch.update(doc(db, ...base, 'orders', o.id), {
-              memberPhone: primaryPhone,
-              memberNickname: primaryName,
-            });
-          }
+        // Re-point this loser's orders (by phone, or by nickname on phone-less
+        // bills — cancelled ones too, as before) onto the primary identity.
+        ordersForMember(orderIndex, loser, { includeCancelled: true }).forEach(o => {
+          batch.update(doc(db, ...base, 'orders', o.id), {
+            memberPhone: primaryPhone,
+            memberNickname: primaryName,
+          });
         });
 
         // Remove the loser's own doc (name-only rows have no doc to delete).
-        if (!String(loser.id || '').startsWith('name-only:') && (loser.id || loser.phone)) {
+        if (!isNameOnlyId(loser.id) && (loser.id || loser.phone)) {
           batch.delete(doc(db, ...base, 'members', loser.id || loser.phone));
         }
       });
@@ -436,23 +280,23 @@ export default function MembersView() {
   // bill earned were credited to the wrong member, so claw them back too —
   // from pendingPoints first (not yet approved), then from points, never below
   // zero. Redemptions aren't reversed (orders don't record a redeem flag).
-  const unlinkOrderFromMember = (order) => withMembers([selectedMemberForFavorites], async () => {
-    const member = selectedMemberForFavorites;
+  const unlinkOrderFromMember = (order) => withMembers([selectedMember], async () => {
+    const member = selectedMember;
     const earned = Math.floor(Number(order.total || 0) / 10);
     const memberId = member && resolveMemberId(member);
-    const isNameOnly = String(member?.id || '').startsWith('name-only:');
+    const isNameOnly = isNameOnlyId(member?.id);
     let clawbackPoints = 0;
 
     const ok = await runDbAction(async () => {
       const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id);
-      
+
       if (earned > 0 && memberId && !isNameOnly) {
         const memberRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberId);
         await runTransaction(db, async transaction => {
           const memberSnap = await transaction.get(memberRef);
-          
+
           transaction.update(orderRef, { memberPhone: '', memberNickname: '' });
-          
+
           if (memberSnap.exists()) {
             const mData = memberSnap.data();
             const { fromPending, fromPoints } = planEarnClawback(mData, earned);
@@ -478,13 +322,13 @@ export default function MembersView() {
 
   // Delete a whole bill (reuses the app-level confirm + stock restore flow).
   const deleteOrder = (order) => {
-    setSelectedMemberForFavorites(null);
+    setSheetOpen(false);
     setOrderToCancel(order.id);
   };
 
-  // Used from the member list, the duplicate panel and the guest panel — every
-  // row type is deletable, so a wrong/duplicate entry never has to be merged
-  // just to make it disappear.
+  // Used from the member sheet, the duplicate panel and the guest panel —
+  // every row type is deletable, so a wrong/duplicate entry never has to be
+  // merged just to make it disappear.
   const deleteMember = (member) => {
     if (!member?.id) return;
     setDeletingMember(member);
@@ -512,7 +356,7 @@ export default function MembersView() {
     const member = deletingMember;
     const nameKey = getNameKey(member?.name);
     const hasPhone = !!String(member?.phone || '').trim();
-    const isNameOnly = String(member?.id || '').startsWith('name-only:');
+    const isNameOnly = isNameOnlyId(member?.id);
     const base = ['artifacts', appId, 'public', 'data'];
     await runDbAction(async () => {
       const batch = writeBatch(db);
@@ -522,8 +366,7 @@ export default function MembersView() {
         ops++;
       }
       if (!hasPhone && nameKey) {
-        orders
-          .filter(o => !o.memberPhone && getNameKey(o.memberNickname) === nameKey)
+        nameOnlyOrders(orderIndex, nameKey)
           .forEach(o => { batch.update(doc(db, ...base, 'orders', o.id), { memberNickname: '' }); ops++; });
       }
       if (ops > 0) await batch.commit();
@@ -562,10 +405,10 @@ export default function MembersView() {
           const oldRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', currentId);
           const newRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', newId);
           const oldSnap = await transaction.get(oldRef);
-          
+
           const oldData = oldSnap.exists() ? oldSnap.data() : {};
           const basePoints = Number(oldData.points || 0);
-          
+
           const data = {
             name: nextName || currentName || 'ลูกค้าทั่วไป',
             phone: nextPhone || '',
@@ -574,11 +417,11 @@ export default function MembersView() {
             pendingPoints: Number(oldData.pendingPoints || 0),
             pendingReason: oldData.pendingReason || '',
           };
-          
+
           const history = Array.isArray(oldData.pointsHistory) ? [...oldData.pointsHistory] : [];
           if (pointDiff !== 0) history.push(historyEntry(pointDiff, 'manual'));
           data.pointsHistory = history;
-          
+
           transaction.set(newRef, data, { merge: true });
           transaction.delete(oldRef);
         });
@@ -642,796 +485,281 @@ export default function MembersView() {
     redeemableMembers: memberRows.filter(m => Number(m.points || 0) >= REDEEM_POINTS_THRESHOLD).length,
   }), [memberRows, REDEEM_POINTS_THRESHOLD]);
 
+  const toolsCount = reconcileList.length + duplicateGroups.length;
+  const searching = String(debouncedMemberSearchTerm || '').trim() !== '';
+
+  const pendingOrders = useMemo(() => (pendingOrdersMember?.pendingOrderIds || [])
+    .map(id => orderIndex.byId.get(id))
+    .filter(Boolean)
+    .sort((a, b) => getOrderMs(b) - getOrderMs(a)), [pendingOrdersMember, orderIndex]);
+
   return (
-    <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-[var(--text-primary)]">
-      {/* Responsive Header */}
-      <header className="bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-3 md:px-6 lg:px-12 py-3 md:py-4 flex flex-col md:flex-row items-start md:items-center justify-between shadow-sm z-[var(--z-nav)] text-[var(--text-primary)] gap-3 md:gap-4">
-        <div className="flex items-center gap-3 md:gap-4 text-emerald-600  font-semibold">
-          <Users size={24} className="md:w-8 md:h-8 shrink-0" />
-          <div>
-            <h1 className="text-base md:text-xl lg:text-2xl font-bold  tracking-tight text-[var(--text-primary)]">จัดการสมาชิก</h1>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto">
-          <Button
-            onClick={() => setShowReconcile(v => !v)}
-            variant={showReconcile ? 'primary' : 'outline'}
-            size="md"
-            leftIcon={<Calculator size={14} />}
-            title="ตรวจแต้มที่ซื้อแล้วไม่ขึ้น และรวมสมาชิกซ้ำ"
-          >
-            <span className="hidden sm:inline">กระทบยอด</span>แต้ม
-            {(reconcileList.length > 0 || duplicateGroups.length > 0) && (
-              <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-medium">
-                {reconcileList.length + duplicateGroups.length}
-              </span>
-            )}
-          </Button>
-          <Button
-            onClick={addMember}
-            variant="primary"
-            size="md"
-            leftIcon={<User size={14} />}
-          >
-            <span className="hidden sm:inline">เพิ่ม</span>สมาชิก
-          </Button>
-          <div className="relative flex-1 md:flex-none md:w-64 lg:w-80 flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 md:left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] w-4 h-4 md:w-5 md:h-5" />
-              <input type="text" placeholder="ค้นหา..." value={memberSearchTerm} onChange={(e) => setMemberSearchTerm(e.target.value)} className="w-full bg-[var(--bg-tertiary)] border-none rounded-xl md:rounded-2xl py-2.5 md:py-3 pl-9 md:pl-12 pr-3 md:pr-4 text-xs md:text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500/10 text-[var(--text-primary)]" />
-            </div>
-            <button
-              onClick={handleRefresh}
-              className={`p-2.5 md:p-3 rounded-xl md:rounded-2xl bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-emerald-500 hover:bg-emerald-50 transition-all active:scale-95 border border-transparent hover:border-emerald-100 ${isRefreshing ? 'animate-pulse' : ''}`}
-              title="รีเฟรชข้อมูลสมาชิก"
+    <div className="h-full bg-[var(--bg-canvas)] flex flex-col overflow-hidden text-[var(--text-primary)]">
+      <PageHeader
+        title="สมาชิก"
+        subtitle={`${formatNumber(memberRows.length)} คน${guestRows.length > 0 ? ` · ไม่มีเบอร์อีก ${formatNumber(guestRows.length)}` : ''}`}
+        icon={Users}
+        sticky={false}
+        actions={(
+          <>
+            <Button
+              variant="secondary"
+              leftIcon={<Wrench size={18} />}
+              onClick={() => setShowTools(true)}
+              title="ตรวจแต้มที่ซื้อแล้วไม่ขึ้น รวมสมาชิกซ้ำ และลูกค้าไม่มีเบอร์"
             >
-              <RefreshCcw size={18} className={`${isRefreshing ? 'animate-spin text-emerald-500' : ''}`} />
-            </button>
-          </div>
-        </div>
-      </header>
+              เครื่องมือ
+              {toolsCount > 0 && <CountBadge count={toolsCount} className="ml-1" />}
+            </Button>
+            <Button leftIcon={<UserPlus size={18} />} onClick={addMember}>เพิ่มสมาชิก</Button>
+          </>
+        )}
+      />
 
-      {/* Stats Cards - Member Count */}
-      <div className="px-3 md:px-6 lg:px-8 py-3 md:py-4 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
-        {/* Total Members */}
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-[var(--elev-2)]">
-          <div className="flex items-center justify-between mb-1 md:mb-2">
-            <span className="text-xs md:text-xs font-medium  tracking-wider opacity-80">สมาชิกทั้งหมด</span>
-            <Users size={16} className="md:w-5 md:h-5 opacity-60" />
-          </div>
-          <p className="text-2xl md:text-4xl font-semibold">{memberRows.length}</p>
-          <p className="text-xs md:text-xs opacity-70 mt-0.5">
-            คน{guestRows.length > 0 ? ` · ไม่มีเบอร์อีก ${guestRows.length}` : ''}
-          </p>
-        </div>
+      <div className="flex-1 overflow-y-auto px-[var(--page-pad)] py-5 md:py-6 pb-24 md:pb-10">
+        <div className="max-w-[1400px] mx-auto flex flex-col gap-5">
+          <PendingApprovals
+            rows={pendingRows}
+            isBusy={memberBusy}
+            onApprove={approvePending}
+            onReject={rejectPending}
+            onShowOrders={setPendingOrdersMember}
+          />
 
-        {/* Filtered Results */}
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-[var(--elev-2)]">
-          <div className="flex items-center justify-between mb-1 md:mb-2">
-            <span className="text-xs md:text-xs font-medium  tracking-wider opacity-80">ผลการค้นหา</span>
-            <Search size={16} className="md:w-5 md:h-5 opacity-60" />
-          </div>
-          <p className="text-2xl md:text-4xl font-semibold">{filteredMembers.length}</p>
-          <p className="text-xs md:text-xs opacity-70 mt-0.5">คน</p>
-        </div>
-
-        {/* Redeemable Members */}
-        <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-[var(--elev-2)]">
-          <div className="flex items-center justify-between mb-1 md:mb-2">
-            <span className="text-xs md:text-xs font-medium  tracking-wider opacity-80">แลกแต้มได้</span>
-            <span className="text-[8px] md:text-xs bg-[var(--bg-secondary)]/20 px-1.5 py-0.5 rounded-lg">≥{REDEEM_POINTS_THRESHOLD}</span>
-          </div>
-          <p className="text-2xl md:text-4xl font-semibold">{redeemableMembers}</p>
-          <p className="text-xs md:text-xs opacity-70 mt-0.5">คน</p>
-        </div>
-
-        {/* Total Spent */}
-        <div className="bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-[var(--elev-2)]">
-          <div className="flex items-center justify-between mb-1 md:mb-2">
-            <span className="text-xs md:text-xs font-medium  tracking-wider opacity-80">ยอดใช้จ่ายรวม</span>
-          </div>
-          <p className="text-xl md:text-3xl font-semibold">฿{totalSpentAll.toLocaleString()}</p>
-          <p className="text-xs md:text-xs opacity-70 mt-0.5">แต้มรวม: {totalPoints.toLocaleString()}</p>
-        </div>
-      </div>
-      {/* Reconciliation + Merge Tools */}
-      {showReconcile && (
-        <div className="px-3 md:px-6 lg:px-8 pt-3 md:pt-4 shrink-0 space-y-3">
-          {/* Missing points (bought but points didn't show) */}
-          <div className="bg-[var(--bg-secondary)] border border-emerald-200 rounded-2xl p-3 md:p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <div className="flex items-center gap-2 text-emerald-700 font-semibold text-sm md:text-base  tracking-wider">
-                <Calculator size={18} />
-                <span>แต้มที่ซื้อแล้วไม่ขึ้น</span>
-              </div>
-              {/* Time window — only reconcile recent orders */}
-              <div className="flex items-center gap-1 bg-[var(--bg-tertiary)] rounded-xl p-1">
-                {[7, 14].map(d => (
-                  <button
-                    key={d}
-                    onClick={() => setReconcileDays(d)}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${reconcileDays === d ? 'bg-emerald-500 text-white shadow' : 'text-[var(--text-secondary)] hover:text-emerald-600'}`}
-                  >
-                    {d} วัน
-                  </button>
-                ))}
-              </div>
-            </div>
-            <p className="text-xs text-[var(--text-muted)] font-bold mb-3">
-              เทียบยอดซื้อกับแต้มที่ได้ เฉพาะ {reconcileDays} วันล่าสุด — เติมส่วนที่ขาดเข้า “รออนุมัติ” แล้วค่อยกดอนุมัติอีกที (฿10 = 1 แต้ม · การแลกแต้มไม่ถูกนับซ้ำ)
-            </p>
-            {reconcileList.length === 0 ? (
-              <div className="text-center py-6 text-[var(--text-muted)] font-bold text-sm flex items-center justify-center gap-2">
-                <Check size={16} className="text-emerald-500" /> แต้มตรงกับยอดซื้อทุกคนแล้ว
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3 max-h-64 overflow-y-auto scrollbar-hide">
-                {reconcileList.map(m => (
-                  <div key={`gap-${m.phone || m.id}`} className="bg-emerald-50/60 rounded-2xl border border-emerald-100 p-3 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-[var(--text-primary)] text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
-                      <p className="text-xs font-bold text-[var(--text-muted)]">
-                        {m.phone ? String(m.phone) : 'ไม่มีเบอร์'} · ควรได้ {Number(m.expectedEarn || 0)} · ขาด
-                        <span className="text-emerald-600"> {Number(m.earnGap)}</span> แต้ม
-                        {Number(m.redeemed || 0) > 0 && (
-                          <span className="text-orange-500"> · แลกไปแล้ว {Number(m.redeemed)}</span>
-                        )}
-                      </p>
-                    </div>
-                    <Button disabled={memberBusy(m)} className="min-h-11" onClick={() => setCreditTarget(m)} variant="primary" size="sm" leftIcon={<Check size={14} />}>
-                      เติม +{Number(m.earnGap)}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard
+              label="สมาชิกทั้งหมด"
+              value={formatNumber(memberRows.length)}
+              unit="คน"
+              icon={Users}
+              hint={guestRows.length > 0 ? `ไม่มีเบอร์อีก ${formatNumber(guestRows.length)} คน` : undefined}
+              loading={isSyncing}
+            />
+            <StatCard
+              label="แลกแต้มได้"
+              value={formatNumber(redeemableMembers)}
+              unit="คน"
+              icon={Gift}
+              tone="ok"
+              hint={`แต้มถึง ${formatNumber(REDEEM_POINTS_THRESHOLD)} แล้ว`}
+              loading={isSyncing}
+            />
+            <StatCard label="ยอดใช้จ่ายรวม" value={<Money value={totalSpentAll} />} icon={Wallet} loading={isSyncing} />
+            <StatCard label="แต้มสะสมรวม" value={formatNumber(totalPoints)} unit="แต้ม" icon={Coins} loading={isSyncing} />
           </div>
 
-          {/* Duplicate identities to merge */}
-          {(duplicateGroups.length > 0 || ignoredDupKeys.length > 0) && (
-            <div className="bg-[var(--bg-secondary)] border border-violet-200 rounded-2xl p-3 md:p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <div className="flex items-center gap-2 text-violet-700 font-semibold text-sm md:text-base  tracking-wider">
-                  <GitMerge size={18} />
-                  <span>สมาชิกซ้ำ (ชื่อเดียวกัน)</span>
-                </div>
-                {ignoredDupKeys.length > 0 && (
-                  <button
-                    onClick={resetIgnoredDupKeys}
-                    className="text-xs font-bold text-[var(--text-muted)] hover:text-violet-600 underline underline-offset-2 shrink-0"
-                  >
-                    เอากลุ่มที่ซ่อนไว้ ({ignoredDupKeys.length}) กลับมา
-                  </button>
-                )}
-              </div>
-              <p className="text-xs text-[var(--text-muted)] font-bold mb-3">
-                ชื่อซ้ำกันไม่ได้แปลว่าเป็นคนเดียวกันเสมอ — ถ้าคนเดียวกันให้ "รวม" (แต้ม+ประวัติยุบเข้าตัวหลัก) · ถ้าเป็นรายการขยะให้ "ลบ" ทีละอัน · ถ้าคนละคนกดซ่อนกลุ่มไว้ได้
-              </p>
-              {duplicateGroups.length === 0 && (
-                <div className="text-center py-6 text-[var(--text-muted)] font-bold text-sm flex items-center justify-center gap-2">
-                  <Check size={16} className="text-emerald-500" /> ไม่มีชื่อซ้ำที่ต้องจัดการ
-                </div>
-              )}
-              <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-hide">
-                {duplicateGroups.map(group => (
-                  <div key={`dup-${group.key}`} className="bg-violet-50/60 rounded-2xl border border-violet-100 p-3">
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <p className="font-semibold text-[var(--text-primary)] text-sm truncate flex items-center gap-2">
-                        <AlertTriangle size={14} className="text-violet-500 shrink-0" /> {group.key}
-                        <span className="text-xs font-bold text-[var(--text-muted)]">({group.members.length} รายการ)</span>
-                      </p>
-                      <Button
-                        onClick={() => {
-                          const primary = group.members.find(m => String(m.phone || '').trim()) || group.members[0];
-                          setMergeGroup(group);
-                          setMergePrimaryId(primary.id || primary.phone);
-                        }}
-                        variant="primary"
-                        size="sm"
-                        leftIcon={<GitMerge size={14} />}
-                      >
-                        รวม
-                      </Button>
-                    </div>
-                    {/* Every identity in the group is deletable on its own —
-                        merging is not the only way out (three different people
-                        can share one nickname). */}
-                    <div className="space-y-1.5">
-                      {group.members.map(m => (
-                        <div key={`dupm-${m.id || m.phone}`} className="flex items-center justify-between gap-2 text-xs bg-[var(--bg-secondary)] px-2.5 py-2 rounded-xl border border-violet-100 font-bold text-[var(--text-secondary)]">
-                          <span className="truncate">
-                            {m.phone ? String(m.phone) : 'ไม่มีเบอร์'} · {Number(m.points || 0)}
-                            {Number(m.pendingPoints || 0) > 0 ? `(+${Number(m.pendingPoints)})` : ''} แต้ม
-                            {' · '}{Number(m.totalPurchases || 0)} ชิ้น · ฿{Number(m.totalSpent || 0).toLocaleString()}
-                            {String(m.id || '').startsWith('name-only:') ? ' · ยังไม่มีบัญชี' : ''}
-                          </span>
-                          <button
-                            onClick={() => deleteMember(m)}
-                            title="ลบรายการนี้ทิ้ง (ไม่ต้องรวม)"
-                            className="shrink-0 p-1.5 bg-red-50 text-red-500 rounded-lg border border-red-100 hover:bg-red-100 transition-all active:scale-90"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <button
-                      onClick={() => ignoreDupGroup(group.key)}
-                      className="mt-2 text-xs font-bold text-[var(--text-muted)] hover:text-violet-600 underline underline-offset-2 transition-colors"
-                    >
-                      ไม่ใช่คนเดียวกัน · ซ่อนกลุ่มนี้
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Guests: no phone → not members. Old `name:xxx` docs live here too,
-              waiting to be given a phone (promoted) or deleted. */}
-          {guestRows.length > 0 && (
-            <div className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl p-3 md:p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <div className="flex items-center gap-2 text-[var(--text-secondary)] font-semibold text-sm md:text-base  tracking-wider">
-                  <UserX size={18} />
-                  <span>ลูกค้าไม่มีเบอร์ (ไม่ใช่สมาชิก)</span>
-                </div>
-                <span className="text-xs font-medium text-[var(--text-muted)] shrink-0">
-                  {guestRows.length} คน{guestPoints > 0 ? ` · ค้างแต้ม ${guestPoints}` : ''}
+          <Toolbar
+            className="px-0! py-0!"
+            search={{ value: memberSearchTerm, onChange: setMemberSearchTerm, placeholder: 'ค้นหาชื่อหรือเบอร์โทร' }}
+            actions={(
+              <>
+                <span className="text-sm text-[var(--text-muted)] whitespace-nowrap num" aria-live="polite">
+                  {searching ? `พบ ${formatNumber(filteredMembers.length)} คน` : `${formatNumber(filteredMembers.length)} คน`}
                 </span>
-              </div>
-              <p className="text-xs text-[var(--text-muted)] font-bold mb-3">
-                รายการเก่าที่เคยบันทึกจากชื่อเล่นล้วน — ตอนนี้ไม่นับเป็นสมาชิกแล้ว (บิลใหม่ที่ไม่มีเบอร์จะไม่ถูกบันทึกอีก) · ใส่เบอร์ให้ = เลื่อนเป็นสมาชิกจริงพร้อมแต้มเดิม · ลบ = เอาออกทั้งชื่อบนบิล
-              </p>
-              <div className="space-y-1.5 max-h-64 overflow-y-auto scrollbar-hide">
-                {guestRows.map(m => (
-                  <div key={`guest-${m.id}`} className="flex items-center justify-between gap-2 bg-[var(--bg-tertiary)] rounded-xl border border-[var(--border-color)] px-3 py-2">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-[var(--text-primary)] text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
-                      <p className="text-xs font-bold text-[var(--text-muted)] truncate">
-                        {Number(m.totalPurchases || 0)} ชิ้น · ฿{Number(m.totalSpent || 0).toLocaleString()}
-                        {Number(m.points || 0) + Number(m.pendingPoints || 0) > 0
-                          ? ` · ค้าง ${Number(m.points || 0) + Number(m.pendingPoints || 0)} แต้ม`
-                          : ''}
-                        {String(m.id || '').startsWith('name-only:') ? ' · ยังไม่มีบัญชี' : ''}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => editMember(m)}
-                        title="ใส่เบอร์ให้ → เลื่อนเป็นสมาชิกจริง (แต้มเดิมตามไปด้วย)"
-                        className="p-2 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100 hover:bg-emerald-100 transition-all active:scale-90"
-                      >
-                        <Phone size={14} />
-                      </button>
-                      <button
-                        onClick={() => deleteMember(m)}
-                        title="ลบออกจากระบบสมาชิก"
-                        className="p-2 bg-red-50 text-red-500 rounded-lg border border-red-100 hover:bg-red-100 transition-all active:scale-90"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Pending Approval Section */}
-      {memberRows.some(m => Number(m.pendingPoints) > 0) && (
-        <div className="px-3 md:px-6 lg:px-8 pt-3 md:pt-4 shrink-0">
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 md:p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-3 text-amber-700 font-semibold text-sm md:text-base  tracking-wider">
-              <History size={18} />
-              <span>รออนุมัติแต้ม</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
-              {memberRows.filter(m => Number(m.pendingPoints) > 0).map(m => (
-                <div key={`pending-${m.phone || m.id}`} className="bg-[var(--bg-secondary)] rounded-2xl border border-amber-100 p-3 flex items-center justify-between gap-3 shadow-sm">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-[var(--text-primary)] text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      <span className="inline-block px-2 py-0.5 rounded-lg bg-amber-100 text-amber-700 font-semibold text-xs cursor-pointer hover:bg-amber-200 transition-colors" onClick={() => m.pendingOrderIds?.length ? setPendingOrdersMember(m) : null}>
-                        รออนุมัติ +{Number(m.pendingPoints)} · {m.pendingReason === 'order' ? 'จากการซื้อ' : m.pendingReason === 'recalc' ? 'กระทบยอดย้อนหลัง' : 'รีวิว'}
-                        {m.pendingOrderIds?.length > 0 && ` (จาก ${m.pendingOrderIds.length} บิล)`}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button disabled={memberBusy(m)} className="min-h-11" onClick={() => approvePending(m)} variant="primary" size="sm" leftIcon={<Check size={14} />}>
-                      อนุมัติ
-                    </Button>
-                    <Button disabled={memberBusy(m)} className="min-h-11" onClick={() => rejectPending(m)} variant="outline-danger" size="sm" leftIcon={<X size={14} />}>
-                      ปฏิเสธ
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 p-3 md:p-6 lg:p-6 overflow-hidden">
-        <div className="h-full bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[var(--radius)] shadow-[var(--elev-2)] border border-[var(--border-color)] overflow-hidden flex flex-col shadow-emerald-500/5">
-          {/* Desktop Table Header */}
-          <div className="hidden md:grid p-6 lg:p-6 border-b border-gray-50 grid-cols-4 font-semibold text-xs lg:text-xs text-[var(--text-muted)]  tracking-wider lg:tracking-[0.2em] px-6 lg:px-12 leading-none">
-            <span>ข้อมูลสมาชิก</span>
-            <span className="text-center">รายการสำเร็จ</span>
-            <span className="text-center">ยอดรวม</span>
-            <span className="text-right">คะแนน</span>
-          </div>
-          <div className="flex-1 overflow-y-auto divide-y divide-gray-50 scrollbar-hide text-[var(--text-primary)]">
-            {isSyncing && (
-              <div className="py-6 px-4">
-                <Skeleton.Table rows={8} cols={5} />
-              </div>
+                <IconButton
+                  icon={<RefreshCcw size={18} className={isRefreshing ? 'animate-spin' : ''} />}
+                  size="lg"
+                  rounded="lg"
+                  variant="outline"
+                  aria-label="รีเฟรชข้อมูลสมาชิก"
+                  title="รีเฟรชข้อมูลสมาชิก"
+                  onClick={handleRefresh}
+                />
+              </>
             )}
-            {!isSyncing && filteredMembers.length === 0 && (
-              <EmptyState
-                icon={Users}
-                title="ไม่มีข้อมูลสมาชิก"
-                description={memberSearchTerm ? "ไม่พบสมาชิกที่ตรงกับคำค้นหา" : "เริ่มเพิ่มสมาชิกใหม่เพื่อสะสมแต้ม"}
-                action={!memberSearchTerm ? { label: "เพิ่มสมาชิก", onClick: addMember } : undefined}
-              />
-            )}
-            {filteredMembers.map(m => (
-              <div key={m.phone || m.id} className="p-4 md:p-6 lg:p-6 hover:bg-[var(--bg-tertiary)] transition-all group px-4 md:px-6 lg:px-12">
-                {/* Mobile Layout */}
-                <div className="md:hidden space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-500 shadow-inner shrink-0">
-                        <User size={20} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-[var(--text-primary)] text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
-                        <p className="text-xs font-bold text-[var(--text-muted)] tracking-wide">{m.phone ? String(m.phone) : 'ไม่ระบุเบอร์'}</p>
-                      </div>
-                    </div>
-                    <div className={`px-3 py-1.5 rounded-xl font-semibold text-xs shadow ${Number(m.points || 0) >= REDEEM_POINTS_THRESHOLD ? 'bg-orange-500 text-white animate-pulse' : 'bg-emerald-500 text-white'}`}>
-                      {Number(m.points || 0)} แต้ม
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex gap-4">
-                      <span className="text-[var(--text-muted)]">ซื้อ: <span className="text-[var(--text-primary)] font-semibold">{Number(m.totalPurchases)} ชิ้น</span></span>
-                      <span className="text-[var(--text-muted)]">ยอด: <span className="text-emerald-600 font-semibold">฿{Number(m.totalSpent).toLocaleString()}</span></span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => setSelectedMemberForFavorites(m)} className="p-2 bg-pink-50 text-pink-500 rounded-lg active:scale-90" title="ดูเมนูโปรด">
-                        <Heart size={14} />
-                      </button>
-                      <button onClick={() => setHistoryMember(m)} className="p-2 bg-violet-50 text-violet-500 rounded-lg active:scale-90" title="ประวัติแต้ม">
-                        <History size={14} />
-                      </button>
-                      {m.id && (
-                        <button onClick={() => editMember(m)} className="p-2 bg-blue-50 text-blue-500 rounded-lg active:scale-90">
-                          <Edit size={14} />
-                        </button>
-                      )}
-                      {m.id && (
-                        <button onClick={() => deleteMember(m)} className="p-2 bg-red-50 text-red-500 rounded-lg active:scale-90">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
+          />
 
-                {/* Desktop Layout */}
-                <div className="hidden md:grid grid-cols-4 items-center">
-                  <div className="flex items-center gap-4 lg:gap-6">
-                    <div className="w-12 h-12 lg:w-16 lg:h-16 bg-emerald-50 rounded-xl lg:rounded-2xl flex items-center justify-center text-emerald-500 shadow-inner font-semibold shrink-0">
-                      <User size={24} className="lg:w-8 lg:h-8" />
-                    </div>
-                    <div className="text-[var(--text-primary)] min-w-0">
-                      <p className="font-semibold text-[var(--text-primary)] text-base lg:text-xl mb-1 lg:mb-1.5 leading-tight truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
-                      <p className="text-xs lg:text-sm font-bold text-[var(--text-muted)] tracking-wider lg:tracking-widest">{m.phone ? String(m.phone) : 'ไม่ระบุเบอร์'}</p>
-                    </div>
-                  </div>
-                  <div className="text-center text-[var(--text-primary)]">
-                    <p className="text-xl lg:text-3xl font-semibold text-[var(--text-primary)] mb-1 lg:mb-1.5 leading-none">{Number(m.totalPurchases)}</p>
-                    <p className="text-xs lg:text-xs font-medium text-emerald-500  tracking-wider lg:tracking-widest mt-1 lg:mt-2 leading-none">รายการ</p>
-                  </div>
-                  <div className="text-center text-[var(--text-primary)] font-semibold text-sm lg:text-lg">฿{Number(m.totalSpent).toLocaleString()}</div>
-                  <div className="text-right text-[var(--text-primary)] font-semibold leading-none">
-                    <div className="flex items-center justify-end gap-2 lg:gap-3">
-                      <div className={`px-3 lg:px-6 py-2 lg:py-3 rounded-xl lg:rounded-2xl inline-block font-semibold shadow-[var(--elev-2)] text-xs lg:text-base border-b-2 lg:border-b-4 ${Number(m.points || 0) >= REDEEM_POINTS_THRESHOLD ? 'bg-orange-500 text-white border-orange-700 animate-pulse' : 'bg-emerald-500 text-white border-emerald-700'}`}>
-                        {Number(m.points || 0).toLocaleString()} แต้ม
-                      </div>
-                      <button
-                        onClick={() => setSelectedMemberForFavorites(m)}
-                        title="ดูเมนูโปรดของลูกค้า"
-                        className="p-2 lg:p-3 bg-pink-50 text-pink-500 rounded-xl lg:rounded-2xl shadow-sm border border-pink-100 hover:bg-pink-100 transition-all active:scale-90"
-                      >
-                        <Heart size={16} className="lg:w-[18px] lg:h-[18px]" />
-                      </button>
-                      <button
-                        onClick={() => setHistoryMember(m)}
-                        title="ประวัติแต้ม"
-                        className="p-2 lg:p-3 bg-violet-50 text-violet-500 rounded-xl lg:rounded-2xl shadow-sm border border-violet-100 hover:bg-violet-100 transition-all active:scale-90"
-                      >
-                        <History size={16} className="lg:w-[18px] lg:h-[18px]" />
-                      </button>
-                      {m.id && (
-                        <button onClick={() => editMember(m)} className="p-2 lg:p-3 bg-blue-50 text-blue-500 rounded-xl lg:rounded-2xl shadow-sm border border-blue-100 hover:bg-blue-100 transition-all active:scale-90">
-                          <Edit size={16} className="lg:w-[18px] lg:h-[18px]" />
-                        </button>
-                      )}
-                      {m.id && (
-                        <button onClick={() => deleteMember(m)} className="p-2 lg:p-3 bg-red-50 text-red-500 rounded-xl lg:rounded-2xl shadow-sm border border-red-100 hover:bg-red-100 transition-all active:scale-90">
-                          <Trash2 size={16} className="lg:w-[18px] lg:h-[18px]" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <MemberTable
+            rows={filteredMembers}
+            loading={isSyncing}
+            threshold={REDEEM_POINTS_THRESHOLD}
+            onOpen={openMember}
+            emptyState={{
+              title: 'ไม่มีข้อมูลสมาชิก',
+              icon: Users,
+              description: memberSearchTerm ? 'ไม่พบสมาชิกที่ตรงกับคำค้นหา' : 'เริ่มเพิ่มสมาชิกใหม่เพื่อสะสมแต้ม',
+              action: !memberSearchTerm ? { label: 'เพิ่มสมาชิก', onClick: addMember } : undefined,
+            }}
+          />
         </div>
       </div>
 
-      {/* Member Favorites Modal */}
-      <Modal
-        isOpen={!!selectedMemberForFavorites}
-        onClose={() => setSelectedMemberForFavorites(null)}
-        size="lg"
-        title={
-          <div className="flex items-center gap-4 md:gap-6">
-            <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-br from-pink-500 to-rose-500 rounded-2xl flex items-center justify-center text-white shadow-[var(--elev-2)] shadow-pink-500/30">
-              <Heart size={28} />
-            </div>
-            <div>
-              <span className="text-xl md:text-2xl font-semibold text-[var(--text-primary)]">{selectedMemberForFavorites?.name || 'ลูกค้า'}</span>
-              <p className="text-xs md:text-sm font-bold text-[var(--text-muted)] mt-1">{selectedMemberForFavorites?.phone || 'ไม่ระบุเบอร์'}</p>
-            </div>
-          </div>
-        }
-      >
-        {selectedMemberForFavorites && (() => {
-          const memberData = getMemberFavorites(selectedMemberForFavorites);
-          return (
-            <>
-              {/* Stats Row */}
-              <div className="grid grid-cols-3 gap-3 md:gap-4 mb-6">
-                <div className="bg-pink-50 rounded-xl md:rounded-2xl p-3 md:p-4 text-center border border-pink-100">
-                  <p className="text-lg md:text-2xl font-semibold text-pink-600">{memberData.totalOrders}</p>
-                  <p className="text-xs md:text-xs font-bold text-pink-400  tracking-wider">ออเดอร์ทั้งหมด</p>
-                </div>
-                <div className="bg-violet-50 rounded-xl md:rounded-2xl p-3 md:p-4 text-center border border-violet-100">
-                  <p className="text-lg md:text-2xl font-semibold text-violet-600">{memberData.uniqueItems}</p>
-                  <p className="text-xs md:text-xs font-bold text-violet-400  tracking-wider">เมนูที่เคยสั่ง</p>
-                </div>
-                <div className="bg-emerald-50 rounded-xl md:rounded-2xl p-3 md:p-4 text-center border border-emerald-100">
-                  <p className="text-lg md:text-2xl font-semibold text-emerald-600">฿{Number(selectedMemberForFavorites.totalSpent || 0).toLocaleString()}</p>
-                  <p className="text-xs md:text-xs font-bold text-emerald-400  tracking-wider">ยอดใช้จ่ายรวม</p>
-                </div>
+      <MemberSheet
+        key={sheetSession}
+        open={sheetOpen}
+        member={selectedMember}
+        detail={selectedDetail}
+        threshold={REDEEM_POINTS_THRESHOLD}
+        busy={memberBusy(selectedMember)}
+        onClose={closeMember}
+        onEdit={(m) => { setSheetOpen(false); editMember(m); }}
+        onDelete={(m) => { setSheetOpen(false); deleteMember(m); }}
+        onUnlinkOrder={unlinkOrderFromMember}
+        onDeleteOrder={deleteOrder}
+      />
+
+      <MemberToolsSheet
+        open={showTools}
+        onClose={() => setShowTools(false)}
+        reconcileList={reconcileList}
+        reconcileDays={reconcileDays}
+        onReconcileDays={setReconcileDays}
+        onCredit={setCreditTarget}
+        duplicateGroups={duplicateGroups}
+        ignoredCount={ignoredDupKeys.length}
+        onResetIgnored={resetIgnoredDupKeys}
+        onIgnoreGroup={ignoreDupGroup}
+        onMerge={(group) => {
+          const primary = group.members.find(m => String(m.phone || '').trim()) || group.members[0];
+          setMergeGroup(group);
+          setMergePrimaryId(primary.id || primary.phone);
+        }}
+        guestRows={guestRows}
+        guestPoints={guestPoints}
+        onPromoteGuest={editMember}
+        onDelete={deleteMember}
+        isBusy={memberBusy}
+      />
+
+      {/* Modals live in their own portal so they stack above an open sheet. */}
+      <Layer>
+        {/* Pending Orders Modal */}
+        <Modal
+          isOpen={!!pendingOrdersMember}
+          onClose={() => setPendingOrdersMember(null)}
+          title="รายการบิลรออนุมัติแต้ม"
+        >
+          {pendingOrders.length === 0 ? (
+            <p className="text-center py-10 text-[var(--text-muted)] text-sm">ไม่พบข้อมูลบิล</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {pendingOrders.map((o, idx) => {
+                const d = toDate(o.createdAt || o.date);
+                return (
+                  <li key={o.id || idx} className="flex items-center justify-between gap-3 p-3 rounded-[var(--radius-sm)] bg-[var(--bg-sunken)]">
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-[var(--text-primary)] text-sm">บิล {o.id.slice(-4)}</span>
+                      <span className="block text-sm text-[var(--text-muted)] num">{d ? `${formatThaiDate(d)} ${formatTime(d)}` : 'ไม่ทราบวันที่'}</span>
+                    </span>
+                    <Money value={o.total || 0} className="font-semibold" />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Modal>
+
+        {/* Add Member Modal */}
+        <InputModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          onSubmit={submitAddMember}
+          title="เพิ่มสมาชิกใหม่"
+          description="กรอกข้อมูลสมาชิกใหม่"
+          variant="primary"
+          icon={User}
+          fields={[
+            { name: 'name', label: 'ชื่อสมาชิก', placeholder: 'กรอกชื่อ...', required: true },
+            { name: 'phone', label: 'เบอร์โทรศัพท์', placeholder: 'กรอกเบอร์โทร (ถ้ามี)', type: 'tel' }
+          ]}
+          submitText="เพิ่มสมาชิก"
+        />
+
+        {/* Edit Member Modal */}
+        <InputModal
+          isOpen={showEditModal}
+          onClose={() => { setShowEditModal(false); setEditingMember(null); }}
+          onSubmit={submitEditMember}
+          loading={memberBusy(editingMember)}
+          title="แก้ไขข้อมูลสมาชิก"
+          description={editingMember?.name || ''}
+          variant="primary"
+          icon={Edit}
+          fields={[
+            { name: 'name', label: 'ชื่อสมาชิก', placeholder: 'กรอกชื่อ...', defaultValue: editingMember?.name || '' },
+            { name: 'phone', label: 'เบอร์โทรศัพท์', placeholder: 'กรอกเบอร์โทร (ถ้ามี)', type: 'tel', defaultValue: editingMember?.phone || '' },
+            { name: 'points', label: 'แต้มสะสม', placeholder: '0', type: 'number', defaultValue: String(editingMember?.points ?? 0) }
+          ]}
+          submitText="บันทึก"
+        />
+
+        {/* Delete Confirm Modal */}
+        <ConfirmModal
+          isOpen={showDeleteConfirm}
+          onClose={() => { setShowDeleteConfirm(false); setDeletingMember(null); }}
+          onConfirm={confirmDeleteMember}
+          title="ลบสมาชิก"
+          message={<span className="whitespace-pre-line">{deleteConfirmMessage(deletingMember)}</span>}
+          confirmText="ลบ"
+          cancelText="ยกเลิก"
+          variant="danger"
+        />
+
+        {/* Credit missing points confirm */}
+        <ConfirmModal
+          isOpen={!!creditTarget}
+          onClose={() => setCreditTarget(null)}
+          onConfirm={() => creditGap(creditTarget)}
+          loading={memberBusy(creditTarget)}
+          title="เติมแต้มย้อนหลัง"
+          message={creditTarget
+            ? `${creditTarget.name || 'ลูกค้า'} ซื้อใน ${reconcileDays} วันล่าสุดควรได้ ${Number(creditTarget.expectedEarn || 0)} แต้ม แต่ได้ไม่ครบ${Number(creditTarget.redeemed || 0) > 0 ? ` (แลกไปแล้ว ${Number(creditTarget.redeemed)} แต้ม ไม่นับรวมในนี้)` : ''} · เติมส่วนที่ขาด +${Number(creditTarget.earnGap || 0)} แต้มเข้า "รออนุมัติ" ใช่หรือไม่? (ยังต้องกดอนุมัติอีกครั้ง)`
+            : ''}
+          confirmText={`เติม +${Number(creditTarget?.earnGap || 0)}`}
+          cancelText="ยกเลิก"
+          variant="primary"
+        />
+
+        {/* Merge duplicates — pick the primary identity */}
+        <Modal
+          isOpen={!!mergeGroup}
+          onClose={() => { setMergeGroup(null); setMergePrimaryId(null); }}
+          size="md"
+          title="รวมสมาชิกซ้ำ"
+        >
+          {mergeGroup && (
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-[var(--text-secondary)] leading-[var(--lh-sm)]">
+                เลือกรายการหลัก (แต้มและประวัติของรายการอื่นจะถูกยุบรวมเข้ารายการนี้ และออเดอร์จะย้ายมาผูกกับรายการหลัก)
+              </p>
+              <div role="radiogroup" aria-label="รายการหลัก" className="flex flex-col gap-2">
+                {mergeGroup.members.map(m => {
+                  const rid = m.id || m.phone;
+                  const selected = rid === mergePrimaryId;
+                  return (
+                    <button
+                      key={`merge-${rid}`}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setMergePrimaryId(rid)}
+                      className={`w-full min-h-14 text-left p-3 rounded-[var(--radius-sm)] border-2 flex items-center justify-between gap-3 outline-none focus-visible:shadow-[var(--focus-ring)] ${selected ? 'border-[var(--accent)] bg-[var(--bg-selected)]' : 'border-[var(--border-color)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)]'}`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-[var(--text-primary)] text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</span>
+                        <span className="block text-sm text-[var(--text-muted)] num">
+                          {m.phone ? String(m.phone) : 'ไม่มีเบอร์'} · {Number(m.points || 0)} แต้ม
+                          {Number(m.pendingPoints || 0) > 0 ? ` (+${Number(m.pendingPoints)} รอ)` : ''}
+                          {isNameOnlyId(m.id) ? ' · ยังไม่มีบัญชี' : ''}
+                        </span>
+                      </span>
+                      <span aria-hidden="true" className={`w-5 h-5 shrink-0 rounded-full border-2 ${selected ? 'border-[var(--accent)] bg-[var(--accent)]' : 'border-[var(--border-strong)]'}`} />
+                    </button>
+                  );
+                })}
               </div>
-
-              {/* Content */}
-              <div className="space-y-6 md:space-y-8">
-                {/* Favorite Items */}
-                <div>
-                  <h3 className="text-sm md:text-base font-semibold text-[var(--text-secondary)]  tracking-wider mb-4 flex items-center gap-2">
-                    <Star size={16} className="md:w-5 md:h-5 text-yellow-500" /> เมนูโปรด (สั่งบ่อยที่สุด)
-                  </h3>
-                  {memberData.favorites.length === 0 ? (
-                    <div className="text-center py-8 text-[var(--text-muted)] font-bold text-sm">
-                      ยังไม่มีประวัติการสั่งซื้อ
-                    </div>
-                  ) : (
-                    <div className="space-y-2 md:space-y-3">
-                      {memberData.favorites.slice(0, 10).map((item, idx) => (
-                        <div key={item.name} className={`flex items-center gap-3 md:gap-4 p-3 md:p-4 rounded-xl md:rounded-2xl border transition-all ${idx === 0 ? 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200 shadow-[var(--elev-2)] shadow-yellow-500/10' : idx < 3 ? 'bg-pink-50/50 border-pink-100' : 'bg-[var(--bg-tertiary)] border-[var(--border-color)]'}`}>
-                          {/* Rank Badge */}
-                          <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center font-semibold text-sm md:text-base shrink-0 ${idx === 0 ? 'bg-yellow-500 text-white shadow-[var(--elev-2)]' : idx === 1 ? 'bg-[var(--text-muted)] text-white' : idx === 2 ? 'bg-amber-600 text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'}`}>
-                            {idx + 1}
-                          </div>
-
-                          {/* Image */}
-                          <div className="w-12 h-12 md:w-14 md:h-14 bg-[var(--bg-secondary)] rounded-xl md:rounded-2xl overflow-hidden border border-[var(--border-color)] shadow-sm shrink-0">
-                            {item.image ? (
-                              <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
-                                <ShoppingBag size={20} />
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Info */}
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-[var(--text-primary)] text-sm md:text-base truncate">{item.name}</p>
-                            <p className="text-xs md:text-xs text-[var(--text-muted)] font-bold">{item.category || 'ไม่ระบุหมวดหมู่'}</p>
-                          </div>
-
-                          {/* Count */}
-                          <div className="text-right shrink-0">
-                            <p className="font-semibold text-pink-600 text-lg md:text-xl">{item.count}</p>
-                            <p className="text-xs md:text-xs text-[var(--text-muted)] font-bold ">ครั้ง</p>
-                          </div>
-
-                          {/* Total Spent */}
-                          <div className="text-right shrink-0 hidden sm:block">
-                            <p className="font-semibold text-emerald-600 text-sm md:text-base">฿{item.totalSpent.toLocaleString()}</p>
-                            <p className="text-xs md:text-xs text-[var(--text-muted)] font-bold ">รวม</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Recent Orders */}
-                {memberData.recentOrders.length > 0 && (
-                  <div>
-                    <h3 className="text-sm md:text-base font-semibold text-[var(--text-secondary)]  tracking-wider mb-4 flex items-center gap-2">
-                      <TrendingUp size={16} className="md:w-5 md:h-5 text-blue-500" /> ออเดอร์ล่าสุด
-                    </h3>
-                    <div className="space-y-2 md:space-y-3">
-                      {memberData.recentOrders.map((order, idx) => {
-                        const orderDate = order.timestamp || order.createdAt;
-                        const dateStr = orderDate ? new Date(orderDate.seconds ? orderDate.seconds * 1000 : orderDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'ไม่ทราบวันที่';
-                        return (
-                          <div key={order.id || idx} className="bg-[var(--bg-tertiary)] p-3 md:p-4 rounded-xl md:rounded-2xl border border-[var(--border-color)]">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs md:text-xs font-bold text-[var(--text-muted)]">{dateStr}</span>
-                              <span className="text-sm md:text-base font-semibold text-emerald-600">฿{Number(order.total || 0).toLocaleString()}</span>
-                            </div>
-                            <div className="flex flex-wrap gap-1 md:gap-2">
-                              {(order.items || []).map((item, i) => (
-                                <span key={i} className="text-xs md:text-xs bg-[var(--bg-secondary)] px-2 py-1 rounded-lg border border-[var(--border-color)] font-bold text-[var(--text-secondary)]">
-                                  {item.name} x{item.quantity}
-                                </span>
-                              ))}
-                            </div>
-                            {/* Fix mis-entered bills: detach from this member, or delete the bill */}
-                            <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-[var(--border-color)]">
-                              <button
-                                disabled={memberBusy(selectedMemberForFavorites)}
-                                onClick={() => unlinkOrderFromMember(order)}
-                                title="กรอกสมาชิกผิด — ถอดออเดอร์นี้ออกจากสมาชิก (ยอดขายไม่หาย)"
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-600 border border-amber-100 hover:bg-amber-100 transition-all active:scale-95 font-bold text-xs"
-                              >
-                                <UserMinus size={14} /> ถอดออกจากสมาชิก
-                              </button>
-                              <button
-                                onClick={() => deleteOrder(order)}
-                                title="ลบบิลนี้ทิ้ง"
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-50 text-red-500 border border-red-100 hover:bg-red-100 transition-all active:scale-95 font-bold text-xs"
-                              >
-                                <Trash2 size={14} /> ลบบิล
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="pt-6 mt-6 border-t border-[var(--border-color)]">
-                <Button
-                  onClick={() => setSelectedMemberForFavorites(null)}
-                  variant="secondary"
-                  size="lg"
-                  fullWidth
-                >
-                  ปิด
+              <div className="flex gap-2 pt-2">
+                <Button onClick={() => { setMergeGroup(null); setMergePrimaryId(null); }} variant="secondary" size="lg" fullWidth>
+                  ยกเลิก
+                </Button>
+                <Button disabled={mergeGroup.members.some(memberBusy)} onClick={() => mergeMembers(mergeGroup, mergePrimaryId)} variant="primary" size="lg" fullWidth leftIcon={<GitMerge size={16} />}>
+                  รวมเป็นหนึ่งเดียว
                 </Button>
               </div>
-            </>
-          );
-        })()}
-      </Modal>
-
-      {/* Pending Orders Modal */}
-      <Modal
-        isOpen={!!pendingOrdersMember}
-        onClose={() => setPendingOrdersMember(null)}
-        title="รายการบิลรออนุมัติแต้ม"
-      >
-        {(() => {
-          const mOrders = (pendingOrdersMember?.pendingOrderIds || [])
-            .map(id => orders.find(o => o.id === id))
-            .filter(Boolean)
-            .sort((a, b) => getOrderMs(b) - getOrderMs(a));
-            
-          if (mOrders.length === 0) {
-            return (
-              <div className="text-center py-10 text-[var(--text-muted)] font-bold text-sm">
-                ไม่พบข้อมูลบิล
-              </div>
-            );
-          }
-          
-          return (
-            <div className="space-y-2 md:space-y-3">
-              {mOrders.map((o, idx) => {
-                const dateStr = o.createdAt?.seconds 
-                  ? new Date(o.createdAt.seconds * 1000).toLocaleString('th-TH') 
-                  : (o.date ? new Date(o.date).toLocaleString('th-TH') : 'ไม่ทราบวันที่');
-                return (
-                  <div key={idx} className="flex items-center justify-between gap-3 p-3 md:p-4 rounded-xl md:rounded-2xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-[var(--text-primary)] text-sm">บิล {o.id.slice(-4)}</p>
-                      <p className="text-xs font-bold text-[var(--text-muted)]">{dateStr}</p>
-                    </div>
-                    <div className="font-semibold text-base md:text-lg shrink-0 text-emerald-600">
-                      ฿{Number(o.total || 0).toLocaleString()}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
-          );
-        })()}
-      </Modal>
-
-      {/* Points History Modal */}
-      <Modal
-        isOpen={!!historyMember}
-        onClose={() => setHistoryMember(null)}
-        title="ประวัติแต้ม"
-      >
-        {(() => {
-          const reasonLabels = { order: 'ออเดอร์', review: 'รีวิว', redeem: 'แลกแต้ม', manual: 'ปรับด้วยมือ', recalc: 'ปรับปรุง', rejected: 'ปฏิเสธแต้ม', expire: 'แต้มหมดอายุ', 'bill-edit': 'ปรับตามการแก้บิล', 'redeem-refund': 'คืนแต้ม' };
-          const entries = [...(historyMember?.pointsHistory || [])].sort((a, b) => new Date(b.at) - new Date(a.at));
-          if (entries.length === 0) {
-            return (
-              <div className="text-center py-10 text-[var(--text-muted)] font-bold text-sm">
-                ยังไม่มีประวัติ
-              </div>
-            );
-          }
-          return (
-            <div className="space-y-2 md:space-y-3">
-              {entries.map((e, idx) => {
-                const delta = Number(e.delta || 0);
-                const dateStr = e.at ? new Date(e.at).toLocaleString('th-TH') : 'ไม่ทราบวันที่';
-                
-                const metaParts = [dateStr];
-                if (e.by) metaParts.push(`พนักงาน: ${e.by.split('@')[0]}`);
-                if (e.orderId) metaParts.push(`บิล: ${e.orderId.slice(-4)}`);
-                if (e.orderIds?.length) metaParts.push(`บิล: ${e.orderIds.map(id => id.slice(-4)).join(', ')}`);
-                
-                return (
-                  <div key={idx} className="flex items-center justify-between gap-3 p-3 md:p-4 rounded-xl md:rounded-2xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-[var(--text-primary)] text-sm">{reasonLabels[e.reason] || e.reason || 'ไม่ระบุ'}</p>
-                      <p className="text-xs font-bold text-[var(--text-muted)]">{metaParts.join(' · ')}</p>
-                    </div>
-                    {e.reason === 'rejected' ? (
-                      <div className="font-semibold text-base md:text-lg shrink-0 text-[var(--text-muted)]">
-                        ปฏิเสธ {Number(e.amount || 0)}
-                      </div>
-                    ) : (
-                      <div className={`font-semibold text-base md:text-lg shrink-0 ${delta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                        {delta >= 0 ? `+${delta}` : `${delta}`}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })()}
-      </Modal>
-
-      {/* Add Member Modal */}
-      <InputModal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onSubmit={submitAddMember}
-        title="เพิ่มสมาชิกใหม่"
-        description="กรอกข้อมูลสมาชิกใหม่"
-        variant="primary"
-        icon={User}
-        fields={[
-          { name: 'name', label: 'ชื่อสมาชิก', placeholder: 'กรอกชื่อ...', required: true },
-          { name: 'phone', label: 'เบอร์โทรศัพท์', placeholder: 'กรอกเบอร์โทร (ถ้ามี)', type: 'tel' }
-        ]}
-        submitText="เพิ่มสมาชิก"
-      />
-
-      {/* Edit Member Modal */}
-      <InputModal
-        isOpen={showEditModal}
-        onClose={() => { setShowEditModal(false); setEditingMember(null); }}
-        onSubmit={submitEditMember}
-        loading={memberBusy(editingMember)}
-        title="แก้ไขข้อมูลสมาชิก"
-        description={editingMember?.name || ''}
-        variant="primary"
-        icon={Edit}
-        fields={[
-          { name: 'name', label: 'ชื่อสมาชิก', placeholder: 'กรอกชื่อ...', defaultValue: editingMember?.name || '' },
-          { name: 'phone', label: 'เบอร์โทรศัพท์', placeholder: 'กรอกเบอร์โทร (ถ้ามี)', type: 'tel', defaultValue: editingMember?.phone || '' },
-          { name: 'points', label: 'แต้มสะสม', placeholder: '0', type: 'number', defaultValue: String(editingMember?.points ?? 0) }
-        ]}
-        submitText="บันทึก"
-      />
-
-      {/* Delete Confirm Modal */}
-      <ConfirmModal
-        isOpen={showDeleteConfirm}
-        onClose={() => { setShowDeleteConfirm(false); setDeletingMember(null); }}
-        onConfirm={confirmDeleteMember}
-        title="ลบสมาชิก"
-        message={<span className="whitespace-pre-line">{deleteConfirmMessage(deletingMember)}</span>}
-        confirmText="ลบ"
-        cancelText="ยกเลิก"
-        variant="danger"
-      />
-
-      {/* Credit missing points confirm */}
-      <ConfirmModal
-        isOpen={!!creditTarget}
-        onClose={() => setCreditTarget(null)}
-        onConfirm={() => creditGap(creditTarget)}
-        loading={memberBusy(creditTarget)}
-        title="เติมแต้มย้อนหลัง"
-        message={creditTarget
-          ? `${creditTarget.name || 'ลูกค้า'} ซื้อใน ${reconcileDays} วันล่าสุดควรได้ ${Number(creditTarget.expectedEarn || 0)} แต้ม แต่ได้ไม่ครบ${Number(creditTarget.redeemed || 0) > 0 ? ` (แลกไปแล้ว ${Number(creditTarget.redeemed)} แต้ม — ไม่นับรวมในนี้)` : ''} — เติมส่วนที่ขาด +${Number(creditTarget.earnGap || 0)} แต้มเข้า "รออนุมัติ" ใช่หรือไม่? (ยังต้องกดอนุมัติอีกครั้ง)`
-          : ''}
-        confirmText={`เติม +${Number(creditTarget?.earnGap || 0)}`}
-        cancelText="ยกเลิก"
-        variant="primary"
-      />
-
-      {/* Merge duplicates — pick the primary identity */}
-      <Modal
-        isOpen={!!mergeGroup}
-        onClose={() => { setMergeGroup(null); setMergePrimaryId(null); }}
-        size="md"
-        title="รวมสมาชิกซ้ำ"
-      >
-        {mergeGroup && (
-          <div className="space-y-4">
-            <p className="text-sm font-bold text-[var(--text-secondary)]">
-              เลือกรายการหลัก (แต้ม + ประวัติของรายการอื่นจะถูกยุบรวมเข้ารายการนี้ และออเดอร์จะย้ายมาผูกกับรายการหลัก)
-            </p>
-            <div className="space-y-2">
-              {mergeGroup.members.map(m => {
-                const rid = m.id || m.phone;
-                const selected = rid === mergePrimaryId;
-                return (
-                  <button
-                    key={`merge-${rid}`}
-                    onClick={() => setMergePrimaryId(rid)}
-                    className={`w-full text-left p-3 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 ${selected ? 'border-violet-500 bg-violet-50' : 'border-[var(--border-color)] bg-[var(--bg-secondary)] hover:border-violet-200'}`}
-                  >
-                    <div className="min-w-0">
-                      <p className="font-semibold text-[var(--text-primary)] text-sm truncate">{String(m.name || 'ไม่ระบุชื่อ')}</p>
-                      <p className="text-xs font-bold text-[var(--text-muted)]">
-                        {m.phone ? String(m.phone) : 'ไม่มีเบอร์'} · {Number(m.points || 0)} แต้ม
-                        {Number(m.pendingPoints || 0) > 0 ? ` (+${Number(m.pendingPoints)} รอ)` : ''}
-                        {String(m.id || '').startsWith('name-only:') ? ' · ยังไม่มีบัญชี' : ''}
-                      </p>
-                    </div>
-                    {selected && <Check size={18} className="text-violet-600 shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button onClick={() => { setMergeGroup(null); setMergePrimaryId(null); }} variant="secondary" size="lg" fullWidth>
-                ยกเลิก
-              </Button>
-              <Button disabled={mergeGroup.members.some(memberBusy)} onClick={() => mergeMembers(mergeGroup, mergePrimaryId)} variant="primary" size="lg" fullWidth leftIcon={<GitMerge size={16} />}>
-                รวมเป็นหนึ่งเดียว
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+          )}
+        </Modal>
+      </Layer>
     </div>
   );
 }

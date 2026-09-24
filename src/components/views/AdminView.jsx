@@ -1,159 +1,127 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import {
-  PieChart, Calendar, ChevronUp, ChevronDown, TrendingUp, Zap,
-  History, Coffee, Link2, Plus, Trash2, Edit, BarChart3, DollarSign,
-  ChefHat, FileText, Package, RefreshCcw, Banknote, Download, Save, Target, Settings, FolderCog,
-  QrCode, Printer, Smartphone, Star, Cake, Clock, Percent, Eye, EyeOff, Lock
-} from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
-// xlsx loaded dynamically to reduce bundle size (7MB library)
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Settings } from 'lucide-react';
 import { doc, collection, addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
-import { useAppContext } from '../../context/AppContext';
+import { useConfigContext, useDataContext, useUIContext } from '../../context/AppContext';
+import { useNavigate, useRouteParams } from '../../navigation';
 import { getISODate, getOrderDate } from '../../utils/calculations';
 import { seedDatabase } from '../../utils/seedData';
 import { recomputeAllSoldCounts } from '../../utils/menuSales';
-import QrFunnelCard from '../QrFunnelCard';
 import { queueDayKey } from '../../utils/queueDay';
-import { getUpsellStats, clearUpsellStats, exportUpsellStats } from '../../services/upsellTracker';
-import { Button, Modal, Input, Tabs, Card, Badge, Spinner, ConfirmModal, SearchSelect, useToast, ErrorBoundary } from '../ui';
-import {
-  DEFAULT_ADMIN_PIN,
-  DEFAULT_REDEEM_POINTS_THRESHOLD,
-  DEFAULT_REDEEM_DISCOUNT_VALUE,
-  DEFAULT_OWN_GLASS_DISCOUNT,
-  DEFAULT_STARTING_CASH,
-  DEFAULT_EXPENSE_CATEGORY,
-  EXPENSE_CATEGORIES,
-  DEFAULT_CAKE_SALE_PERCENT,
-  DEFAULT_CAKE_SALE_START,
-  DEFAULT_CAKE_SALE_END,
-  DEFAULT_COMBO_PERCENT,
-  STOCK_CATEGORIES,
-  getStockCategory
-} from '../../config/constants';
+import { clearUpsellStats, exportUpsellStats } from '../../services/upsellTracker';
+import { ConfirmModal, PageHeader, useMediaQuery, useToast } from '../ui';
+import { DEFAULT_EXPENSE_CATEGORY, STOCK_CATEGORIES, getStockCategory } from '../../config/constants';
+import { DEFAULT_SETTINGS_TAB, normalizeSettingsTab, tabByKey } from './settings/tabs';
+import { buildSettingsPayload, draftFromConfig, modifierLinkHealth } from './settings/settingsModel';
+import { exportToExcel, downloadBackupJson } from './settings/exportData';
+import SettingsNav from './settings/SettingsNav';
+import CloseDayTab from './settings/CloseDayTab';
+import ShopTab from './settings/ShopTab';
+import PromotionsTab from './settings/PromotionsTab';
+import ModifiersTab from './settings/ModifiersTab';
+import ModifierSheet from './settings/ModifierSheet';
+import QuickExpensesTab, { QuickExpenseSheet } from './settings/QuickExpensesTab';
+import PointsTab from './settings/PointsTab';
+import SecurityTab from './settings/SecurityTab';
+import QrTab from './settings/QrTab';
+import DataTab from './settings/DataTab';
+
+const EMPTY_BEAN = { name: '', price: '', stockLinks: [], isDefault: false, group: 'เมล็ดกาแฟ' };
+const EMPTY_QUICK = { label: '', title: '', amount: '', unit: '', category: DEFAULT_EXPENSE_CATEGORY, icon: '💰' };
+
+// Draft fields each tab edits · drives the "ยังไม่บันทึก" hint only
+// (saving still writes the whole config/settings payload, as before).
+const TAB_FIELDS = {
+  close: ['startingCash'],
+  shop: ['shopName', 'shopAddress', 'shopPhone', 'taxId', 'receiptFooter', 'receiptPaperWidth', 'geminiApiKey'],
+  promotions: ['cakeSaleEnabled', 'cakeSaleCategories', 'cakeSalePercent', 'cakeSaleStart', 'cakeSaleEnd', 'comboEnabled', 'comboPercent', 'spendThreshold', 'spendDiscount', 'ownGlassDiscount', 'reviewUrl'],
+  points: ['redeemPointsThreshold', 'redeemDiscountValue', 'pointsExpiryMonths', 'pointsRewardsEnabled', 'pointsRewards'],
+  security: ['adminPin'],
+};
+const same = (a, b) => (typeof a === 'object' || typeof b === 'object' ? JSON.stringify(a) === JSON.stringify(b) : String(a ?? '') === String(b ?? ''));
+
+function StatusPill({ label, on, onClick, ariaLabel }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
+      className="inline-flex items-center gap-2 min-h-11 px-3 rounded-full bg-[var(--bg-sunken)] text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[var(--focus-ring)]"
+    >
+      <span aria-hidden="true" className={`w-2 h-2 rounded-full ${on ? 'bg-[var(--state-ok)]' : 'bg-[var(--text-muted)]'}`} />
+      {label} {on ? 'เปิด' : 'ปิด'}
+    </button>
+  );
+}
 
 export default function AdminView() {
+  const { orders, expenses, stock, members, menu, dynamicCategories, beanModifiers, quickExpenses } = useDataContext();
   const {
-    orders,
-    expenses,
-    stock,
-    members,
-    menu,
-    dynamicCategories,
-    beanModifiers,
-    quickExpenses,
-    vatEnabled,
-    pinEnabled,
-    adminPin,
-    redeemPointsThreshold,
-    pointsExpiryMonths,
-    redeemDiscountValue,
-    ownGlassDiscount,
-    geminiApiKey,
-    startingCash,
-    reviewUrl,
-    shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
-    cakeSaleEnabled,
-    cakeSaleCategories,
-    cakeSalePercent,
-    cakeSaleStart,
-    cakeSaleEnd,
-    comboEnabled,
-    comboPercent,
-    spendThreshold,
-    spendDiscount,
-    pointsRewardsEnabled,
-    pointsRewards,
-    adminTab,
-    setAdminTab,
-    runDbAction,
-    setView,
-    aiUtils,
-    lockApp
-  } = useAppContext();
+    vatEnabled, pinEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount,
+    geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
+    cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent,
+    spendThreshold, spendDiscount, pointsRewardsEnabled, pointsRewards,
+  } = useConfigContext();
+  const { adminTab, setAdminTab, runDbAction, aiUtils, lockApp } = useUIContext();
+  const params = useRouteParams();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const isPhone = useMediaQuery('(max-width: 767px)');
+  const scrollRef = useRef(null);
 
-  // ลิงก์ไปสต็อกที่ลบแล้วใช้คิดต้นทุนไม่ได้ จึงไม่นับเป็นการผูก
-  const modifierLinkCounts = useMemo(() => {
-    const stockIds = new Set(stock.map(item => item.id));
-    return new Map(beanModifiers.map(mod => [mod.id, (mod.stockLinks || []).filter(link => stockIds.has(link?.stockId)).length]));
-  }, [beanModifiers, stock]);
-  const linkedModifierCount = [...modifierLinkCounts.values()].filter(count => count > 0).length;
+  // ── Tab = URL (`#/settings/<tab>`) ───────────────────────────────────────
+  const routeTab = normalizeSettingsTab(params.tab);
+  const activeTab = routeTab || (isPhone ? null : DEFAULT_SETTINGS_TAB);
+  const selectTab = (key) => navigate('admin', { tab: key });
 
-  const stockLinkGroups = useMemo(() => {
-    const categoryOrder = new Map(STOCK_CATEGORIES.map((category, index) => [category, index]));
-    const groups = new Map();
-    stock.forEach(item => {
-      const category = getStockCategory(item);
-      if (!groups.has(category)) groups.set(category, []);
-      groups.get(category).push(item);
-    });
-    return [...groups.entries()]
-      .sort(([a], [b]) => (categoryOrder.get(a) ?? STOCK_CATEGORIES.length) - (categoryOrder.get(b) ?? STOCK_CATEGORIES.length))
-      .map(([category, items]) => [category, items.sort((a, b) => String(a.name).localeCompare(String(b.name), 'th'))]);
-  }, [stock]);
+  useEffect(() => {
+    // Old names / aliases (`#/settings/settings`, `beanModifiers`…) → canonical URL.
+    if (params.tab && routeTab && params.tab !== routeTab) navigate('admin', { tab: routeTab }, { replace: true });
+  }, [params.tab, routeTab, navigate]);
 
-  // Constants
-  const ADMIN_PIN = adminPin || DEFAULT_ADMIN_PIN;
-  const REDEEM_POINTS_THRESHOLD = Number(redeemPointsThreshold) || DEFAULT_REDEEM_POINTS_THRESHOLD;
-  const REDEEM_DISCOUNT_VALUE = Number(redeemDiscountValue) || DEFAULT_REDEEM_DISCOUNT_VALUE;
-  const OWN_GLASS_DISCOUNT = Number(ownGlassDiscount) || DEFAULT_OWN_GLASS_DISCOUNT;
-  const STARTING_CASH = Number(startingCash) || DEFAULT_STARTING_CASH;
+  useEffect(() => {
+    // Legacy deep link through the UI context (ExpensesView → "จัดการปุ่มลัด").
+    if (!adminTab) return;
+    const key = normalizeSettingsTab(adminTab);
+    if (key) navigate('admin', { tab: key }, { replace: true });
+    setAdminTab(null);
+  }, [adminTab, setAdminTab, navigate]);
 
-  // Tab state
-  const [activeAdminTab, setActiveAdminTab] = useState('stats');
+  useEffect(() => { scrollRef.current?.scrollTo?.({ top: 0 }); }, [activeTab]);
 
-  // Local states
+  // ── Settings draft ───────────────────────────────────────────────────────
+  const baseline = useMemo(() => draftFromConfig({
+    adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
+    reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories,
+    cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount,
+    pointsRewardsEnabled, pointsRewards,
+  }), [adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
+    reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories,
+    cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount,
+    pointsRewardsEnabled, pointsRewards]);
+  const [settingsDraft, setSettingsDraft] = useState(baseline);
+  const [draftBase, setDraftBase] = useState(baseline);
+  if (draftBase !== baseline) { // saved / changed elsewhere → re-sync (as the old effect did)
+    setDraftBase(baseline);
+    setSettingsDraft(baseline);
+  }
+  const patch = (change) => setSettingsDraft((prev) => ({ ...prev, ...change }));
+  const dirtyFor = (tab) => (TAB_FIELDS[tab] || []).some((f) => !same(settingsDraft[f], baseline[f]));
+
+  // ── Local states ─────────────────────────────────────────────────────────
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(getISODate());
-  const [settingsDraft, setSettingsDraft] = useState({
-    adminPin: '',
-    redeemPointsThreshold: DEFAULT_REDEEM_POINTS_THRESHOLD,
-    redeemDiscountValue: DEFAULT_REDEEM_DISCOUNT_VALUE,
-    ownGlassDiscount: DEFAULT_OWN_GLASS_DISCOUNT,
-    geminiApiKey: '',
-    startingCash: DEFAULT_STARTING_CASH,
-    reviewUrl: '',
-    shopName: '',
-    shopAddress: '',
-    shopPhone: '',
-    taxId: '',
-    receiptFooter: '',
-    receiptPaperWidth: 80,
-    cakeSaleEnabled: false,
-    cakeSaleCategories: [],
-    cakeSalePercent: DEFAULT_CAKE_SALE_PERCENT,
-    cakeSaleStart: DEFAULT_CAKE_SALE_START,
-    cakeSaleEnd: DEFAULT_CAKE_SALE_END,
-    comboEnabled: false,
-    comboPercent: DEFAULT_COMBO_PERCENT,
-    spendThreshold: 0,
-    spendDiscount: 0,
-    pointsRewardsEnabled: false,
-    pointsRewards: []
-  });
-  const [adminPanels, setAdminPanels] = useState({
-    daily: true,
-    monthly: false,
-    expenses: false,
-    backdatedSales: false,
-    beanModifiers: false,
-    quickExpenses: false,
-    settings: true,
-  });
-  const [backdatedSale, setBackdatedSale] = useState({
-    title: '',
-    amount: '',
-    date: getISODate(),
-    note: ''
-  });
-  const [newBeanModifier, setNewBeanModifier] = useState({ name: '', price: '', stockLinks: [], isDefault: false, group: 'เมล็ดกาแฟ' });
+  const [backdatedSale, setBackdatedSale] = useState({ title: '', amount: '', date: getISODate(), note: '' });
+  const [newBeanModifier, setNewBeanModifier] = useState(EMPTY_BEAN);
   const [editingBeanModifierId, setEditingBeanModifierId] = useState(null);
-  const [newQuickExpense, setNewQuickExpense] = useState({ label: '', title: '', amount: '', unit: '', category: DEFAULT_EXPENSE_CATEGORY, icon: '💰' });
+  const [modifierSheetOpen, setModifierSheetOpen] = useState(false);
+  const [newQuickExpense, setNewQuickExpense] = useState(EMPTY_QUICK);
   const [editingQuickExpenseId, setEditingQuickExpenseId] = useState(null);
+  const [quickSheetOpen, setQuickSheetOpen] = useState(false);
   const [newExpense, setNewExpense] = useState({ title: '', amount: '', category: DEFAULT_EXPENSE_CATEGORY });
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isBackfilling, setIsBackfilling] = useState(false);
 
   // Confirmation modal states
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showClearUpsellConfirm, setShowClearUpsellConfirm] = useState(false);
   const [showDeleteBeanConfirm, setShowDeleteBeanConfirm] = useState(false);
   const [beanToDelete, setBeanToDelete] = useState(null);
@@ -161,68 +129,8 @@ export default function AdminView() {
   const [quickExpenseToDelete, setQuickExpenseToDelete] = useState(null);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [showSeedConfirm, setShowSeedConfirm] = useState(false);
-  const [linkCopied, setLinkCopied] = useState(false);
 
-  const toast = useToast();
-
-  // Initialize settingsDraft from context values
-  useEffect(() => {
-    setSettingsDraft({
-      adminPin: ADMIN_PIN,
-      redeemPointsThreshold: REDEEM_POINTS_THRESHOLD,
-      pointsExpiryMonths: pointsExpiryMonths || 0,
-      redeemDiscountValue: REDEEM_DISCOUNT_VALUE,
-      ownGlassDiscount: OWN_GLASS_DISCOUNT,
-      geminiApiKey: geminiApiKey || '',
-      startingCash: STARTING_CASH,
-      reviewUrl: reviewUrl || '',
-      shopName: shopName || '',
-      shopAddress: shopAddress || '',
-      shopPhone: shopPhone || '',
-      taxId: taxId || '',
-      receiptFooter: receiptFooter || '',
-      receiptPaperWidth: receiptPaperWidth || 80,
-      cakeSaleEnabled: cakeSaleEnabled === true,
-      cakeSaleCategories: Array.isArray(cakeSaleCategories) ? cakeSaleCategories : [],
-      cakeSalePercent: Number(cakeSalePercent) || DEFAULT_CAKE_SALE_PERCENT,
-      cakeSaleStart: cakeSaleStart || DEFAULT_CAKE_SALE_START,
-      cakeSaleEnd: cakeSaleEnd || DEFAULT_CAKE_SALE_END,
-      comboEnabled: comboEnabled === true,
-      comboPercent: Number(comboPercent) || DEFAULT_COMBO_PERCENT,
-      spendThreshold: Number(spendThreshold) || 0,
-      spendDiscount: Number(spendDiscount) || 0,
-      pointsRewardsEnabled: pointsRewardsEnabled === true,
-      pointsRewards: Array.isArray(pointsRewards) ? pointsRewards : []
-    });
-  }, [ADMIN_PIN, REDEEM_POINTS_THRESHOLD, pointsExpiryMonths, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, geminiApiKey, STARTING_CASH, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount, pointsRewardsEnabled, pointsRewards]);
-
-  // Handle deep-linking from other views
-  useEffect(() => {
-    if (adminTab) {
-      setAdminPanels(prev => ({ ...prev, [adminTab]: true }));
-      // Each panel only renders under a specific admin tab — switch to it first,
-      // otherwise the deep link silently does nothing when another tab is active.
-      const panelTabs = {
-        daily: 'stats',
-        monthly: 'stats',
-        expenses: 'stats',
-        backdatedSales: 'manage',
-        beanModifiers: 'manage',
-        quickExpenses: 'manage',
-        settings: 'settings',
-      };
-      if (panelTabs[adminTab]) setActiveAdminTab(panelTabs[adminTab]);
-      // Scroll to the panel after the tab/panel has rendered
-      setTimeout(() => {
-        const element = document.getElementById(`panel-${adminTab}`);
-        if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 100);
-      // Reset the tab in parent to avoid re-triggering
-      setAdminTab(null);
-    }
-  }, [adminTab, setAdminTab]);
-
-  // Memos
+  // ── Memos ────────────────────────────────────────────────────────────────
   const statsForSelectedDate = useMemo(() => {
     const dayOrders = orders.filter(o => o.status === 'completed' && getOrderDate(o) === selectedHistoryDate);
     return {
@@ -238,22 +146,47 @@ export default function AdminView() {
     const monthExpenses = expenses.filter(e => e.date?.startsWith(targetMonth));
     const revenue = monthOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
     const cost = monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    const count = monthOrders.length;
-    return { revenue, cost, profit: revenue - cost, count };
+    return { revenue, cost, profit: revenue - cost, count: monthOrders.length };
   }, [orders, expenses, selectedHistoryDate]);
 
+  const dayExpenses = useMemo(() => expenses.filter(e => e.date === selectedHistoryDate), [expenses, selectedHistoryDate]);
   const dailyNetStats = useMemo(() => {
-    const dayExpenses = expenses.filter(e => e.date === selectedHistoryDate);
     const revenue = statsForSelectedDate.revenue;
     const cost = dayExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     return { revenue, cost, profit: revenue - cost };
-  }, [statsForSelectedDate.revenue, expenses, selectedHistoryDate]);
+  }, [statsForSelectedDate.revenue, dayExpenses]);
 
-  // Handlers
-  const toggleAdminPanel = (key) => {
-    setAdminPanels((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+  // Unpaid bills on the selected day (same rule as the nav badge) · display only.
+  const unpaid = useMemo(() => {
+    let count = 0;
+    let total = 0;
+    for (const o of orders) {
+      if (!o.isPaid && o.status !== 'cancelled' && getOrderDate(o) === selectedHistoryDate) {
+        count += 1;
+        total += Number(o.total) || 0;
+      }
+    }
+    return { count, total };
+  }, [orders, selectedHistoryDate]);
 
+  const modifierHealth = useMemo(() => modifierLinkHealth(beanModifiers, stock), [beanModifiers, stock]);
+  const brokenModifierCount = useMemo(() => [...modifierHealth.values()].filter(h => h.broken).length, [modifierHealth]);
+  const stockById = useMemo(() => new Map(stock.map(s => [s.id, s])), [stock]);
+  const stockLinkGroups = useMemo(() => {
+    const categoryOrder = new Map(STOCK_CATEGORIES.map((category, index) => [category, index]));
+    const groups = new Map();
+    stock.forEach(item => {
+      const category = getStockCategory(item);
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category).push(item);
+    });
+    return [...groups.entries()]
+      .sort(([a], [b]) => (categoryOrder.get(a) ?? STOCK_CATEGORIES.length) - (categoryOrder.get(b) ?? STOCK_CATEGORIES.length))
+      .map(([category, items]) => [category, items.sort((a, b) => String(a.name).localeCompare(String(b.name), 'th'))]);
+  }, [stock]);
+  const modifierGroups = useMemo(() => [...new Set((beanModifiers || []).map(b => b.group || 'เมล็ดกาแฟ'))], [beanModifiers]);
+
+  // ── Handlers (Firestore writes unchanged) ────────────────────────────────
   const togglePinSecurity = async () => runDbAction(
     async () => { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), { pinEnabled: !pinEnabled }, { merge: true }); },
     'อัปเดตระบบ PIN ไม่สำเร็จ'
@@ -294,6 +227,7 @@ export default function AdminView() {
         table: 'ย้อนหลัง'
       });
       setBackdatedSale({ title: '', amount: '', date: getISODate(), note: '' });
+      toast.success('บันทึกยอดขายย้อนหลังแล้ว');
     }, 'บันทึกยอดขายย้อนหลังไม่สำเร็จ');
   };
 
@@ -312,6 +246,12 @@ export default function AdminView() {
     }, 'บันทึกค่าใช้จ่ายไม่สำเร็จ');
   };
 
+  const deleteExpense = async (expense) => {
+    await runDbAction(async () => {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', expense.id));
+    }, 'ลบค่าใช้จ่ายไม่สำเร็จ');
+  };
+
   const executeResetSession = async () => {
     setShowResetConfirm(false);
     await runDbAction(async () => {
@@ -321,7 +261,6 @@ export default function AdminView() {
     }, 'ล้างออเดอร์ไม่สำเร็จ');
   };
 
-  // Handler functions for confirmation modals
   const handleClearUpsellStats = () => {
     clearUpsellStats();
     toast.success('ล้างข้อมูลสำเร็จ');
@@ -348,8 +287,13 @@ export default function AdminView() {
 
   const handleExportExcel = () => {
     setShowExportConfirm(false);
-    exportToExcel();
+    exportToExcel({ orders, expenses, members, stock, menu, toast });
   };
+
+  const handleBackupJson = () => downloadBackupJson({
+    appId,
+    data: { menu, stock, orders, expenses, members, beanModifiers, quickExpenses, dynamicCategories },
+  });
 
   const handleSeedDatabase = async () => {
     setShowSeedConfirm(false);
@@ -360,7 +304,6 @@ export default function AdminView() {
   };
 
   // Backfill best-seller counter from full order history
-  const [isBackfilling, setIsBackfilling] = useState(false);
   const handleBackfillSoldCount = async () => {
     setIsBackfilling(true);
     try {
@@ -382,39 +325,104 @@ export default function AdminView() {
     return { ...p, stockLinks: next };
   });
 
+  const openNewModifier = () => {
+    setNewBeanModifier(EMPTY_BEAN);
+    setEditingBeanModifierId(null);
+    setModifierSheetOpen(true);
+  };
+  const openEditModifier = (mod) => {
+    setNewBeanModifier({
+      name: mod.name,
+      price: mod.price,
+      stockLinks: mod.stockLinks || [],
+      isDefault: mod.isDefault === true,
+      group: mod.group || 'เมล็ดกาแฟ'
+    });
+    setEditingBeanModifierId(mod.id);
+    setModifierSheetOpen(true);
+  };
+  const saveBeanModifier = async (e) => {
+    e.preventDefault();
+    if (!newBeanModifier.name || !newBeanModifier.price) return;
+    await runDbAction(async () => {
+      const col = collection(db, 'artifacts', appId, 'public', 'data', 'beanModifiers');
+      const data = {
+        name: String(newBeanModifier.name).trim(),
+        price: Number(newBeanModifier.price),
+        stockLinks: newBeanModifier.stockLinks || [],
+        isDefault: newBeanModifier.isDefault === true,
+        group: String(newBeanModifier.group || 'เมล็ดกาแฟ').trim() || 'เมล็ดกาแฟ',
+        updatedAt: serverTimestamp()
+      };
+      if (editingBeanModifierId) {
+        await updateDoc(doc(col, editingBeanModifierId), data);
+      } else {
+        await addDoc(col, { ...data, createdAt: serverTimestamp() });
+      }
+      setNewBeanModifier(EMPTY_BEAN);
+      setEditingBeanModifierId(null);
+      setModifierSheetOpen(false);
+    }, editingBeanModifierId ? 'อัปเดตแท็กไม่สำเร็จ' : 'สร้างแท็กไม่สำเร็จ');
+  };
+  const toggleModifierAvailable = (mod) => runDbAction(async () => {
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'beanModifiers', mod.id), { available: mod.available === false });
+  }, 'อัปเดตการแสดงผลไม่สำเร็จ');
+
+  const openNewQuick = () => {
+    setNewQuickExpense(EMPTY_QUICK);
+    setEditingQuickExpenseId(null);
+    setQuickSheetOpen(true);
+  };
+  const openEditQuick = (item) => {
+    setNewQuickExpense(item);
+    setEditingQuickExpenseId(item.id);
+    setQuickSheetOpen(true);
+  };
+  const saveQuickExpense = async (e) => {
+    e.preventDefault();
+    if (!newQuickExpense.label || !newQuickExpense.title) return;
+    await runDbAction(async () => {
+      const col = collection(db, 'artifacts', appId, 'public', 'data', 'quickExpenses');
+      const data = {
+        label: String(newQuickExpense.label).trim(),
+        title: String(newQuickExpense.title).trim(),
+        amount: newQuickExpense.amount ? Number(newQuickExpense.amount) : '',
+        unit: String(newQuickExpense.unit || ''),
+        category: String(newQuickExpense.category),
+        icon: String(newQuickExpense.icon || '💰'),
+        updatedAt: serverTimestamp()
+      };
+      if (editingQuickExpenseId) {
+        await updateDoc(doc(col, editingQuickExpenseId), data);
+      } else {
+        await addDoc(col, { ...data, createdAt: serverTimestamp() });
+      }
+      setNewQuickExpense(EMPTY_QUICK);
+      setEditingQuickExpenseId(null);
+      setQuickSheetOpen(false);
+    }, editingQuickExpenseId ? 'อัปเดตคีย์ลัดไม่สำเร็จ' : 'สร้างคีย์ลัดไม่สำเร็จ');
+  };
+  const useDefaultQuickExpenses = async () => {
+    const defaults = [
+      { label: '#ค่าน้ำแข็ง 35.-', title: 'ค่าน้ำแข็ง', amount: 35, unit: 'บิล', category: 'ค่าน้ำแข็ง', icon: '🧊' },
+      { label: '#ค่าไฟ 100.-', title: 'ค่าไฟ', amount: 100, unit: 'รอบ', category: 'ค่าไฟ', icon: '💡' },
+      { label: '#ซื้อของเข้าร้าน', title: 'ซื้อของเข้าร้าน', amount: '', unit: 'รายการ', category: 'วัตถุดิบ', icon: '🛒' }
+    ];
+    await runDbAction(async () => {
+      for (const d of defaults) {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'quickExpenses'), { ...d, createdAt: serverTimestamp() });
+      }
+    }, 'ตั้งค่าเริ่มต้นไม่สำเร็จ');
+  };
+
   const saveSettings = async (e) => {
     if (e) e.preventDefault();
     await runDbAction(async () => {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), {
-        geminiApiKey: settingsDraft.geminiApiKey,
-        adminPin: settingsDraft.adminPin,
-        redeemPointsThreshold: Number(settingsDraft.redeemPointsThreshold),
-        pointsExpiryMonths: Number(settingsDraft.pointsExpiryMonths || 0),
-        redeemDiscountValue: Number(settingsDraft.redeemDiscountValue),
-        ownGlassDiscount: Number(settingsDraft.ownGlassDiscount),
-        startingCash: Number(settingsDraft.startingCash),
-        reviewUrl: String(settingsDraft.reviewUrl || ''),
-        shopName: String(settingsDraft.shopName || ''),
-        shopAddress: String(settingsDraft.shopAddress || ''),
-        shopPhone: String(settingsDraft.shopPhone || ''),
-        taxId: String(settingsDraft.taxId || ''),
-        receiptFooter: String(settingsDraft.receiptFooter || ''),
-        receiptPaperWidth: Number(settingsDraft.receiptPaperWidth) === 58 ? 58 : 80,
-        cakeSaleEnabled: settingsDraft.cakeSaleEnabled === true,
-        cakeSaleCategories: Array.isArray(settingsDraft.cakeSaleCategories) ? settingsDraft.cakeSaleCategories : [],
-        cakeSalePercent: Number(settingsDraft.cakeSalePercent) || 0,
-        cakeSaleStart: String(settingsDraft.cakeSaleStart || DEFAULT_CAKE_SALE_START),
-        cakeSaleEnd: String(settingsDraft.cakeSaleEnd || DEFAULT_CAKE_SALE_END),
-        comboEnabled: settingsDraft.comboEnabled === true,
-        comboPercent: Number(settingsDraft.comboPercent) || 0,
-        spendThreshold: Number(settingsDraft.spendThreshold) || 0,
-        spendDiscount: Number(settingsDraft.spendDiscount) || 0,
-        pointsRewardsEnabled: settingsDraft.pointsRewardsEnabled === true,
-        pointsRewards: (settingsDraft.pointsRewards || [])
-          .map(r => ({ ...r, name: String(r.name || '').trim(), cost: Math.max(1, Math.floor(Number(r.cost) || 1)) }))
-          .filter(r => r.name !== ''),
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+      await setDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'),
+        buildSettingsPayload(settingsDraft, { serverTimestamp }),
+        { merge: true }
+      );
       toast.success('บันทึกการตั้งค่าเรียบร้อยแล้ว');
     }, 'บันทึกการตั้งค่าไม่สำเร็จ');
   };
@@ -425,1330 +433,186 @@ export default function AdminView() {
       toast.warning('กรุณากรอก API Key ก่อนทดสอบ');
       return;
     }
-
-    // Create a temporary fetch to test the SPECIFIC key in the input
+    // Test the key typed in the input (not the saved one)
     try {
       const model = 'gemini-2.5-flash-lite';
-      const prompt = 'Hello';
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        body: JSON.stringify({ contents: [{ parts: [{ text: 'Hello' }] }] })
       });
       const data = await response.json();
       if (data.error) throw new Error(data.error.message);
       toast.success('การเชื่อมต่อ AI สำเร็จ!');
-    } catch (e) {
-      toast.error('การเชื่อมต่อล้มเหลว: ' + e.message);
+    } catch (err) {
+      toast.error('การเชื่อมต่อล้มเหลว: ' + err.message);
     }
   };
 
-  // Export to Excel (xlsx loaded on demand)
-  const exportToExcel = async () => {
-    try {
-      if (!orders.length) {
-        toast.warning('ไม่พบข้อมูลการขายในระบบ กรุณาลองขายสินค้าที่หน้า POS ก่อน');
-        return;
-      }
+  // ── Render ───────────────────────────────────────────────────────────────
+  const draftProps = (tab) => ({ draft: settingsDraft, patch, dirty: dirtyFor(tab), onSave: saveSettings });
 
-      toast.info('กำลังเตรียมไฟล์ Excel...');
-      const XLSX = await import('xlsx');
-
-      // Export ALL data (No filtering by month)
-      const allOrders = orders.filter(o => o.status === 'completed');
-      const allExpenses = expenses;
-
-      if (allOrders.length === 0 && allExpenses.length === 0) {
-        toast.warning('ไม่พบข้อมูลการขายหรือรายจ่ายในระบบ');
-        return;
-      }
-
-      const wb = XLSX.utils.book_new();
-
-      // --- Sheet 1: Overview (All Time) ---
-      const totalRevenue = allOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
-      const totalCost = allExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-
-      const overviewData = [{
-        'ช่วงเวลา': 'ALL TIME (ทั้งหมด)',
-        'รายรับรวม (บาท)': totalRevenue,
-        'รายจ่ายรวม (บาท)': totalCost,
-        'กำไรสุทธิ (บาท)': totalRevenue - totalCost,
-        'จำนวนบิลทั้งหมด': allOrders.length,
-        'วันที่ออกรายงาน': new Date().toLocaleString('th-TH')
-      }];
-      const wsOverview = XLSX.utils.json_to_sheet(overviewData);
-      XLSX.utils.book_append_sheet(wb, wsOverview, "ภาพรวม (Overview)");
-
-      // --- Sheet 2: All Sales ---
-      const salesData = allOrders.map(o => {
-        const dateObj = o.createdAt?.seconds ? new Date(o.createdAt.seconds * 1000) : new Date(o.createdAt);
-        return {
-          'วันที่': dateObj.toLocaleDateString('th-TH'),
-          'เวลา': dateObj.toLocaleTimeString('th-TH'),
-          'เลขที่บิล': o.id.substring(0, 8),
-          'รายการสินค้า': o.items?.map(i => `${i.name} x${i.quantity}`).join(', '),
-          'ราคารวม': o.total,
-          'วิธีชำระ': o.paymentMethod === 'transfer' ? 'โอนเงิน' : 'เงินสด',
-          'สมาชิก': o.memberPhone || '-'
-        };
-      });
-      const wsSales = XLSX.utils.json_to_sheet(salesData);
-      XLSX.utils.book_append_sheet(wb, wsSales, "รายการขาย (Sales)");
-
-      // --- Sheet 3: Product Performance ---
-      const productStats = {};
-      allOrders.forEach(o => {
-        o.items?.forEach(i => {
-          if (!productStats[i.name]) productStats[i.name] = { qty: 0, revenue: 0, category: i.category || '-' };
-          productStats[i.name].qty += i.quantity;
-          productStats[i.name].revenue += (i.price * i.quantity);
-        });
-      });
-      const productData = Object.entries(productStats)
-        .map(([name, stat]) => ({
-          'ชื่อเมนู': name,
-          'หมวดหมู่': stat.category,
-          'จำนวนที่ขายได้ (แก้ว/ชิ้น)': stat.qty,
-          'ยอดขายรวม (บาท)': stat.revenue,
-          'สัดส่วนยอดขาย (%)': ((stat.revenue / totalRevenue) * 100).toFixed(2) + '%'
-        }))
-        .sort((a, b) => b['จำนวนที่ขายได้ (แก้ว/ชิ้น)'] - a['จำนวนที่ขายได้ (แก้ว/ชิ้น)']);
-
-      const wsProducts = XLSX.utils.json_to_sheet(productData);
-      XLSX.utils.book_append_sheet(wb, wsProducts, "ยอดขายรายเมนู (Products)");
-
-      // --- Sheet 4: Expenses ---
-      const expenseData = allExpenses.map(e => ({
-        'วันที่': e.date,
-        'รายการ': e.title,
-        'หมวดหมู่': e.category,
-        'จำนวนเงิน (บาท)': e.amount,
-        'หน่วย': e.unit || '-'
-      }));
-      const wsExpenses = XLSX.utils.json_to_sheet(expenseData);
-      XLSX.utils.book_append_sheet(wb, wsExpenses, "รายจ่าย (Expenses)");
-
-      // --- Sheet 5: Members (สมาชิก) ---
-      const memberData = members.map(m => ({
-        'ชื่อลูกค้า': m.name || '-',
-        'เบอร์โทร': m.phone || '-',
-        'คะแนนสะสม': m.points || 0,
-        'วันที่สมัคร': m.createdAt?.seconds ? new Date(m.createdAt.seconds * 1000).toLocaleDateString('th-TH') : '-'
-      }));
-      const wsMembers = XLSX.utils.json_to_sheet(memberData);
-      XLSX.utils.book_append_sheet(wb, wsMembers, "สมาชิก (Members)");
-
-      // --- Sheet 6: Stock (สต็อกสินค้า) ---
-      const stockData = stock.map(s => ({
-        'ชื่อวัตถุดิบ': s.name,
-        'คงเหลือ': s.quantity,
-        'หน่วย': s.unit,
-        'สถานะ': s.quantity < s.minQuantity ? '⚠️ ใกล้หมด' : 'ปกติ'
-      }));
-      const wsStock = XLSX.utils.json_to_sheet(stockData);
-      XLSX.utils.book_append_sheet(wb, wsStock, "สต็อก (Stock)");
-
-      // --- Sheet 7: Menu (เมนูสินค้า) ---
-      const menuData = menu.map(m => ({
-        'ชื่อเมนู': m.name,
-        'หมวดหมู่': m.category,
-        'ราคา (บาท)': m.price,
-        'ขายดี?': m.isBestSeller ? 'Yes' : 'No'
-      }));
-      const wsMenu = XLSX.utils.json_to_sheet(menuData);
-      XLSX.utils.book_append_sheet(wb, wsMenu, "เมนู (Menu)");
-
-      // Save File
-      XLSX.writeFile(wb, `POS_Export_ALL_DATA_${new Date().toISOString().slice(0, 10)}.xlsx`);
-
-    } catch (error) {
-      toast.error('เกิดข้อผิดพลาดในการส่งออก Excel: ' + error.message);
+  const renderTab = () => {
+    switch (activeTab) {
+      case 'close':
+        return (
+          <CloseDayTab
+            date={selectedHistoryDate}
+            onDate={setSelectedHistoryDate}
+            daily={dailyNetStats}
+            dayCount={statsForSelectedDate.count}
+            monthly={monthlyStats}
+            unpaid={unpaid}
+            startingCash={Number(startingCash) || 0}
+            dayExpenses={dayExpenses}
+            newExpense={newExpense}
+            onNewExpense={setNewExpense}
+            onAddExpense={addExpense}
+            onDeleteExpense={deleteExpense}
+            {...draftProps('close')}
+          />
+        );
+      case 'shop':
+        return (
+          <ShopTab
+            {...draftProps('shop')}
+            vatEnabled={!!vatEnabled}
+            onToggleVat={toggleVatSystem}
+            aiUtils={aiUtils}
+            onTestAI={handleTestAI}
+            onClearAICache={() => { aiUtils?.clearAICache?.(); toast.success('ล้าง Cache สำเร็จ'); }}
+            onExportUpsell={exportUpsellStats}
+            onResetUpsell={() => setShowClearUpsellConfirm(true)}
+          />
+        );
+      case 'promotions':
+        return <PromotionsTab {...draftProps('promotions')} dynamicCategories={dynamicCategories} />;
+      case 'modifiers':
+        return (
+          <ModifiersTab
+            beanModifiers={beanModifiers}
+            health={modifierHealth}
+            onAdd={openNewModifier}
+            onEdit={openEditModifier}
+            onDelete={(mod) => { setBeanToDelete(mod); setShowDeleteBeanConfirm(true); }}
+            onToggleAvailable={toggleModifierAvailable}
+          />
+        );
+      case 'quick':
+        return (
+          <QuickExpensesTab
+            quickExpenses={quickExpenses}
+            onAdd={openNewQuick}
+            onEdit={openEditQuick}
+            onDelete={(item) => { setQuickExpenseToDelete(item); setShowDeleteQuickExpenseConfirm(true); }}
+            onUseDefaults={useDefaultQuickExpenses}
+          />
+        );
+      case 'points':
+        return <PointsTab {...draftProps('points')} />;
+      case 'security':
+        return (
+          <SecurityTab
+            {...draftProps('security')}
+            pinEnabled={!!pinEnabled}
+            onTogglePin={togglePinSecurity}
+            onLockDevice={lockApp ? () => { lockApp(); toast.success('ล็อกและลืมอุปกรณ์นี้แล้ว'); } : undefined}
+          />
+        );
+      case 'qr':
+        return <QrTab />;
+      case 'data':
+        return (
+          <DataTab
+            onExportExcel={() => setShowExportConfirm(true)}
+            onBackupJson={handleBackupJson}
+            onBackfill={handleBackfillSoldCount}
+            isBackfilling={isBackfilling}
+            backdatedSale={backdatedSale}
+            onBackdatedSale={setBackdatedSale}
+            onSubmitBackdated={addBackdatedSale}
+            onResetQueue={() => setShowResetConfirm(true)}
+            onSeed={() => setShowSeedConfirm(true)}
+          />
+        );
+      default:
+        return null;
     }
   };
+
+  const tabInfo = tabByKey(activeTab);
+  const navBadges = { modifiers: brokenModifierCount };
+  const statusPills = (
+    <>
+      <StatusPill label="VAT" on={!!vatEnabled} onClick={() => selectTab('shop')} ariaLabel={`VAT ${vatEnabled ? 'เปิด' : 'ปิด'}อยู่ · ไปที่ร้านและใบเสร็จ`} />
+      <StatusPill label="PIN" on={!!pinEnabled} onClick={() => selectTab('security')} ariaLabel={`PIN ${pinEnabled ? 'เปิด' : 'ปิด'}อยู่ · ไปที่ความปลอดภัย`} />
+    </>
+  );
 
   return (
-    <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 text-[var(--text-primary)] overflow-hidden leading-none">
-      <header className="h-16 md:h-20 lg:h-24 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-4 md:px-8 lg:px-12 flex items-center justify-between shadow-sm z-[var(--z-nav)] text-[var(--text-primary)]">
-        <div className="flex items-center gap-2 md:gap-4 text-emerald-600  "><PieChart size={24} className="md:w-8 md:h-8 lg:w-9 lg:h-9" /><h1 className="text-base md:text-xl lg:text-2xl   tracking-tight text-[var(--text-primary)] leading-none">สรุปยอด</h1></div>
-        <div className="flex items-center gap-2 md:gap-3 lg:gap-4 text-[var(--text-primary)] leading-none">
-          <div className="relative flex items-center bg-emerald-50 border border-emerald-100 rounded-xl md:rounded-2xl lg:rounded-[2rem] p-1 md:p-2 shadow-sm leading-none"><Calendar className="text-emerald-500 ml-2 md:ml-4" size={18} /><input type="date" value={selectedHistoryDate} onChange={(e) => setSelectedHistoryDate(e.target.value)} className="bg-transparent border-none py-2 md:py-3 lg:py-3.5 pl-2 pr-3 md:pl-3 md:pr-6 text-sm md:text-base  text-emerald-700 outline-none cursor-pointer shadow-none leading-none w-[110px] md:w-auto" /></div>
-          {/* Excel Button Removed from Header */}
-          <button onClick={toggleVatSystem} className={`hidden md:flex px-4 lg:px-8 py-2.5 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-xs  items-center gap-2 border transition-all leading-none ${vatEnabled ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border-[var(--border-color)]'}`}>{vatEnabled ? 'VAT ON' : 'VAT OFF'}</button>
-          <button onClick={togglePinSecurity} className={`hidden md:flex px-4 lg:px-8 py-2.5 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-xs  items-center gap-2 border transition-all leading-none ${pinEnabled ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>{pinEnabled ? 'PIN ON' : 'PIN OFF'}</button>
-        </div>
-      </header>
+    <div className="h-full bg-[var(--bg-canvas)] flex flex-col overflow-hidden text-[var(--text-primary)]">
+      <PageHeader
+        title={isPhone && tabInfo ? tabInfo.label : 'ตั้งค่าร้าน'}
+        subtitle={isPhone && tabInfo ? tabInfo.hint : undefined}
+        icon={isPhone && tabInfo ? tabInfo.icon : Settings}
+        back={isPhone && tabInfo ? { label: 'ตั้งค่าร้าน', onClick: () => navigate('admin', {}) } : undefined}
+        sticky={false}
+        actions={isPhone && tabInfo ? undefined : statusPills}
+      />
 
-      {/* Tab Bar */}
-      <div className="flex items-center gap-1 md:gap-2 px-4 md:px-8 lg:px-12 py-3 bg-[var(--bg-secondary)]/50 /50 border-b border-[var(--border-color)]  shrink-0">
-        {[
-          { key: 'stats', icon: BarChart3, label: 'สรุปยอด' },
-          { key: 'settings', icon: Settings, label: 'ตั้งค่า' },
-          { key: 'manage', icon: FolderCog, label: 'จัดการ' },
-        ].map(({ key, icon: Icon, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveAdminTab(key)}
-            className={`flex items-center gap-2 px-4 md:px-6 py-2.5 md:py-3 rounded-xl md:rounded-2xl text-xs md:text-sm   tracking-wider transition-all ${activeAdminTab === key ? 'bg-emerald-500 text-white shadow-[var(--elev-2)] shadow-emerald-500/20' : 'text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)]'}`}
-          >
-            <Icon size={16} />
-            <span>{label}</span>
-          </button>
-        ))}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-[var(--page-pad)] py-5 md:py-6 pb-10">
+        <div className="max-w-[1400px] mx-auto">
+          {isPhone ? (
+            activeTab ? renderTab() : <SettingsNav variant="list" onSelect={selectTab} badges={navBadges} />
+          ) : (
+            <div className="grid grid-cols-[200px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,1fr)] gap-6 items-start">
+              <SettingsNav active={activeTab} onSelect={selectTab} badges={navBadges} />
+              <div className="min-w-0 flex flex-col gap-4">
+                <div>
+                  <h2 className="text-[length:var(--fs-xl)] leading-[var(--lh-xl)] font-semibold text-[var(--text-primary)]">{tabInfo?.label}</h2>
+                  <p className="text-sm text-[var(--text-muted)]">{tabInfo?.hint}</p>
+                </div>
+                {renderTab()}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-8 p-4 md:p-6 lg:p-6 overflow-auto text-[var(--text-primary)]">
-        <div className={`w-full ${activeAdminTab === 'stats' ? 'lg:w-[400px] xl:w-[480px]' : ''} space-y-4 md:space-y-6 lg:space-y-8 shrink-0 animate-in fade-in duration-300`}>
+      <ModifierSheet
+        open={modifierSheetOpen}
+        onClose={() => setModifierSheetOpen(false)}
+        editing={!!editingBeanModifierId}
+        value={newBeanModifier}
+        onChange={setNewBeanModifier}
+        onSubmit={saveBeanModifier}
+        stock={stock}
+        stockById={stockById}
+        stockLinkGroups={stockLinkGroups}
+        groups={modifierGroups}
+        onAddLink={addBeanStockLink}
+        onRemoveLink={removeBeanStockLink}
+        onUpdateLink={updateBeanStockLink}
+      />
+      <QuickExpenseSheet
+        open={quickSheetOpen}
+        onClose={() => setQuickSheetOpen(false)}
+        editing={!!editingQuickExpenseId}
+        value={newQuickExpense}
+        onChange={setNewQuickExpense}
+        onSubmit={saveQuickExpense}
+      />
 
-          {/* ==================== TAB: สรุปยอด ==================== */}
-          {activeAdminTab === 'stats' && <>
-          {/* Daily Stats Card */}
-          <div className="bg-[var(--surface-inverse)] rounded-2xl md:rounded-[2.5rem] lg:rounded-[var(--radius)] p-6 md:p-6 lg:p-6 text-white shadow-[var(--elev-3)] relative overflow-hidden border-b-8 border-emerald-500/20">
-            <TrendingUp size={160} className="absolute -right-12 -bottom-12 opacity-10" />
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs   tracking-[0.3em] opacity-50 mb-3 px-1">สรุปยอดรายวัน ({new Date(selectedHistoryDate).toLocaleDateString('th-TH')})</p>
-                <p className={`text-7xl font-bold num tracking-tighter mb-6 ${dailyNetStats.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  ฿{Number(dailyNetStats.profit).toLocaleString()}
-                </p>
-              </div>
-              <button onClick={() => toggleAdminPanel('daily')} className="p-3 rounded-2xl bg-[var(--bg-secondary)]/10 hover:bg-[var(--bg-secondary)]/20 transition-all">
-                {adminPanels.daily ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </button>
-            </div>
-            {adminPanels.daily && (
-              <div className="grid grid-cols-2 gap-6 mt-8 border-t border-white/10 pt-8   tracking-[0.2em] text-xs opacity-60">
-                <div className="flex flex-col gap-2 num"><span>รายรับ:</span><span className="text-2xl text-white tracking-tighter">฿{Number(dailyNetStats.revenue).toLocaleString()}</span></div>
-                <div className="flex flex-col gap-2 num"><span className="text-red-400">รายจ่าย:</span><span className="text-2xl text-red-400 tracking-tighter">฿{Number(dailyNetStats.cost).toLocaleString()}</span></div>
-              </div>
-            )}
-            {/* Starting Cash Reminder */}
-            {STARTING_CASH > 0 && (
-              <div className="mt-6 bg-amber-500/20 border border-amber-400/30 rounded-2xl p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Banknote size={20} className="text-amber-400" />
-                  <span className="text-xs  text-amber-300  tracking-widest">เงินตั้งต้น (ทอน)</span>
-                </div>
-                <span className="text-xl font-semibold text-amber-400 num">฿{STARTING_CASH.toLocaleString()}</span>
-              </div>
-            )}
-          </div>
-
-          </>}
-
-          {/* ==================== TAB: ตั้งค่า ==================== */}
-          {activeAdminTab === 'settings' && <>
-          {/* Settings Panel */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">ตั้งค่าระบบ</h2>
-              <button onClick={() => toggleAdminPanel('settings')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
-                {adminPanels.settings ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </button>
-            </div>
-            {adminPanels.settings && (
-              <>
-                <div className="space-y-4">
-                  {/* Starting Cash - Prominent */}
-                  <div className="bg-amber-50 p-4 rounded-2xl border-2 border-amber-200">
-                    <label className="text-xs font-medium text-amber-600  tracking-widest flex items-center gap-2"><Banknote size={14} /> เงินตั้งต้นร้าน (เงินทอน)</label>
-                    <input type="number" value={settingsDraft.startingCash} onChange={(e) => setSettingsDraft({ ...settingsDraft, startingCash: e.target.value })} className="w-full mt-2 bg-[var(--bg-secondary)] border border-amber-200 rounded-2xl p-4 text-lg font-semibold outline-none text-amber-700 focus:ring-4 focus:ring-amber-200 num" placeholder="0" />
-                    <p className="text-xs text-amber-500 mt-2 font-bold">เงินสำรองไว้ทอน - ไม่นับรวมกับยอดขาย แสดงแยกในรายงาน</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">PIN แอดมิน</label>
-                    <input type="password" maxLength={6} value={settingsDraft.adminPin} onChange={(e) => setSettingsDraft({ ...settingsDraft, adminPin: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none" placeholder="เช่น 1234" />
-                    {lockApp && (
-                      <button
-                        type="button"
-                        onClick={() => { lockApp(); toast.success('ล็อกและลืมอุปกรณ์นี้แล้ว'); }}
-                        className="mt-3 w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-[var(--bg-tertiary)] text-[var(--text-secondary)] font-semibold text-xs  tracking-widest hover:bg-[var(--bg-tertiary)] transition-all"
-                      >
-                        <Lock size={14} /> ล็อก &amp; ลืมอุปกรณ์นี้
-                      </button>
-                    )}
-                    <p className="text-xs text-[var(--text-muted)] mt-2 font-bold leading-relaxed">ใช้เมื่ออยากให้เครื่องนี้ถาม PIN ใหม่ — หรือเปลี่ยน PIN แล้วทุกเครื่องที่ "จำไว้" จะถูกล็อกอัตโนมัติ</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">แต้มขั้นต่ำแลก</label>
-                      <input type="number" value={settingsDraft.redeemPointsThreshold} onChange={(e) => setSettingsDraft({ ...settingsDraft, redeemPointsThreshold: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ส่วนลดแลกแต้ม</label>
-                      <input type="number" value={settingsDraft.redeemDiscountValue} onChange={(e) => setSettingsDraft({ ...settingsDraft, redeemDiscountValue: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 mt-4">
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ส่วนลดแก้วส่วนตัว</label>
-                      <input type="number" value={settingsDraft.ownGlassDiscount} onChange={(e) => setSettingsDraft({ ...settingsDraft, ownGlassDiscount: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">แต้มหมดอายุถ้าไม่มาซื้อ (เดือน) · 0 = ไม่หมดอายุ</label>
-                      <input type="number" value={settingsDraft.pointsExpiryMonths} onChange={(e) => setSettingsDraft({ ...settingsDraft, pointsExpiryMonths: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" />
-                      <p className="text-[10px] text-amber-600 mt-1">ควรประกาศลูกค้าก่อนเปิดใช้</p>
-                    </div>
-                  </div>
-                  <div className="col-span-2 border-t border-[var(--border-color)] pt-4 mt-2 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <label className="text-xs font-medium text-[var(--text-primary)] tracking-widest flex items-center gap-2"><Star size={14} className="text-amber-500" /> ของแลกแต้ม (เมนูลับ / ท็อปปิ้ง)</label>
-                        <p className="text-[10px] text-[var(--text-muted)] mt-1">ลูกค้าจะเห็นของเหล่านี้ให้แลกด้วยแต้ม แทนส่วนลดเงินสด</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSettingsDraft({ ...settingsDraft, pointsRewardsEnabled: !settingsDraft.pointsRewardsEnabled })}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${settingsDraft.pointsRewardsEnabled ? 'bg-amber-100 text-amber-700' : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]'}`}
-                      >
-                        {settingsDraft.pointsRewardsEnabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
-                      </button>
-                    </div>
-                    {settingsDraft.pointsRewardsEnabled && (
-                      <div className="space-y-2">
-                        {(settingsDraft.pointsRewards || []).map((reward, idx) => (
-                          <div key={idx} className="flex gap-2 items-center">
-                            <input
-                              type="text"
-                              value={reward.name}
-                              onChange={(e) => {
-                                const next = [...settingsDraft.pointsRewards];
-                                next[idx].name = e.target.value;
-                                setSettingsDraft({ ...settingsDraft, pointsRewards: next });
-                              }}
-                              placeholder="ชื่อของแลก (เช่น วิปครีม)"
-                              className="flex-1 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl p-2 text-sm outline-none"
-                            />
-                            <input
-                              type="number"
-                              value={reward.cost}
-                              onChange={(e) => {
-                                const next = [...settingsDraft.pointsRewards];
-                                next[idx].cost = e.target.value;
-                                setSettingsDraft({ ...settingsDraft, pointsRewards: next });
-                              }}
-                              placeholder="แต้ม"
-                              className="w-20 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl p-2 text-sm outline-none num text-center"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = [...settingsDraft.pointsRewards];
-                                next[idx].enabled = !next[idx].enabled;
-                                setSettingsDraft({ ...settingsDraft, pointsRewards: next });
-                              }}
-                              className={`p-2 rounded-xl ${reward.enabled ? 'text-emerald-500 bg-emerald-50' : 'text-[var(--text-muted)] bg-[var(--bg-tertiary)]'}`}
-                            >
-                              {reward.enabled ? <Eye size={16} /> : <EyeOff size={16} />}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = settingsDraft.pointsRewards.filter((_, i) => i !== idx);
-                                setSettingsDraft({ ...settingsDraft, pointsRewards: next });
-                              }}
-                              className="p-2 text-red-400 bg-red-50 rounded-xl"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSettingsDraft({
-                              ...settingsDraft,
-                              pointsRewards: [...(settingsDraft.pointsRewards || []), { id: crypto.randomUUID(), name: '', cost: 10, enabled: true }]
-                            });
-                          }}
-                          className="w-full py-2 rounded-xl border border-dashed border-[var(--border-color)] text-xs text-[var(--text-muted)] flex items-center justify-center gap-2 hover:bg-[var(--bg-tertiary)]"
-                        >
-                          <Plus size={14} /> เพิ่มรายการแลกแต้ม
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="col-span-2 border-t border-[var(--border-color)] pt-4 mt-2">
-                    <label className="text-xs font-medium text-emerald-500  tracking-widest flex items-center gap-2"><Zap size={14} /> Gemini API Key (สำหรับ AI Features)</label>
-                    <div className="flex gap-2">
-                      <input type="password" value={settingsDraft.geminiApiKey} onChange={(e) => setSettingsDraft({ ...settingsDraft, geminiApiKey: e.target.value })} className="flex-1 mt-2 bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 text-sm font-bold text-emerald-700 outline-none placeholder:text-emerald-300" placeholder="AIzaSy..." />
-                      <button onClick={handleTestAI} className="mt-2 px-4 bg-emerald-100 text-emerald-600 rounded-2xl font-semibold text-xs  tracking-wider hover:bg-emerald-200 transition-all">Test AI</button>
-                    </div>
-                    <p className="text-xs text-[var(--text-muted)] mt-2 font-bold">รับฟรีที่ <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline hover:text-emerald-500">aistudio.google.com</a></p>
-
-                    {/* AI Stats */}
-                    {aiUtils?.getApiStats && (
-                      <div className="mt-4 bg-violet-50/50 border border-violet-100 rounded-2xl p-4 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-violet-600  tracking-widest">AI Usage Stats</span>
-                          <button
-                            onClick={() => {
-                              aiUtils?.clearAICache?.();
-                              toast.success('ล้าง Cache สำเร็จ');
-                            }}
-                            className="text-xs font-bold bg-violet-100 text-violet-600 px-2 py-1 rounded-lg hover:bg-violet-200 transition-all"
-                          >
-                            ล้าง Cache
-                          </button>
-                        </div>
-                        {(() => {
-                          const stats = aiUtils.getApiStats();
-                          return (
-                            <div className="grid grid-cols-4 gap-2 text-center">
-                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
-                                <p className="text-lg font-semibold text-violet-600">{stats.requestCount}</p>
-                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">Requests</p>
-                              </div>
-                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
-                                <p className="text-lg font-semibold text-emerald-600">{stats.cacheSize}</p>
-                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">Cached</p>
-                              </div>
-                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
-                                <p className="text-lg font-semibold text-blue-600">{stats.chatHistoryCount}</p>
-                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">History</p>
-                              </div>
-                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
-                                <p className="text-xs font-medium text-[var(--text-secondary)]">{stats.lastRequestTime}</p>
-                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">Last Call</p>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    )}
-
-                    {/* AI Upsell Tracking Stats */}
-                    <div className="mt-4 bg-amber-50/50 border border-amber-100 rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-amber-600  tracking-widest flex items-center gap-2">
-                          <Target size={14} /> AI Upsell Performance
-                        </span>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={exportUpsellStats}
-                            className="text-xs font-bold bg-amber-100 text-amber-600 px-2 py-1 rounded-lg hover:bg-amber-200 transition-all"
-                          >
-                            Export
-                          </button>
-                          <button
-                            onClick={() => setShowClearUpsellConfirm(true)}
-                            className="text-xs font-bold bg-red-50 text-red-500 px-2 py-1 rounded-lg hover:bg-red-100 transition-all"
-                          >
-                            Reset
-                          </button>
-                        </div>
-                      </div>
-                      {(() => {
-                        const upsellStats = getUpsellStats();
-                        return (
-                          <>
-                            <div className="grid grid-cols-4 gap-2 text-center">
-                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
-                                <p className="text-lg font-semibold text-amber-600 num">{upsellStats.totalShown}</p>
-                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">แสดง</p>
-                              </div>
-                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
-                                <p className="text-lg font-semibold text-emerald-600 num">{upsellStats.totalAccepted}</p>
-                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">ยอมรับ</p>
-                              </div>
-                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
-                                <p className="text-lg font-semibold text-blue-600 num">{upsellStats.conversionRate}%</p>
-                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">Conversion</p>
-                              </div>
-                              <div className="bg-[var(--bg-secondary)] rounded-xl p-2">
-                                <p className="text-lg font-semibold text-violet-600 num">฿{upsellStats.totalRevenue.toLocaleString()}</p>
-                                <p className="text-[8px] font-bold text-[var(--text-muted)] ">รายได้</p>
-                              </div>
-                            </div>
-                            {upsellStats.topItems.length > 0 && (
-                              <div className="mt-2 bg-[var(--bg-secondary)] rounded-xl p-3">
-                                <p className="text-xs font-medium text-[var(--text-secondary)]  mb-2">Top Performing Items</p>
-                                <div className="space-y-1">
-                                  {upsellStats.topItems.slice(0, 3).map((item, idx) => (
-                                    <div key={idx} className="flex items-center justify-between text-xs">
-                                      <span className="font-bold text-[var(--text-secondary)] truncate">{item.name}</span>
-                                      <span className="font-semibold text-emerald-600 num">{item.conversionRate}% ({item.accepted}/{item.shown})</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            <p className="text-xs text-[var(--text-muted)] text-center">
-                              วันนี้: แสดง {upsellStats.todayShown} | ยอมรับ {upsellStats.todayAccepted} | รายได้ ฿{upsellStats.todayRevenue.toLocaleString()}
-                            </p>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                </div>
-                <button onClick={saveSettings} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-semibold text-xs  tracking-[0.3em] shadow-[var(--elev-2)] hover:bg-emerald-700 transition-all">
-                  บันทึกการตั้งค่า
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* QR Self-Ordering Card */}
-          {(() => {
-            const orderUrl = `${window.location.origin}/order`;
-            const handlePrintQR = () => {
-              const win = window.open('', '_blank', 'width=480,height=600');
-              if (!win) return;
-              const doc = win.document;
-
-              const style = doc.createElement('style');
-              style.textContent = 'body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;background:#fff;padding:32px;box-sizing:border-box;}h1{font-size:22px;font-weight:900;margin-bottom:8px;letter-spacing:0.05em;}p{font-size:13px;color:#555;margin-top:12px;word-break:break-all;text-align:center;}';
-              doc.head.appendChild(style);
-
-              const heading = doc.createElement('h1');
-              heading.textContent = 'Siwara Coffee';
-              doc.body.appendChild(heading);
-
-              const svgEl = document.getElementById('qr-self-order-svg');
-              if (svgEl) {
-                const svgClone = svgEl.cloneNode(true);
-                doc.body.appendChild(svgClone);
-              }
-
-              const caption = doc.createElement('p');
-              caption.textContent = 'สแกนเพื่อสั่งอาหาร';
-              doc.body.appendChild(caption);
-
-              const urlText = doc.createElement('p');
-              urlText.style.cssText = 'font-size:11px;color:#aaa;';
-              urlText.textContent = orderUrl;
-              doc.body.appendChild(urlText);
-
-              win.onload = () => win.print();
-            };
-            const handleCopyLink = async () => {
-              try {
-                await navigator.clipboard.writeText(orderUrl);
-                setLinkCopied(true);
-                toast.success('คัดลอกลิงก์แล้ว!');
-                setTimeout(() => setLinkCopied(false), 2000);
-              } catch {
-                toast.error('ไม่สามารถคัดลอกได้ กรุณาคัดลอกด้วยตนเอง');
-              }
-            };
-            return (
-              <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><QrCode size={22} /></div>
-                  <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">QR สั่งอาหารหน้าร้าน</h2>
-                </div>
-                <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
-                  <Smartphone size={18} className="text-emerald-500 shrink-0 mt-0.5" />
-                  <p className="text-xs font-bold text-emerald-700 leading-relaxed">ให้ลูกค้าสแกนเพื่อสั่งอาหารเองผ่านมือถือ ออเดอร์จะเข้าคิวอัตโนมัติ และชำระเงินที่เคาน์เตอร์</p>
-                </div>
-                <div className="flex flex-col items-center gap-4 py-2">
-                  <div className="bg-[var(--bg-secondary)] p-4 rounded-3xl border-2 border-emerald-100 shadow-inner">
-                    <QRCodeSVG id="qr-self-order-svg" value={orderUrl} size={220} level="M" includeMargin />
-                  </div>
-                  <p className="text-xs font-mono font-bold text-[var(--text-secondary)] bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl px-4 py-3 select-all text-center break-all">{orderUrl}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={handlePrintQR}
-                    className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-[var(--surface-inverse)] text-white font-semibold text-xs  tracking-widest shadow-[var(--elev-2)] hover:bg-[var(--surface-inverse-hover)] active:scale-95 transition-all"
-                  >
-                    <Printer size={16} /> พิมพ์ QR
-                  </button>
-                  <button
-                    onClick={handleCopyLink}
-                    className={`flex items-center justify-center gap-2 py-4 rounded-2xl font-semibold text-xs  tracking-widest shadow-[var(--elev-2)] active:scale-95 transition-all ${linkCopied ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white'}`}
-                  >
-                    <QrCode size={16} /> {linkCopied ? 'คัดลอกแล้ว!' : 'คัดลอกลิงก์'}
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* isolated: a problem in the stats card must not take down the admin page */}
-          <ErrorBoundary><QrFunnelCard /></ErrorBoundary>
-
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-4">
-            <h2 className="text-lg font-semibold">ใบเสร็จ</h2>
-            {[
-              ['shopName', 'ชื่อร้าน', 'ศิวรา คาเฟ่'], ['shopAddress', 'ที่อยู่'], ['shopPhone', 'โทรศัพท์'],
-              ['taxId', 'เลขผู้เสียภาษี'], ['receiptFooter', 'ข้อความเหนือ QR รีวิว', 'สแกนรีวิวร้านให้เราหน่อยนะคะ'],
-            ].map(([field, label, placeholder]) => (
-              <label key={field} className="block text-sm font-semibold">
-                {label}
-                <input type="text" placeholder={placeholder} value={settingsDraft[field]} onChange={(e) => setSettingsDraft({ ...settingsDraft, [field]: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 outline-none" />
-                {field === 'receiptFooter' && <span className="block mt-2 text-xs font-normal text-[var(--text-muted)]">QR สร้างจากลิงก์รีวิวในการ์ดด้านล่าง · ถ้าไม่ใส่ลิงก์ ใบเสร็จจะแสดงแค่ข้อความ</span>}
-              </label>
-            ))}
-            <label className="block text-sm font-semibold">
-              ความกว้างกระดาษ
-              <select value={settingsDraft.receiptPaperWidth} onChange={(e) => setSettingsDraft({ ...settingsDraft, receiptPaperWidth: Number(e.target.value) === 58 ? 58 : 80 })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 outline-none">
-                <option value={80}>80 mm</option><option value={58}>58 mm</option>
-              </select>
-            </label>
-          </div>
-
-          {/* Review Link Card */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><Star size={22} /></div>
-              <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">ลิงก์รีวิวร้าน</h2>
-            </div>
-            <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
-              <Star size={18} className="text-emerald-500 shrink-0 mt-0.5" />
-              <p className="text-xs font-bold text-emerald-700 leading-relaxed">วางลิงก์ Google/Facebook/LINE ให้ลูกค้ากดรีวิวท้ายออเดอร์</p>
-            </div>
-            <input
-              type="url"
-              value={settingsDraft.reviewUrl}
-              onChange={(e) => setSettingsDraft({ ...settingsDraft, reviewUrl: e.target.value })}
-              className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-bold outline-none focus:bg-[var(--bg-secondary)] focus:border-emerald-200 transition-all"
-              placeholder="https://g.page/..."
-            />
-          </div>
-
-          {/* Cake Clearance (Happy Hour) Card */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-amber-100 shadow-sm space-y-6 border-t-4 border-t-amber-400">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-amber-50 rounded-2xl text-amber-500"><Cake size={22} /></div>
-              <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">Happy Hour เค้ก (ลดราคาตามช่วงเวลา)</h2>
-            </div>
-            <div className="flex items-start gap-3 bg-amber-50 rounded-2xl p-4 border border-amber-100">
-              <Cake size={18} className="text-amber-500 shrink-0 mt-0.5" />
-              <p className="text-xs font-bold text-amber-700 leading-relaxed">ในช่วงเวลานี้ เมนูในหมวดที่เลือกจะลดราคาอัตโนมัติทั้งหน้า POS และหน้า QR ลูกค้า</p>
-            </div>
-
-            {/* Enable toggle */}
-            <button
-              type="button"
-              onClick={() => setSettingsDraft({ ...settingsDraft, cakeSaleEnabled: !settingsDraft.cakeSaleEnabled })}
-              className="w-full flex items-center justify-between px-4 py-4 rounded-2xl transition-all"
-              style={{
-                background: settingsDraft.cakeSaleEnabled ? '#ecfdf5' : '#f9fafb',
-                border: `2px solid ${settingsDraft.cakeSaleEnabled ? '#6ee7b7' : '#f3f4f6'}`
-              }}
-            >
-              <span className="text-sm font-semibold text-[var(--text-primary)]">เปิดใช้งานลดราคาช่วงเวลา</span>
-              <div className={`w-12 h-6 rounded-full relative transition-colors ${settingsDraft.cakeSaleEnabled ? 'bg-emerald-500' : 'bg-[var(--bg-tertiary)]'}`}>
-                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-[var(--bg-secondary)] shadow transition-all ${settingsDraft.cakeSaleEnabled ? 'right-0.5' : 'left-0.5'}`} />
-              </div>
-            </button>
-
-            {/* Percent + Time */}
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest flex items-center gap-1"><Percent size={12} /> ส่วนลด</label>
-                <div className="relative mt-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={settingsDraft.cakeSalePercent}
-                    onChange={(e) => setSettingsDraft({ ...settingsDraft, cakeSalePercent: e.target.value })}
-                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 pr-8 text-sm font-semibold outline-none"
-                    placeholder="20"
-                  />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium text-[var(--text-muted)]">%</span>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest flex items-center gap-1"><Clock size={12} /> เริ่ม</label>
-                <input
-                  type="time"
-                  value={settingsDraft.cakeSaleStart}
-                  onChange={(e) => setSettingsDraft({ ...settingsDraft, cakeSaleStart: e.target.value })}
-                  className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none cursor-pointer"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest flex items-center gap-1"><Clock size={12} /> สิ้นสุด</label>
-                <input
-                  type="time"
-                  value={settingsDraft.cakeSaleEnd}
-                  onChange={(e) => setSettingsDraft({ ...settingsDraft, cakeSaleEnd: e.target.value })}
-                  className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none cursor-pointer"
-                />
-              </div>
-            </div>
-
-            {/* Category checklist */}
-            <div>
-              <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest mb-3 block">หมวดหมู่ที่เข้าร่วม</label>
-              {dynamicCategories.length === 0 ? (
-                <p className="text-xs text-[var(--text-muted)] font-bold italic py-2">ยังไม่มีหมวดหมู่ในระบบ</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {dynamicCategories.map((cat) => {
-                    const isSelected = (settingsDraft.cakeSaleCategories || []).includes(cat.name);
-                    return (
-                      <button
-                        key={cat.id || cat.name}
-                        type="button"
-                        onClick={() => {
-                          const current = settingsDraft.cakeSaleCategories || [];
-                          const next = isSelected
-                            ? current.filter((n) => n !== cat.name)
-                            : [...current, cat.name];
-                          setSettingsDraft({ ...settingsDraft, cakeSaleCategories: next });
-                        }}
-                        className={`px-4 py-2 rounded-2xl text-xs font-medium transition-all border ${
-                          isSelected
-                            ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:border-amber-300 hover:text-amber-600'
-                        }`}
-                      >
-                        {cat.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Cake + Drink Combo Discount Card */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><Cake size={22} /></div>
-              <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">คอมโบ เค้ก + เครื่องดื่ม</h2>
-            </div>
-            <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
-              <Percent size={18} className="text-emerald-500 shrink-0 mt-0.5" />
-              <p className="text-xs font-bold text-emerald-700 leading-relaxed">เมื่อลูกค้าสั่งเค้ก + เครื่องดื่มในออเดอร์เดียว ระบบจะลดราคาให้อัตโนมัติ (ทั้งหน้า POS และหน้า QR ลูกค้า) — ช่วยกระตุ้นยอดขาย</p>
-            </div>
-
-            {/* Enable toggle */}
-            <button
-              type="button"
-              onClick={() => setSettingsDraft({ ...settingsDraft, comboEnabled: !settingsDraft.comboEnabled })}
-              className="w-full flex items-center justify-between px-4 py-4 rounded-2xl transition-all"
-              style={{
-                background: settingsDraft.comboEnabled ? '#ecfdf5' : '#f9fafb',
-                border: `2px solid ${settingsDraft.comboEnabled ? '#6ee7b7' : '#f3f4f6'}`
-              }}
-            >
-              <span className="text-sm font-semibold text-[var(--text-primary)]">เปิดใช้งานส่วนลดคอมโบ</span>
-              <div className={`w-12 h-6 rounded-full relative transition-colors ${settingsDraft.comboEnabled ? 'bg-emerald-500' : 'bg-[var(--bg-tertiary)]'}`}>
-                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-[var(--bg-secondary)] shadow transition-all ${settingsDraft.comboEnabled ? 'right-0.5' : 'left-0.5'}`} />
-              </div>
-            </button>
-
-            {/* Percent input */}
-            <div>
-              <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest flex items-center gap-1"><Percent size={12} /> ส่วนลดคอมโบ</label>
-              <div className="relative mt-2">
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={settingsDraft.comboPercent}
-                  onChange={(e) => setSettingsDraft({ ...settingsDraft, comboPercent: e.target.value })}
-                  className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 pr-8 text-sm font-semibold outline-none"
-                  placeholder="10"
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium text-[var(--text-muted)]">%</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Spend threshold discount card */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-emerald-100 shadow-sm space-y-6 border-t-4 border-t-emerald-500">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><Percent size={22} /></div>
-              <h2 className="text-xs font-bold text-[var(--text-muted)]  tracking-[0.3em]">ส่วนลดเมื่อสั่งครบยอด (หน้า QR)</h2>
-            </div>
-            <div className="flex items-start gap-3 bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
-              <Percent size={18} className="text-emerald-500 shrink-0 mt-0.5" />
-              <p className="text-xs font-bold text-emerald-700 leading-relaxed">สั่งครบยอดที่กำหนด รับส่วนลด % ทันที + มีข้อความกระตุ้น "สั่งอีก ฿X รับส่วนลด Y%" บนหน้า QR (ใส่ 0 = ปิด)</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">สั่งครบ (บาท)</label>
-                <input type="number" value={settingsDraft.spendThreshold} onChange={(e) => setSettingsDraft({ ...settingsDraft, spendThreshold: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" placeholder="0" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ลด (%)</label>
-                <input type="number" value={settingsDraft.spendDiscount} onChange={(e) => setSettingsDraft({ ...settingsDraft, spendDiscount: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" placeholder="0" />
-              </div>
-            </div>
-          </div>
-
-          </>}
-
-          {/* ==================== TAB: จัดการ ==================== */}
-          {activeAdminTab === 'manage' && <>
-          {/* Backdated Sales Panel */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-lg text-[var(--text-primary)] flex items-center gap-3  tracking-tighter">
-                <History size={22} className="text-blue-500" /> บันทึกยอดขายย้อนหลัง
-              </h2>
-              <button onClick={() => toggleAdminPanel('backdatedSales')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
-                {adminPanels.backdatedSales ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </button>
-            </div>
-            {adminPanels.backdatedSales && (
-              <form onSubmit={addBackdatedSale} className="space-y-5">
-                <div>
-                  <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">รายการขาย / ชื่อสินค้า</label>
-                  <input
-                    type="text"
-                    required
-                    value={backdatedSale.title}
-                    onChange={(e) => setBackdatedSale({ ...backdatedSale, title: e.target.value })}
-                    className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none focus:bg-[var(--bg-secondary)] transition-all"
-                    placeholder="เช่น ยอดขายเงินสด, ชานมไข่มุก..."
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ยอดเงิน (บาท)</label>
-                    <input
-                      type="number"
-                      required
-                      value={backdatedSale.amount}
-                      onChange={(e) => setBackdatedSale({ ...backdatedSale, amount: e.target.value })}
-                      className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none"
-                      placeholder="0"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">วันที่ขาย</label>
-                    <input
-                      type="date"
-                      required
-                      value={backdatedSale.date}
-                      onChange={(e) => setBackdatedSale({ ...backdatedSale, date: e.target.value })}
-                      className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none cursor-pointer"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">หมายเหตุ (ไม่บังคับ)</label>
-                  <input
-                    type="text"
-                    value={backdatedSale.note}
-                    onChange={(e) => setBackdatedSale({ ...backdatedSale, note: e.target.value })}
-                    className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none"
-                    placeholder="รายละเอียดเพิ่มเติม..."
-                  />
-                </div>
-                <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-semibold text-xs  tracking-[0.2em] shadow-[var(--elev-2)] active:scale-95 border-b-4 border-blue-800">
-                  บันทึกยอดขายย้อนหลัง
-                </button>
-              </form>
-            )}
-          </div>
-
-          {/* Bean Modifiers Panel */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-lg text-[var(--text-primary)] flex items-center gap-3  tracking-tighter">
-                <Coffee size={22} className="text-amber-500" /> จัดการ #แท็กเมล็ดกาแฟ
-              </h2>
-              <button onClick={() => toggleAdminPanel('beanModifiers')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
-                {adminPanels.beanModifiers ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </button>
-            </div>
-            {adminPanels.beanModifiers && (
-              <div className="space-y-5">
-                <form onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!newBeanModifier.name || !newBeanModifier.price) return;
-                  await runDbAction(async () => {
-                    const col = collection(db, 'artifacts', appId, 'public', 'data', 'beanModifiers');
-                    const data = {
-                      name: String(newBeanModifier.name).trim(),
-                      price: Number(newBeanModifier.price),
-                      stockLinks: newBeanModifier.stockLinks || [],
-                      isDefault: newBeanModifier.isDefault === true,
-                      group: String(newBeanModifier.group || 'เมล็ดกาแฟ').trim() || 'เมล็ดกาแฟ',
-                      updatedAt: serverTimestamp()
-                    };
-                    if (editingBeanModifierId) {
-                      await updateDoc(doc(col, editingBeanModifierId), data);
-                    } else {
-                      await addDoc(col, { ...data, createdAt: serverTimestamp() });
-                    }
-                    setNewBeanModifier({ name: '', price: '', stockLinks: [], isDefault: false, group: 'เมล็ดกาแฟ' });
-                    setEditingBeanModifierId(null);
-                  }, editingBeanModifierId ? 'อัปเดตแท็กไม่สำเร็จ' : 'สร้างแท็กไม่สำเร็จ');
-                }} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ชื่อแท็ก (เช่น คั่วอ่อน)</label>
-                      <input
-                        type="text"
-                        required
-                        value={newBeanModifier.name}
-                        onChange={(e) => setNewBeanModifier({ ...newBeanModifier, name: e.target.value })}
-                        className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none"
-                        placeholder="คั่วอ่อน"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ราคาเมล็ดนี้ (บาท)</label>
-                      <input
-                        type="number"
-                        required
-                        value={newBeanModifier.price}
-                        onChange={(e) => setNewBeanModifier({ ...newBeanModifier, price: e.target.value })}
-                        className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none"
-                        placeholder="80"
-                      />
-                      <p className="text-xs text-[var(--text-muted)] mt-2 font-bold leading-relaxed">ระบบจะคิด<strong>ราคาที่สูงกว่า</strong>ระหว่างราคาเมนูกับราคาเมล็ด — เมนูที่แพงกว่าจะไม่ถูกลดราคาเพราะเลือกเมล็ด</p>
-                    </div>
-                  </div>
-
-                  {/* Group (เมล็ดกาแฟ / มัทฉะ / ...) */}
-                  <div>
-                    <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">กลุ่ม (เช่น เมล็ดกาแฟ, มัทฉะ)</label>
-                    <input
-                      type="text"
-                      value={newBeanModifier.group}
-                      onChange={(e) => setNewBeanModifier({ ...newBeanModifier, group: e.target.value })}
-                      className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none"
-                      placeholder="เมล็ดกาแฟ"
-                      list="modifier-groups"
-                    />
-                    <datalist id="modifier-groups">
-                      {[...new Set((beanModifiers || []).map(b => b.group || 'เมล็ดกาแฟ'))].map(g => <option key={g} value={g} />)}
-                    </datalist>
-                    <p className="text-xs text-[var(--text-muted)] mt-2 font-bold leading-relaxed">เมนูจะเลือกได้ว่าจะใช้ตัวเลือกจากกลุ่มไหน (เมนูกาแฟ→เมล็ดกาแฟ, เพียวมัทฉะ→มัทฉะ)</p>
-                  </div>
-
-                  {/* Default/base bean toggle */}
-                  <button
-                    type="button"
-                    onClick={() => setNewBeanModifier({ ...newBeanModifier, isDefault: !newBeanModifier.isDefault })}
-                    className="w-full flex items-center justify-between px-4 py-4 rounded-2xl transition-all"
-                    style={{
-                      background: newBeanModifier.isDefault ? '#fffbeb' : '#f9fafb',
-                      border: `2px solid ${newBeanModifier.isDefault ? '#fcd34d' : '#f3f4f6'}`
-                    }}
-                  >
-                    <span className="text-sm font-semibold text-[var(--text-primary)] text-left">เมล็ดเริ่มต้น (เบส) — เลือกแล้วใช้ราคาเมนู ไม่บวกเพิ่ม</span>
-                    <div className={`w-12 h-6 rounded-full relative transition-colors shrink-0 ${newBeanModifier.isDefault ? 'bg-amber-500' : 'bg-[var(--bg-tertiary)]'}`}>
-                      <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-[var(--bg-secondary)] shadow transition-all ${newBeanModifier.isDefault ? 'right-0.5' : 'left-0.5'}`} />
-                    </div>
-                  </button>
-
-                  {/* Bean Stock Linking UI */}
-                  <div className="bg-amber-50/50 p-6 rounded-[2rem] border border-amber-100 space-y-4">
-                    <div className="flex items-center justify-between px-1">
-                      <div className="flex items-center gap-2 text-xs font-medium text-amber-600  tracking-wider"><Link2 size={16} /> ผูกสต็อกของเมล็ดนี้</div>
-                      <button type="button" onClick={addBeanStockLink} className="text-amber-600 font-semibold text-xs bg-[var(--bg-secondary)] border border-amber-100 px-4 py-2 rounded-xl shadow-sm hover:bg-amber-50 active:scale-95 leading-none flex items-center gap-1"><Plus size={14} /> เพิ่มพัสดุ</button>
-                    </div>
-                    <div className="space-y-3">
-                      {(newBeanModifier.stockLinks || []).map((link, idx) => (
-                        <div key={idx} className="bg-[var(--bg-secondary)]/80 p-4 rounded-[2rem] border border-amber-50 shadow-sm space-y-4 text-[var(--text-primary)]">
-                          <div className="flex flex-col gap-2">
-                            <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest ml-1">เลือกเมล็ด/วัตถุดิบ</label>
-                            <SearchSelect
-                              value={link.stockId}
-                              onChange={id => updateBeanStockLink(idx, 'stockId', id)}
-                              groups={stockLinkGroups}
-                              getOptionValue={s => s.id}
-                              getOptionLabel={s => String(s.name)}
-                              placeholder="พิมพ์ค้นหาวัตถุดิบ..."
-                            />
-                          </div>
-
-                          <div className="flex items-end gap-3">
-                            <div className="flex-1 space-y-2">
-                              <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest ml-1">ปริมาณที่หัก</label>
-                              <div className="relative flex items-center bg-amber-50/20 rounded-xl px-4 h-14 border border-amber-100">
-                                <input
-                                  type="number"
-                                  step="any"
-                                  value={link.usage}
-                                  onChange={(e) => updateBeanStockLink(idx, 'usage', e.target.value)}
-                                  className="w-full bg-transparent border-none text-left text-lg font-semibold outline-none text-[var(--text-primary)]"
-                                  placeholder="0.00"
-                                />
-                                <div className="bg-[var(--bg-secondary)] px-3 py-2 rounded-lg border border-amber-100 text-xs font-medium text-amber-600  shadow-sm shrink-0">
-                                  {stock.find(s => s.id === link.stockId)?.unit || 'หน่วย'}
-                                </div>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeBeanStockLink(idx)}
-                              className="h-14 w-14 bg-red-50 text-red-500 rounded-xl flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-sm active:scale-90"
-                            >
-                              <Trash2 size={20} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {(newBeanModifier.stockLinks || []).length === 0 && (
-                        <p className="text-center text-xs text-[var(--text-muted)] font-bold italic py-2">ยังไม่ได้ผูกสต็อก</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    {editingBeanModifierId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewBeanModifier({ name: '', price: '', stockLinks: [], isDefault: false, group: 'เมล็ดกาแฟ' });
-                          setEditingBeanModifierId(null);
-                        }}
-                        className="flex-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] py-4 rounded-2xl font-semibold text-xs  tracking-[0.2em] active:scale-95"
-                      >
-                        ยกเลิก
-                      </button>
-                    )}
-                    <button type="submit" className={`flex-[2] ${editingBeanModifierId ? 'bg-blue-500 border-blue-700' : 'bg-amber-500 border-amber-700'} text-white py-4 rounded-2xl font-semibold text-xs  tracking-[0.2em] shadow-[var(--elev-2)] active:scale-95 border-b-4`}>
-                      {editingBeanModifierId ? 'บันทึกการแก้ไข' : 'เพิ่ม #แท็ก'}
-                    </button>
-                  </div>
-                </form>
-
-                  <p className="text-sm text-[var(--text-muted)]">ผูกแล้ว {linkedModifierCount} · ยังไม่ผูก {beanModifiers.length - linkedModifierCount}</p>
-                  {/* แสดงสถานะแม้ซ่อนตัวเลือก เพื่อให้เตรียมต้นทุนก่อนเปิดขายได้ */}
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-2 scrollbar-hide">
-                  {beanModifiers.length === 0 ? (
-                    <p className="text-center text-xs text-[var(--text-muted)] font-semibold  tracking-widest py-4">ยังไม่มีแท็ก</p>
-                  ) : (
-                    beanModifiers.map(mod => {
-                      const isHidden = mod.available === false;
-                      const linkCount = modifierLinkCounts.get(mod.id) || 0;
-                      // Ingredient cost of this bean (mirrors the menu cost calc)
-                      const beanCost = (mod.stockLinks || []).reduce((sum, link) => {
-                        const s = stock.find(st => st.id === link.stockId);
-                        return sum + (Number(s?.unitCost || 0) * Number(link.usage || 0));
-                      }, 0) + Number(mod.additionalCost || 0);
-                      return (
-                      <div key={mod.id} className={`flex items-center justify-between p-4 rounded-2xl border ${isHidden ? 'bg-[var(--bg-tertiary)] border-[var(--border-color)] opacity-60' : 'bg-amber-50 border-amber-100'}`}>
-                          <div className="flex flex-wrap items-center gap-3 min-w-0">
-                          <span className={`font-semibold ${isHidden ? 'text-[var(--text-muted)] line-through' : 'text-amber-700'}`}>#{mod.name}</span>
-                          <span className="text-sm font-bold text-[var(--text-muted)] num">฿{Number(mod.price).toLocaleString()}</span>
-                          {beanCost > 0 && (
-                            <span className="text-xs font-medium text-rose-500 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-100 num">ทุน ฿{beanCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                          )}
-                          {mod.isDefault && (
-                            <span className="text-xs font-medium text-amber-700 bg-amber-200 px-2 py-0.5 rounded-lg">เบส</span>
-                          )}
-                          <span className="text-xs font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-2 py-0.5 rounded-lg">{mod.group || 'เมล็ดกาแฟ'}</span>
-                          {isHidden && (
-                            <span className="text-xs font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-2 py-0.5 rounded-lg flex items-center gap-1">
-                              <EyeOff size={10} /> ซ่อน (เมล็ดหมด)
-                            </span>
-                          )}
-                            <Badge variant={linkCount > 0 ? 'success' : 'warning'}>
-                              {linkCount > 0 ? 'ผูกสต็อกแล้ว · ' + linkCount + ' รายการ' : 'ยังไม่ผูกสต็อก'}
-                            </Badge>
-                        </div>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => runDbAction(async () => {
-                              await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'beanModifiers', mod.id), { available: isHidden });
-                            }, 'อัปเดตการแสดงผลไม่สำเร็จ')}
-                            className={`p-2 rounded-xl transition-all ${isHidden ? 'text-[var(--text-muted)] hover:text-emerald-600 hover:bg-emerald-50' : 'text-amber-500 hover:text-amber-700 hover:bg-amber-100'}`}
-                            title={isHidden ? 'แสดงเมล็ดนี้' : 'ซ่อนเมล็ดนี้ (เมล็ดหมด)'}
-                          >
-                            {isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setNewBeanModifier({
-                                name: mod.name,
-                                price: mod.price,
-                                stockLinks: mod.stockLinks || [],
-                                isDefault: mod.isDefault === true,
-                                group: mod.group || 'เมล็ดกาแฟ'
-                              });
-                              setEditingBeanModifierId(mod.id);
-                            }}
-                            className="text-blue-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-xl transition-all"
-                          >
-                            <Edit size={16} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setBeanToDelete(mod);
-                              setShowDeleteBeanConfirm(true);
-                            }}
-                            className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-xl transition-all"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-
-          {/* Quick Expenses Panel */}
-          <div id="panel-quickExpenses" className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-lg text-[var(--text-primary)] flex items-center gap-3  tracking-tighter">
-                <Zap size={22} className="text-red-500" /> จัดการ #คีย์ลัดรายจ่าย
-              </h2>
-              <button onClick={() => toggleAdminPanel('quickExpenses')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
-                {adminPanels.quickExpenses ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </button>
-            </div>
-            {adminPanels.quickExpenses && (
-              <div className="space-y-5">
-                <form onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!newQuickExpense.label || !newQuickExpense.title) return;
-                  await runDbAction(async () => {
-                    const col = collection(db, 'artifacts', appId, 'public', 'data', 'quickExpenses');
-                    const data = {
-                      label: String(newQuickExpense.label).trim(),
-                      title: String(newQuickExpense.title).trim(),
-                      amount: newQuickExpense.amount ? Number(newQuickExpense.amount) : '',
-                      unit: String(newQuickExpense.unit || ''),
-                      category: String(newQuickExpense.category),
-                      icon: String(newQuickExpense.icon || '💰'),
-                      updatedAt: serverTimestamp()
-                    };
-                    if (editingQuickExpenseId) {
-                      await updateDoc(doc(col, editingQuickExpenseId), data);
-                    } else {
-                      await addDoc(col, { ...data, createdAt: serverTimestamp() });
-                    }
-                    setNewQuickExpense({ label: '', title: '', amount: '', unit: '', category: DEFAULT_EXPENSE_CATEGORY, icon: '💰' });
-                    setEditingQuickExpenseId(null);
-                  }, editingQuickExpenseId ? 'อัปเดตคีย์ลัดไม่สำเร็จ' : 'สร้างคีย์ลัดไม่สำเร็จ');
-                }} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ชื่อปุ่ม (เช่น #ค่าไฟ)</label>
-                      <input type="text" required value={newQuickExpense.label} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, label: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none" placeholder="#ค่าไฟ" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ชื่อที่บันทึก (เช่น ค่าไฟประจำเดือน)</label>
-                      <input type="text" required value={newQuickExpense.title} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, title: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none" placeholder="ค่าไฟ" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ยอดเงิน (ถ้ามี)</label>
-                      <input type="number" value={newQuickExpense.amount} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, amount: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none num" placeholder="ไม่ต้องใส่ถ้าเปลี่ยนทุกวัน" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">หน่วย (เช่น บิล, รอบ)</label>
-                      <input type="text" value={newQuickExpense.unit} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, unit: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none" placeholder="บิล" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">ไอคอน</label>
-                      <select value={newQuickExpense.icon} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, icon: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-sm font-semibold outline-none">
-                        <option value="💰">💰 เงิน</option>
-                        <option value="🧊">🧊 น้ำแข็ง</option>
-                        <option value="💡">💡 ไฟ</option>
-                        <option value="💧">💧 น้ำ</option>
-                        <option value="🛒">🛒 ของเข้าร้าน</option>
-                        <option value="👤">👤 ค่าจ้าง</option>
-                        <option value="📦">📦 พัสดุ</option>
-                        <option value="🏠">🏠 ค่าเช่า</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)]  tracking-widest">หมวดหมู่</label>
-                      <select value={newQuickExpense.category} onChange={(e) => setNewQuickExpense({ ...newQuickExpense, category: e.target.value })} className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 text-xs font-medium outline-none">
-                        {EXPENSE_CATEGORIES.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    {editingQuickExpenseId && (
-                      <button type="button" onClick={() => { setNewQuickExpense({ label: '', title: '', amount: '', unit: '', category: DEFAULT_EXPENSE_CATEGORY, icon: '💰' }); setEditingQuickExpenseId(null); }} className="flex-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] py-4 rounded-2xl font-semibold text-xs  tracking-[0.2em]">ยกเลิก</button>
-                    )}
-                    <button type="submit" className={`flex-[2] ${editingQuickExpenseId ? 'bg-blue-500 border-blue-700' : 'bg-red-500 border-red-700'} text-white py-4 rounded-2xl font-semibold text-xs  tracking-[0.2em] shadow-[var(--elev-2)] border-b-4`}>
-                      {editingQuickExpenseId ? 'บันทึกการแก้ไข' : 'เพิ่มคีย์ลัด'}
-                    </button>
-                  </div>
-                </form>
-
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-2 scrollbar-hide">
-                  {quickExpenses.length === 0 && (
-                    <div className="text-center py-4 space-y-4">
-                      <p className="text-xs text-[var(--text-muted)] font-semibold  tracking-widest">ยังไม่มีคีย์ลัด</p>
-                      <button onClick={async () => {
-                        const defaults = [
-                          { label: '#ค่าน้ำแข็ง 35.-', title: 'ค่าน้ำแข็ง', amount: 35, unit: 'บิล', category: 'ค่าน้ำแข็ง', icon: '🧊' },
-                          { label: '#ค่าไฟ 100.-', title: 'ค่าไฟ', amount: 100, unit: 'รอบ', category: 'ค่าไฟ', icon: '💡' },
-                          { label: '#ซื้อของเข้าร้าน', title: 'ซื้อของเข้าร้าน', amount: '', unit: 'รายการ', category: 'วัตถุดิบ', icon: '🛒' }
-                        ];
-                        await runDbAction(async () => {
-                          for (const d of defaults) {
-                            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'quickExpenses'), { ...d, createdAt: serverTimestamp() });
-                          }
-                        }, 'ตั้งค่าเริ่มต้นไม่สำเร็จ');
-                      }} className="text-xs font-medium text-red-500 border border-red-200 px-4 py-2 rounded-xl hover:bg-red-50">ใช้ค่าเริ่มต้นทางร้าน</button>
-                    </div>
-                  )}
-                  {quickExpenses.map(item => (
-                    <div key={item.id} className="flex items-center justify-between p-4 bg-red-50 rounded-2xl border border-red-100">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl">{item.icon}</span>
-                        <div>
-                          <p className="font-semibold text-red-700 text-sm">{item.label}</p>
-                          <p className="text-xs font-bold text-[var(--text-muted)]  tracking-tighter">{item.title} | {item.category}</p>
-                        </div>
-                      </div>
-                      <div className="flex gap-1">
-                        <button onClick={() => { setNewQuickExpense(item); setEditingQuickExpenseId(item.id); }} aria-label="แก้ไขรายจ่ายด่วน" className="text-blue-400 hover:text-blue-600 p-2"><Edit size={16} /></button>
-                        <button onClick={() => {
-                          setQuickExpenseToDelete(item);
-                          setShowDeleteQuickExpenseConfirm(true);
-                        }} aria-label="ลบรายจ่ายด่วน" className="text-red-400 hover:text-red-600 p-2"><Trash2 size={16} /></button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          </>}
-
-          {/* Monthly & Expenses — shown in stats tab */}
-          {activeAdminTab === 'stats' && <>
-          {/* Monthly Stats Panel */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-[var(--elev-2)] relative overflow-hidden border-t-[10px] border-t-emerald-500 shadow-emerald-500/5">
-            <div className="flex justify-between items-start mb-8">
-              <div>
-                <p className="text-xs font-medium  tracking-[0.3em] text-[var(--text-muted)] mb-2">ภาพรวมผลกำไรรายเดือน</p>
-                <h3 className="text-xl font-semibold text-[var(--text-primary)] tracking-tight">
-                  {new Date(selectedHistoryDate).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
-                </h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="p-3 bg-emerald-50 text-emerald-500 rounded-2xl shadow-sm"><BarChart3 size={28} /></div>
-                <button onClick={() => toggleAdminPanel('monthly')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
-                  {adminPanels.monthly ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                </button>
-              </div>
-            </div>
-            {adminPanels.monthly && (
-              <div className="space-y-6 text-[var(--text-primary)]">
-                <div className="flex justify-between items-end border-b border-[var(--border-color)] pb-4">
-                  <span className="text-[var(--text-muted)] font-semibold text-[12px]  tracking-wider">รายรับรวม</span>
-                  <span className="text-3xl font-semibold text-emerald-600 tracking-tighter num">฿{monthlyStats.revenue.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-end border-b border-[var(--border-color)] pb-4">
-                  <span className="text-[var(--text-muted)] font-semibold text-[12px]  tracking-wider">รายจ่ายรวม</span>
-                  <span className="text-2xl font-semibold text-red-400 tracking-tighter num">฿{monthlyStats.cost.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-end pt-6">
-                  <span className="text-[var(--text-primary)] font-semibold text-[14px]  tracking-[0.2em]">กำไรสุทธิ</span>
-                  <span className={`text-4xl font-semibold tracking-tighter drop-shadow-sm ${monthlyStats.profit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                    ฿{monthlyStats.profit.toLocaleString()}
-                  </span>
-                </div>
-                <div className="bg-emerald-500/5 p-4 rounded-3xl flex justify-between items-center mt-6 border border-emerald-500/10">
-                  <span className="text-xs font-medium text-emerald-600  tracking-widest">จำนวนบิลที่ปิดสำเร็จ:</span>
-                  <span className="text-lg font-semibold text-emerald-700 num">{monthlyStats.count} <small className="text-xs opacity-60">บิล</small></span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Daily Expenses Panel */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] p-6 border border-[var(--border-color)] shadow-sm space-y-8 text-[var(--text-primary)]">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-xl text-[var(--text-primary)] flex items-center gap-3  tracking-tighter"><DollarSign size={24} className="text-red-500" /> บันทึกรายจ่ายรายวัน</h2>
-              <button onClick={() => toggleAdminPanel('expenses')} className="p-2 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)] transition-all">
-                {adminPanels.expenses ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </button>
-            </div>
-            {adminPanels.expenses && (
-              <>
-                <form onSubmit={addExpense} className="space-y-5 text-[var(--text-primary)]">
-                  <input type="text" placeholder="บันทึกรายจ่ายวันนี้..." required value={newExpense.title} onChange={e => setNewExpense({ ...newExpense, title: e.target.value })} className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[1.5rem] p-4 text-sm font-semibold outline-none shadow-inner focus:bg-[var(--bg-secondary)] transition-all" />
-                  <div className="grid grid-cols-2 gap-4 num"><input type="number" placeholder="จำนวนเงิน..." required value={newExpense.amount} onChange={e => setNewExpense({ ...newExpense, amount: e.target.value })} className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[1.5rem] p-4 text-sm font-semibold outline-none shadow-inner" /><select value={newExpense.category} onChange={e => setNewExpense({ ...newExpense, category: e.target.value })} className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[1.5rem] p-4 text-xs font-medium outline-none shadow-inner cursor-pointer text-[var(--text-primary)]">{EXPENSE_CATEGORIES.map(cat => (<option key={cat} value={cat}>{cat}</option>))}</select></div>
-                  <button type="submit" className="w-full bg-[var(--surface-inverse)] text-white py-6 rounded-[2rem] font-semibold text-xs  shadow-[var(--elev-2)] active:scale-95 tracking-[0.2em] border-b-4 border-[var(--border-color)]">บันทึกรายจ่าย</button>
-                </form>
-                <div className="space-y-3 max-h-56 overflow-y-auto scrollbar-hide border-t border-[var(--border-color)] pt-6 text-[var(--text-primary)]">
-                  {expenses.filter(e => e.date === selectedHistoryDate).length === 0 && (
-                    <p className="text-center text-xs text-[var(--text-muted)] font-semibold  tracking-widest py-4">ไม่มีข้อมูลรายจ่ายวันนี้</p>
-                  )}
-                  {expenses.filter(e => e.date === selectedHistoryDate).map(e => (
-                    <div key={e.id} className="flex justify-between items-center p-4 bg-red-50/40 rounded-2xl border border-red-100/50 text-xs font-medium">
-                      <span className="text-[var(--text-primary)]">{String(e.title)}</span>
-                      <div className="flex items-center gap-4">
-                        <span className="text-red-500 font-semibold text-sm num">฿{Number(e.amount).toLocaleString()}</span>
-                        <button onClick={async () => {
-                          await runDbAction(async () => {
-                            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', e.id));
-                          }, 'ลบค่าใช้จ่ายไม่สำเร็จ');
-                        }} className="text-[var(--text-muted)] hover:text-red-500 transition-colors active:scale-90"><Trash2 size={16} /></button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-          </>}
-
-        </div>
-
-        {/* Right Panel - Store Management */}
-        {(activeAdminTab === 'manage' || activeAdminTab === 'stats') && (
-        <div className={`${activeAdminTab === 'stats' ? 'hidden lg:flex' : 'flex'} flex-1 bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[3.5rem] shadow-[var(--elev-2)] border border-[var(--border-color)] flex-col p-4 md:p-6 lg:p-6 space-y-4 md:space-y-6 lg:space-y-8 text-[var(--text-primary)] shadow-emerald-500/5`}>
-          <h2 className="font-bold text-lg md:text-xl lg:text-2xl text-[var(--text-primary)]  tracking-tighter font-semibold px-2 leading-none">Store Management</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 gap-3 md:gap-4 lg:gap-6 flex-1 overflow-y-auto pr-2 scrollbar-hide text-[var(--text-primary)]">
-            <button onClick={() => setView('merchant')} className="p-4 md:p-6 lg:p-6 bg-orange-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-orange-100 text-orange-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all shadow-md active:scale-95"><ChefHat size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">จอภาพครัว</span></button>
-            <button onClick={() => setView('bills')} className="p-4 md:p-6 lg:p-6 bg-blue-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-blue-100 text-blue-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all shadow-md active:scale-95"><FileText size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">ประวัติบิล</span></button>
-            <button onClick={() => setView('stock')} className="p-4 md:p-6 lg:p-6 bg-emerald-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-emerald-100 text-emerald-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all shadow-md active:scale-95"><Package size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">คลังสต็อก</span></button>
-            <button onClick={() => setView('profitability')} className="p-4 md:p-6 lg:p-6 bg-emerald-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-emerald-100 text-emerald-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all shadow-md active:scale-95"><Target size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">ความสามารถทำกำไร</span></button>
-            <button onClick={() => setShowExportConfirm(true)} className="p-4 md:p-6 lg:p-6 bg-green-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-green-100 text-green-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all shadow-md active:scale-95"><Download size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">Excel Report</span></button>
-            <button onClick={() => {
-              const backupData = {
-                timestamp: new Date().toISOString(),
-                appId,
-                data: { menu, stock, orders, expenses, members, beanModifiers, quickExpenses, dynamicCategories }
-              };
-              const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = `POS_Backup_${new Date().toISOString().slice(0, 10)}.json`;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-            }} className="p-4 md:p-6 lg:p-6 bg-indigo-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-indigo-100 text-indigo-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all shadow-md active:scale-95"><Save size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">Backup JSON</span></button>
-            <button onClick={() => setShowResetConfirm(true)} className="p-4 md:p-6 lg:p-6 bg-red-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-red-100 text-red-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all active:scale-95 leading-none"><RefreshCcw size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">ล้างคิวใหม่</span></button>
-            <button onClick={() => setShowSeedConfirm(true)} className="p-4 md:p-6 lg:p-6 bg-[var(--bg-tertiary)] rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-[var(--border-color)] text-[var(--text-muted)] flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all active:scale-95 hover:bg-[var(--bg-secondary)] hover:text-emerald-500 hover:border-emerald-200"><Banknote size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">กู้คืนข้อมูลเริ่มต้น</span></button>
-            <button onClick={handleBackfillSoldCount} disabled={isBackfilling} className="p-4 md:p-6 lg:p-6 bg-amber-50 rounded-2xl md:rounded-[2rem] lg:rounded-[var(--radius)] border-2 border-amber-100 text-amber-600 flex flex-col items-center justify-center gap-3 md:gap-4 lg:gap-6 hover:shadow-[var(--elev-3)] transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none col-span-2 md:col-span-1"><TrendingUp size={32} className="md:w-12 md:h-12 lg:w-[60px] lg:h-[60px]" /><span className="font-semibold text-xs md:text-xs  tracking-[0.2em] md:tracking-[0.3em] leading-none">{isBackfilling ? 'กำลังคำนวณ...' : 'คำนวณยอดขายย้อนหลัง'}</span></button>
-          </div>
-        </div>
-        )}
-      </div>
-
-      {/* Reset Session Confirm Modal */}
-      {showResetConfirm && (
-        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 backdrop-blur-3xl p-4 md:p-6 animate-in fade-in text-center text-[var(--text-primary)] leading-none">
-          <div className="bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[4rem] p-6 md:p-6 lg:p-8 max-w-xl w-full shadow-[var(--elev-3)] border border-white/10 leading-none">
-            <div className="w-16 h-16 md:w-20 md:h-20 lg:w-28 lg:h-28 bg-red-50 rounded-full mx-auto flex items-center justify-center text-red-500 mb-6 md:mb-8 lg:mb-12 shadow-inner animate-pulse leading-none"><RefreshCcw size={32} className="md:w-12 md:h-12 lg:w-16 lg:h-16" strokeWidth={2.5} /></div>
-            <h3 className="font-semibold text-2xl md:text-3xl lg:text-4xl mb-3 md:mb-4 lg:mb-4 tracking-tighter  leading-none">เริ่มรอบวันใหม่?</h3>
-            <p className="text-[var(--text-muted)] font-bold mb-8 md:mb-12 lg:mb-16 leading-relaxed px-2 md:px-4 lg:px-6 text-sm md:text-base leading-none">ออเดอร์ค้างจะถูกลบและคิวจะกลับไปที่ #1 <br /><span className="text-emerald-500 font-semibold  text-xs md:text-xs mt-2 md:mt-3 block leading-none">(ข้อมูลประวัติขายและสต็อกจะไม่หายไป)</span></p>
-            <div className="grid grid-cols-2 gap-3 md:gap-4 lg:gap-6 leading-none">
-              <button onClick={() => setShowResetConfirm(false)} className="py-4 md:py-6 lg:py-8 bg-[var(--bg-tertiary)] rounded-xl md:rounded-2xl lg:rounded-[2rem] font-semibold  text-xs md:text-sm tracking-widest text-[var(--text-muted)] active:scale-95 transition-all leading-none">ย้อนกลับ</button>
-              <button onClick={executeResetSession} className="py-4 md:py-6 lg:py-8 bg-red-600 text-white rounded-xl md:rounded-2xl lg:rounded-[2rem] font-semibold  text-xs md:text-sm tracking-widest shadow-[var(--elev-3)] transition-all border-b-4 md:border-b-8 border-red-800 active:scale-95 transition-all leading-none">ตกลง เริ่มใหม่</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Clear Upsell Stats Confirm Modal */}
+      <ConfirmModal
+        isOpen={showResetConfirm}
+        onClose={() => setShowResetConfirm(false)}
+        onConfirm={executeResetSession}
+        title="เริ่มรอบวันใหม่?"
+        message="ออเดอร์ค้างของวันนี้จะถูกลบ และคิวจะกลับไปที่ #1 (ข้อมูลประวัติขายและสต็อกจะไม่หายไป)"
+        confirmText="ตกลง เริ่มใหม่"
+        cancelText="ย้อนกลับ"
+        variant="danger"
+      />
       <ConfirmModal
         isOpen={showClearUpsellConfirm}
         onClose={() => setShowClearUpsellConfirm(false)}
@@ -1759,32 +623,26 @@ export default function AdminView() {
         cancelText="ยกเลิก"
         variant="danger"
       />
-
-      {/* Delete Bean Modifier Confirm Modal */}
       <ConfirmModal
         isOpen={showDeleteBeanConfirm}
         onClose={() => { setShowDeleteBeanConfirm(false); setBeanToDelete(null); }}
         onConfirm={handleDeleteBeanModifier}
-        title="ลบแท็กกาแฟ"
-        message={`ต้องการลบแท็ก #${beanToDelete?.name || ''} ใช่หรือไม่?`}
+        title="ลบตัวเลือก"
+        message={`ต้องการลบ "${beanToDelete?.name || ''}" ใช่หรือไม่?`}
         confirmText="ลบ"
         cancelText="ยกเลิก"
         variant="danger"
       />
-
-      {/* Delete Quick Expense Confirm Modal */}
       <ConfirmModal
         isOpen={showDeleteQuickExpenseConfirm}
         onClose={() => { setShowDeleteQuickExpenseConfirm(false); setQuickExpenseToDelete(null); }}
         onConfirm={handleDeleteQuickExpense}
-        title="ลบคีย์ลัดรายจ่าย"
-        message={`ต้องการลบคีย์ลัด ${quickExpenseToDelete?.label || ''} ใช่หรือไม่?`}
+        title="ลบปุ่มรายจ่ายด่วน"
+        message={`ต้องการลบปุ่ม ${quickExpenseToDelete?.label || ''} ใช่หรือไม่?`}
         confirmText="ลบ"
         cancelText="ยกเลิก"
         variant="danger"
       />
-
-      {/* Export Excel Confirm Modal */}
       <ConfirmModal
         isOpen={showExportConfirm}
         onClose={() => setShowExportConfirm(false)}
@@ -1795,8 +653,6 @@ export default function AdminView() {
         cancelText="ยกเลิก"
         variant="primary"
       />
-
-      {/* Seed Database Confirm Modal */}
       <ConfirmModal
         isOpen={showSeedConfirm}
         onClose={() => setShowSeedConfirm(false)}
