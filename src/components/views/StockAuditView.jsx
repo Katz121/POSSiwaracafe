@@ -525,7 +525,7 @@ export default function StockAuditView() {
 
       {/* tabs + search */}
       <div className="sticky top-0 z-10 -mx-4 mt-4 flex flex-wrap items-center gap-2 bg-[var(--bg-primary)]/90 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 basis-full md:basis-0 md:flex-1">
           <Segmented
             value={tab}
             onChange={setTab}
@@ -538,14 +538,14 @@ export default function StockAuditView() {
           />
         </div>
         {(tab === 'sold' || tab === 'stock') && (
-          <div className="flex items-center gap-2">
-            <label className="relative">
+          <div className="flex w-full items-center gap-2 md:w-auto">
+            <label className="relative min-w-0 flex-1 md:flex-none">
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="ค้นหาเมนู/วัตถุดิบ"
-                className="h-10 w-44 rounded-[var(--radius-sm)] border border-[var(--border-color)] bg-[var(--bg-secondary)] pl-9 pr-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+                className="h-10 w-full rounded-[var(--radius-sm)] md:w-44 border border-[var(--border-color)] bg-[var(--bg-secondary)] pl-9 pr-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
               />
             </label>
             <button
