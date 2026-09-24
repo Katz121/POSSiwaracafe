@@ -306,10 +306,10 @@ export const getAlertIcon = (type) => {
  */
 export const getAlertColor = (severity) => {
   switch (severity) {
-    case ALERT_SEVERITY.CRITICAL: return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-600', icon: 'text-red-500' };
-    case ALERT_SEVERITY.WARNING: return { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', icon: 'text-amber-500' };
-    case ALERT_SEVERITY.SUCCESS: return { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', icon: 'text-emerald-500' };
+    case ALERT_SEVERITY.CRITICAL: return { bg: 'bg-[var(--state-danger-soft)]', border: 'border-[var(--state-danger)]', text: 'text-[var(--state-danger)]', icon: 'text-[var(--state-danger)]' };
+    case ALERT_SEVERITY.WARNING: return { bg: 'bg-[var(--state-warn-soft)]', border: 'border-[var(--state-warn)]', text: 'text-[var(--state-warn)]', icon: 'text-[var(--state-warn)]' };
+    case ALERT_SEVERITY.SUCCESS: return { bg: 'bg-[var(--state-ok-soft)]', border: 'border-[var(--state-ok)]', text: 'text-[var(--state-ok)]', icon: 'text-[var(--state-ok)]' };
     case ALERT_SEVERITY.INFO:
-    default: return { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', icon: 'text-blue-500' };
+    default: return { bg: 'bg-[var(--state-info-soft)]', border: 'border-[var(--state-info)]', text: 'text-[var(--state-info)]', icon: 'text-[var(--state-info)]' };
   }
 };

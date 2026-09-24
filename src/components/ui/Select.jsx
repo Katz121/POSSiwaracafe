@@ -142,7 +142,7 @@ const Select = forwardRef(({
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="ค้นหา..."
-                  className="w-full px-3 py-2 text-sm bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[var(--radius-sm)] focus:outline-none focus:border-[var(--accent-emerald)]"
+                  className="w-full px-3 py-2 text-sm bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[var(--radius-sm)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
             )}
@@ -163,7 +163,7 @@ const Select = forwardRef(({
                       w-full flex items-center justify-between gap-2 px-4 py-3 text-left
                       transition-colors duration-150
                       ${option.value === value
-                        ? 'bg-[var(--bg-tertiary)] text-[var(--accent-emerald)]'
+                        ? 'bg-[var(--bg-tertiary)] text-[var(--accent)]'
                         : 'hover:bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
                       }
                     `}

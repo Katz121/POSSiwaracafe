@@ -4,7 +4,7 @@ import { EXPENSE_CATEGORIES } from '../../../config/constants';
 import { isInventoryCategory } from '../../../utils/stockIntake';
 import { applyExpenseTitle, displayTotal, displayUnitCost, rankTitleSuggestions } from './expenseModel';
 
-const FIELD = 'w-full min-h-12 rounded-[var(--radius-sm)] border bg-[var(--bg-surface)] px-4 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] focus-visible:shadow-[var(--focus-ring)] read-only:bg-[var(--bg-sunken)] read-only:text-[var(--text-secondary)]';
+const FIELD = 'w-full min-h-12 rounded-[var(--radius-sm)] border bg-[var(--bg-surface)] px-4 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] focus-visible:shadow-[var(--focus-ring)] [&:read-only:not(select)]:bg-[var(--bg-sunken)] [&:read-only:not(select)]:text-[var(--text-secondary)]';
 const LABEL = 'mb-1.5 block text-sm font-medium text-[var(--text-secondary)]';
 
 function Field({ id, label, error, hint, children }) {

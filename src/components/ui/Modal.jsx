@@ -168,7 +168,7 @@ export const ConfirmModal = ({
   const iconBgColors = {
     danger: 'bg-[var(--bg-tertiary)] text-[var(--state-danger)]',
     warning: 'bg-[var(--bg-tertiary)] text-[var(--state-warn)]',
-    primary: 'bg-[var(--bg-tertiary)] text-[var(--accent-emerald)]',
+    primary: 'bg-[var(--bg-tertiary)] text-[var(--accent)]',
     info: 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
   };
 
@@ -249,7 +249,7 @@ export const InputModal = ({
   const iconBgColors = {
     danger: 'bg-[var(--bg-tertiary)] text-[var(--state-danger)]',
     warning: 'bg-[var(--bg-tertiary)] text-[var(--state-warn)]',
-    primary: 'bg-[var(--bg-tertiary)] text-[var(--accent-emerald)]',
+    primary: 'bg-[var(--bg-tertiary)] text-[var(--accent)]',
     secondary: 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
   };
 

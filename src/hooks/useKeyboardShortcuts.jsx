@@ -4,6 +4,8 @@
  */
 /* eslint-disable react-refresh/only-export-components -- exports useKeyboardShortcuts hook + KeyboardShortcutsHelp component together by design */
 import { useEffect, useCallback } from 'react';
+import Modal from '../components/ui/Modal';
+import Button from '../components/ui/Button';
 
 // Default shortcuts configuration
 export const DEFAULT_SHORTCUTS = {
@@ -95,10 +97,13 @@ export default function useKeyboardShortcuts(handlers = {}, options = {}) {
 
 /**
  * Keyboard Shortcuts Help Modal Component
+ * Uses the shared Modal (focus, Esc, backdrop) and design tokens only.
  */
-export function KeyboardShortcutsHelp({ isOpen, onClose }) {
-  if (!isOpen) return null;
+const KBD = 'min-w-11 px-3 py-1.5 text-center bg-[var(--surface-inverse)] text-[var(--text-on-inverse)] rounded-[var(--radius-sm)] text-xs font-mono font-medium';
+const ROW = 'flex items-center gap-3 rounded-[var(--radius-sm)] p-3';
+const HEADING = 'font-semibold text-sm text-[var(--text-primary)] mb-3';
 
+export function KeyboardShortcutsHelp({ isOpen, onClose }) {
   const navigationShortcuts = Object.entries(DEFAULT_SHORTCUTS)
     .filter(([, v]) => v.action === 'navigate')
     .map(([k, v]) => ({ key: k, ...v }));
@@ -108,65 +113,49 @@ export function KeyboardShortcutsHelp({ isOpen, onClose }) {
     .map(([k, v]) => ({ key: k, ...v }));
 
   return (
-    <div className="fixed inset-0 z-[var(--z-modal-bg)] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-3)] max-w-2xl w-full max-h-[80vh] overflow-hidden">
-        <div className="p-6 bg-[var(--surface-inverse)] text-white">
-          <h2 className="text-xl font-bold tracking-wider">Keyboard Shortcuts</h2>
-          <p className="text-[var(--text-muted)] text-sm mt-1">กด ? เพื่อเปิด/ปิดหน้านี้</p>
-        </div>
-
-        <div className="p-6 overflow-y-auto max-h-[60vh] space-y-6">
-          {/* Navigation */}
-          <div>
-            <h3 className="font-semibold text-sm text-[var(--text-primary)] tracking-wider mb-3">นำทาง</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {navigationShortcuts.map(s => (
-                <div key={s.key} className="flex items-center gap-3 bg-[var(--bg-tertiary)] rounded-[var(--radius-sm)] p-3">
-                  <kbd className="px-3 py-1.5 bg-[var(--surface-inverse)] text-white rounded-[var(--radius-sm)] text-xs font-mono font-medium shadow-[var(--elev-2)]">{s.key}</kbd>
-                  <span className="text-sm font-semibold text-[var(--text-secondary)]">{s.label}</span>
-                </div>
-              ))}
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="คีย์ลัด (กด ? เพื่อเปิด/ปิด)"
+      size="2xl"
+      bodyClassName="space-y-6"
+      footer={<Button variant="secondary" fullWidth onClick={onClose}>ปิด (Esc)</Button>}
+    >
+      <section>
+        <h3 className={HEADING}>นำทาง</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {navigationShortcuts.map(s => (
+            <div key={s.key} className={`${ROW} bg-[var(--bg-sunken)]`}>
+              <kbd className={KBD}>{s.key}</kbd>
+              <span className="text-sm font-semibold text-[var(--text-secondary)]">{s.label}</span>
             </div>
-          </div>
-
-          {/* POS Actions */}
-          <div>
-            <h3 className="font-semibold text-sm text-[var(--text-primary)] tracking-wider mb-3">หน้า POS</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {posShortcuts.map(s => (
-                <div key={s.key} className="flex items-center gap-3 bg-emerald-50 rounded-[var(--radius-sm)] p-3">
-                  <kbd className="px-3 py-1.5 bg-emerald-600 text-white rounded-[var(--radius-sm)] text-xs font-mono font-medium shadow-[var(--elev-2)]">{s.key}</kbd>
-                  <span className="text-sm font-semibold text-[var(--accent-emerald)]">{s.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Other */}
-          <div>
-            <h3 className="font-semibold text-sm text-[var(--text-primary)] tracking-wider mb-3">อื่นๆ</h3>
-            <div className="flex gap-2">
-                <div className="flex items-center gap-3 bg-violet-50 rounded-[var(--radius-sm)] p-3">
-                <kbd className="px-3 py-1.5 bg-violet-600 text-white rounded-[var(--radius-sm)] text-xs font-mono font-medium shadow-[var(--elev-2)]">/</kbd>
-                <span className="text-sm font-semibold text-[var(--accent-ai)]">ค้นหา</span>
-              </div>
-                <div className="flex items-center gap-3 bg-violet-50 rounded-[var(--radius-sm)] p-3">
-                <kbd className="px-3 py-1.5 bg-violet-600 text-white rounded-[var(--radius-sm)] text-xs font-mono font-medium shadow-[var(--elev-2)]">?</kbd>
-                <span className="text-sm font-semibold text-[var(--accent-ai)]">ช่วยเหลือ</span>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
+      </section>
 
-        <div className="p-4 bg-[var(--bg-tertiary)] border-t border-[var(--border-color)]">
-          <button
-            onClick={onClose}
-            className="w-full py-3 bg-[var(--surface-inverse)] text-white rounded-[var(--radius-sm)] font-medium text-sm tracking-wider hover:bg-[var(--surface-inverse-hover)] transition-colors"
-          >
-            ปิด (Esc)
-          </button>
+      <section>
+        <h3 className={HEADING}>หน้า POS</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {posShortcuts.map(s => (
+            <div key={s.key} className={`${ROW} bg-[var(--accent-soft)]`}>
+              <kbd className={KBD}>{s.key}</kbd>
+              <span className="text-sm font-semibold text-[var(--accent-soft-fg)]">{s.label}</span>
+            </div>
+          ))}
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section>
+        <h3 className={HEADING}>อื่นๆ</h3>
+        <div className="flex flex-wrap gap-2">
+          {[['/', 'ค้นหา'], ['?', 'ช่วยเหลือ']].map(([k, label]) => (
+            <div key={k} className={`${ROW} bg-[var(--accent-ai-light)]`}>
+              <kbd className={KBD}>{k}</kbd>
+              <span className="text-sm font-semibold text-[var(--accent-ai)]">{label}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </Modal>
   );
 }

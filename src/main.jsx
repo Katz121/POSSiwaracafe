@@ -45,10 +45,10 @@ class ChunkErrorBoundary extends React.Component {
       if (!isOrder || sessionStorage.getItem('reloaded_on_chunk_error')) {
         return (
           <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center">
-            <p className="text-lg mb-4 text-gray-700 font-medium">โหลดหน้าไม่สำเร็จ ลองรีเฟรชอีกครั้งนะคะ</p>
+            <p className="text-lg mb-4 text-[var(--text-secondary)] font-medium">โหลดหน้าไม่สำเร็จ ลองรีเฟรชอีกครั้งนะคะ</p>
             <button 
               onClick={() => { sessionStorage.removeItem('reloaded_on_chunk_error'); window.location.reload(); }}
-              className="px-4 py-2 bg-emerald-500 text-white rounded-lg shadow"
+              className="min-h-11 px-5 py-2 font-semibold bg-[var(--accent)] text-[var(--text-on-accent)] rounded-[var(--radius-sm)] shadow-[var(--elev-1)]"
             >
               รีเฟรช
             </button>

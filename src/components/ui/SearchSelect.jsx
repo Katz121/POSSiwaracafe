@@ -94,7 +94,7 @@ export default function SearchSelect({ value, onChange, groups, getOptionValue, 
                 const index = options.indexOf(item);
                 return <div key={getOptionValue(item)} id={`${id}-${index}`} role="option" aria-selected={getOptionValue(item) === value} data-highlight={index === highlight}
                   onPointerDown={event => event.preventDefault()} onClick={() => choose(item)}
-                  className={`px-4 py-3 cursor-pointer text-sm ${index === highlight ? 'bg-[var(--accent-emerald-light)]' : 'hover:bg-[var(--bg-tertiary)]'}`}>
+                  className={`px-4 py-3 cursor-pointer text-sm ${index === highlight ? 'bg-[var(--accent-soft)]' : 'hover:bg-[var(--bg-tertiary)]'}`}>
                   {getOptionLabel(item)}
                 </div>;
               })}
