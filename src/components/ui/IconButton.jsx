@@ -51,6 +51,7 @@ const IconButton = forwardRef(({
       aria-label={ariaLabel}
       className={`
         inline-flex items-center justify-center
+        pointer-coarse:min-w-11 pointer-coarse:min-h-11
         ${roundedClasses[rounded] ?? 'rounded-full'}
         transition-all duration-200
         focus:outline-none focus-visible:shadow-[var(--focus-ring)]

@@ -20,7 +20,7 @@ const variants = {
 // Heights follow the touch spec: md 44 · lg 48 · xl 56 (POS / KDS actions).
 const sizes = {
   xs: 'px-2 py-1 text-xs rounded-[var(--radius-xs)]',
-  sm: 'px-3 min-h-9 py-1.5 text-sm rounded-[var(--radius-sm)]',
+  sm: 'px-3 min-h-9 pointer-coarse:min-h-11 py-1.5 text-sm rounded-[var(--radius-sm)]',
   md: 'px-4 min-h-11 py-2 text-sm rounded-[var(--radius-sm)]',
   lg: 'px-5 min-h-12 py-2.5 text-base rounded-[var(--radius-sm)]',
   xl: 'px-6 min-h-14 py-3 text-lg rounded-[var(--radius)]',
