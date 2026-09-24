@@ -32,6 +32,9 @@ export function recipeFromIngredients(ingredients, rounds, expectedYieldTotal, n
 }
 
 /** Create a planned batch. Optionally store the ingredients as the prep's standard recipe. */
+/** ราคาขายต่อชิ้น = ราคาทั้งก้อน ÷ ชิ้นที่ตัดได้ (2 ตำแหน่ง) */
+export const piecePrice = (wholePrice, pieces) => (Number(pieces) > 0 ? Math.round((Number(wholePrice) / Number(pieces)) * 100) / 100 : 0);
+
 export async function createBatch({ output, rounds, ingredients, date, note, by, saveAsStandard, expectedYieldTotal }) {
   const data = buildBatchDoc({ date, output, rounds, ingredients, note, by });
   if (Number(expectedYieldTotal) > 0) data.expectedYield = roundQty6(expectedYieldTotal);
@@ -47,7 +50,7 @@ export async function createBatch({ output, rounds, ingredients, date, note, by,
  * ทำเสร็จ · one transaction: batch must still be planned (a second tap or a
  * second device gets "already done" and nothing is deducted twice).
  */
-export async function completeBatch({ batchId, actualIngredients, yieldQty, stockById, by }) {
+export async function completeBatch({ batchId, actualIngredients, yieldQty, stockById, by, wholePrice = 0 }) {
   return runTransaction(db, async (tx) => {
     const bSnap = await tx.get(batchRef(batchId));
     if (!bSnap.exists()) throw new Error('ไม่พบรายการผลิตนี้');
@@ -77,6 +80,7 @@ export async function completeBatch({ batchId, actualIngredients, yieldQty, stoc
       quantity: increment(plan.outputIncrement),
       unitCost: plan.newOutputUnitCost,
       lastProducedAt: nowIso(),
+      ...(wholePrice > 0 ? { wholePrice } : {}),
     });
     tx.update(batchRef(batchId), {
       status: BATCH_STATUS.DONE,
@@ -89,6 +93,8 @@ export async function completeBatch({ batchId, actualIngredients, yieldQty, stoc
       outputUnitCostAfter: plan.newOutputUnitCost,
       doneAt: nowIso(),
       doneBy: by || '',
+      // ราคาทั้งก้อน ÷ ชิ้นที่ตัดได้จริงรอบนี้ · เก็บไว้ดูย้อนหลังว่ารอบไหนตัดได้คุ้มแค่ไหน
+      ...(wholePrice > 0 ? { wholePrice, pricePerPiece: piecePrice(wholePrice, plan.outputIncrement) } : {}),
     });
     return plan;
   });
@@ -171,6 +177,8 @@ export async function savePrepItem({ id, form, stockById }) {
   };
   const days = Number(form.shelfLifeDays);
   data.shelfLifeDays = days > 0 ? days : null;
+  const wholePrice = Number(form.wholePrice);
+  data.wholePrice = wholePrice > 0 ? wholePrice : null;
   if (id) {
     await updateDoc(stockRef(id), data);
     return id;

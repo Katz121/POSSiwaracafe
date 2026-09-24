@@ -327,9 +327,11 @@ export default function MenuManageView() {
     if (newItem.recipeMode === 'whole' && Number(newItem.recipePieces) > 0) {
       data.recipeMode = 'whole';
       data.recipePieces = Number(newItem.recipePieces);
+      data.recipeWholePrice = Number(newItem.recipeWholePrice) > 0 ? Number(newItem.recipeWholePrice) : null;
     } else if ('recipeMode' in data || 'recipePieces' in data || editingItem?.recipeMode) {
       data.recipeMode = null;
       data.recipePieces = null;
+      data.recipeWholePrice = null;
     }
     if (!data.category && dynamicCategories.length > 0) data.category = dynamicCategories[0].name;
     await runDbAction(async () => {

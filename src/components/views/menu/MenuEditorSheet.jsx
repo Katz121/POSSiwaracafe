@@ -1,3 +1,4 @@
+import { roundUpTo5 } from '../../../config/constants';
 import { useEffect, useRef, useState } from 'react';
 import {
   Link2, Plus, Trash2, Sparkles, PackagePlus, Coffee, Candy, Star, TrendingUp, Store, Clock,
@@ -267,6 +268,30 @@ Return [] if no stock items match.`;
                   hint={pieces > 0 ? 'กรอกปริมาณวัตถุดิบทั้งก้อนด้านล่าง ระบบหารเป็นต่อชิ้นให้' : undefined}
                   error={pieces > 0 ? undefined : 'ใส่จำนวนชิ้นที่ตัดได้จากเค้ก 1 ก้อน'}
                 />
+                <div className="mt-3">
+                  <Input
+                    label="ราคาขายทั้งก้อน (บาท)"
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    value={newItem.recipeWholePrice ?? ''}
+                    placeholder="เช่น 590"
+                    onChange={(e) => setNewItem((p) => ({ ...p, recipeWholePrice: e.target.value }))}
+                    hint="ไม่บังคับ · ระบบหารด้วยจำนวนชิ้นเป็นราคาต่อชิ้น"
+                  />
+                  {pieces > 0 && Number(newItem.recipeWholePrice) > 0 && (() => {
+                    const per = Math.round((Number(newItem.recipeWholePrice) / pieces) * 100) / 100;
+                    const rounded = roundUpTo5(per);
+                    return (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--text-secondary)]">
+                        <span>ราคาต่อชิ้น <b className="num text-[var(--text-primary)]">฿{per.toLocaleString('th-TH')}</b> (ปัดเป็น ฿{rounded})</span>
+                        {Number(newItem.price) !== rounded && (
+                          <Button size="sm" variant="secondary" onClick={() => setNewItem((p) => ({ ...p, price: String(rounded) }))}>ใช้ ฿{rounded} เป็นราคาเมนูนี้</Button>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             )}
 

@@ -15,6 +15,7 @@ const formFor = (item) => ({
   category: item?.category || 'วัตถุดิบเบเกอรี่',
   shelfLifeDays: item?.shelfLifeDays ? String(item.shelfLifeDays) : '',
   minQuantity: item?.minQuantity ? String(item.minQuantity) : '',
+  wholePrice: item?.wholePrice ? String(item.wholePrice) : '',
   ingredients: (item?.recipe?.ingredients || []).map((l) => ({ stockId: l.stockId, qty: String(l.qty) })),
   expectedYield: item?.recipe?.expectedYield ? String(item.recipe.expectedYield) : '',
   note: item?.recipe?.note || '',
@@ -140,6 +141,9 @@ export default function PrepSheet({ open, onClose, initialMode = 'list', initial
             <Input label="เก็บได้กี่วัน" type="number" inputMode="numeric" min="0" value={form.shelfLifeDays} onChange={(e) => set({ shelfLifeDays: e.target.value })} hint="ไม่บังคับ" />
             <Input label="เตือนเมื่อเหลือ" type="number" inputMode="decimal" min="0" value={form.minQuantity} onChange={(e) => set({ minQuantity: e.target.value })} hint={form.unit || 'หน่วย'} />
           </div>
+          {isPieceUnit(form.unit) && (
+            <Input label="ราคาขายทั้งก้อน (บาท)" type="number" inputMode="decimal" min="0" value={form.wholePrice} onChange={(e) => set({ wholePrice: e.target.value })} hint="ไม่บังคับ · ตอนทำเสร็จระบบหารด้วยจำนวนชิ้นที่ตัดได้ เป็นราคาต่อชิ้น" />
+          )}
           <Input label="โน้ตสูตร (ไม่บังคับ)" value={form.note} onChange={(e) => set({ note: e.target.value })} maxLength={300} placeholder="เช่น อบ 170° 25 นาที" />
         </form>
       )}

@@ -36,7 +36,7 @@ const byTime = (a, b) => String(a.createdAt || '').localeCompare(String(b.create
  * planned → ทำเสร็จ (ตัดวัตถุดิบจริง + เพิ่มผลผลิตจริง) → ย้อนได้ (คืนสต็อก)
  */
 export default function ProductionView() {
-  const { stock = [] } = useDataContext();
+  const { stock = [], menu = [] } = useDataContext();
   const params = useRouteParams();
   const navigate = useNavigate();
   const toast = useToast();
@@ -127,9 +127,9 @@ export default function ProductionView() {
     );
   };
   const completeTarget = batches.find((b) => b.id === complete) || null;
-  const submitComplete = async ({ actualIngredients, yieldQty }) => {
+  const submitComplete = async ({ actualIngredients, yieldQty, wholePrice }) => {
     const ok = await run(
-      () => completeBatch({ batchId: complete, actualIngredients, yieldQty, stockById, by }),
+      () => completeBatch({ batchId: complete, actualIngredients, yieldQty, stockById, by, wholePrice }),
       (plan) => `บันทึกแล้ว · ได้ ${qty(plan.outputIncrement)} ${completeTarget?.outputUnit || ''} ต้นทุน ฿${plan.costTotal.toLocaleString('th-TH', { maximumFractionDigits: 2 })}`,
     );
     if (ok) setComplete(null);
@@ -264,6 +264,7 @@ export default function ProductionView() {
           stock={pickable}
           stockById={stockById}
           lastBatch={lastBatchFor(completeTarget.outputStockId, batches, stockById)}
+          linkedMenus={menu.filter((m) => m.available !== false && (m.stockLinks || []).some((l) => l.stockId === completeTarget.outputStockId))}
           busy={busy}
           onConfirm={submitComplete}
         />
