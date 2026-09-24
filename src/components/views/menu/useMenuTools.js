@@ -11,7 +11,7 @@ import { uploadImageToR2, isBase64Image } from '../../../services/imageUpload';
  */
 export default function useMenuTools({
   menu, dynamicCategories, beanModifiers, orders, expenses,
-  geminiApiKey, runDbAction, callGeminiAPI, setActivePromotion, toast,
+  aiReady, runDbAction, callGeminiAPI, setActivePromotion, toast,
 }) {
   const [isTranslating, setIsTranslating] = useState(false);
   // ── Promotion ──────────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ export default function useMenuTools({
 
   // AI Promotion Generator
   const handleGeneratePromotions = async () => {
-    if (!geminiApiKey) {
+    if (!aiReady) {
       toast.warning('กรุณาใส่ Gemini API Key ในการตั้งค่าก่อน');
       return;
     }
@@ -264,7 +264,7 @@ ${withDescription
   };
 
   const handleTranslateToEnglish = async () => {
-    if (!geminiApiKey) {
+    if (!aiReady) {
       toast.warning('กรุณาตั้งค่า Gemini API Key ก่อน');
       return;
     }

@@ -56,7 +56,7 @@ function useHeight(ref) {
  */
 export default function MenuManageView() {
   const { menu, stock, dynamicCategories, beanModifiers, orders, expenses, isSyncing } = useDataContext();
-  const { geminiApiKey, cakeSaleCategories } = useConfigContext();
+  const { geminiApiKey, aiReady, cakeSaleCategories } = useConfigContext();
   const { runDbAction, callGeminiAPI, activePromotion, setActivePromotion } = useUIContext();
   const params = useRouteParams();
   const navigate = useNavigate();
@@ -97,7 +97,7 @@ export default function MenuManageView() {
     handleTranslateToEnglish,
   } = useMenuTools({
     menu, dynamicCategories, beanModifiers, orders, expenses,
-    geminiApiKey, runDbAction, callGeminiAPI, setActivePromotion, toast,
+    geminiApiKey, aiReady, runDbAction, callGeminiAPI, setActivePromotion, toast,
   });
 
   // ── Delete ─────────────────────────────────────────────────────────────
@@ -572,6 +572,7 @@ export default function MenuManageView() {
         beanModifiers={beanModifiers}
         cakeSaleCategories={cakeSaleCategories}
         geminiApiKey={geminiApiKey}
+        aiReady={aiReady}
         callGeminiAPI={callGeminiAPI}
         toast={toast}
         isUploading={isUploading}

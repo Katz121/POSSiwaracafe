@@ -353,8 +353,10 @@ export default function App() {
 
   // Get the active API key (prioritize stored key, fallback to env)
   const activeApiKey = useMemo(() => {
-    return geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY || '';
+    // มี Worker proxy (key เก็บเป็น secret ฝั่ง server) = ใช้ AI ได้โดยไม่ต้องมี key ในเครื่อง
+    return geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY || (import.meta.env.VITE_GEMINI_PROXY_URL ? 'server-proxy' : '');
   }, [geminiApiKey]);
+  const aiReady = Boolean(activeApiKey);
 
   // 🔧 Enhanced Gemini API Caller with Rate Limiting, Caching, and History
   const callGeminiAPI = useCallback(async (prompt, parseAsJson = false, options = {}) => {
@@ -473,6 +475,7 @@ export default function App() {
     pinEnabled, vatEnabled, adminPin,
     redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount,
     geminiApiKey,
+    aiReady,
     startingCash,
     reviewUrl,
     shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
@@ -480,7 +483,7 @@ export default function App() {
     comboEnabled, comboPercent, spendThreshold, spendDiscount,
     milkSwap, milkSwapSetting,
   }), [pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths,
-    redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, geminiApiKey, startingCash,
+    redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, geminiApiKey, aiReady, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
     comboEnabled, comboPercent, spendThreshold, spendDiscount, milkSwap, milkSwapSetting]);
 

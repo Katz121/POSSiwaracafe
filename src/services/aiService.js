@@ -9,6 +9,8 @@
  * 5. Historical context injection
  */
 
+import { comparisonRanges } from '../components/views/overview/monthCompare';
+import { getISODate } from '../utils/calculations';
 import {
   AI_RATE_LIMIT_DELAY,
   AI_CACHE_TTL,
@@ -182,12 +184,15 @@ export const buildHistoricalContext = (orders, expenses, selectedMonth) => {
   const currentExpenses = expenses.filter(e => (e.date || '').startsWith(selectedMonth));
   const currentExpenseTotal = currentExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
-  // Calculate previous month stats
+  // Previous month · เดือนปัจจุบันยังไม่จบ ต้องเทียบช่วงวันเดียวกัน (1-24 vs 1-24)
+  // ไม่งั้น AI บอกว่ายอดตก ~38% ทุกกลางเดือน ขัดกับแดชบอร์ด (ดู overview/monthCompare.js)
+  const ranges = comparisonRanges(selectedMonth, getISODate());
+  const inPrev = (d) => Boolean(d) && d >= ranges.previous.start && d <= ranges.previous.end;
   const prevMonthOrders = orders.filter(o =>
-    o.status === 'completed' && (o.date || '').startsWith(prevMonth)
+    o.status === 'completed' && inPrev(o.date || '')
   );
   const prevRevenue = prevMonthOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
-  const prevExpenses = expenses.filter(e => (e.date || '').startsWith(prevMonth));
+  const prevExpenses = expenses.filter(e => inPrev(e.date || ''));
   const prevExpenseTotal = prevExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
   // Calculate trends
@@ -238,9 +243,9 @@ export const buildHistoricalContext = (orders, expenses, selectedMonth) => {
   return `
 📈 **Historical Context:**
 - เทรนด์ 3 เดือนล่าสุด: ${trend} (${monthlyRevenues.map(r => r.toLocaleString()).join(' → ')} บาท)
-- เปลี่ยนแปลงจากเดือนก่อน: รายได้ ${revenueChange >= 0 ? '+' : ''}${revenueChange}%, รายจ่าย ${expenseChange >= 0 ? '+' : ''}${expenseChange}%
+- เปลี่ยนแปลงจากเดือนก่อน${ranges.partial ? ` (ช่วงวันที่ 1-${ranges.days} เท่ากัน)` : ''}: รายได้ ${revenueChange >= 0 ? '+' : ''}${revenueChange}%, รายจ่าย ${expenseChange >= 0 ? '+' : ''}${expenseChange}%
 - วันที่ขายดีที่สุด: ${bestDays || 'ยังไม่มีข้อมูล'}
-- ข้อมูลเดือนก่อน (${prevMonth}): รายได้ ${prevRevenue.toLocaleString()} บาท, ${prevMonthOrders.length} ออเดอร์
+- ข้อมูลเดือนก่อน (${prevMonth}${ranges.partial ? ` วันที่ 1-${ranges.days} เทียบช่วงเดียวกัน` : ''}): รายได้ ${prevRevenue.toLocaleString()} บาท, ${prevMonthOrders.length} ออเดอร์
 `;
 };
 

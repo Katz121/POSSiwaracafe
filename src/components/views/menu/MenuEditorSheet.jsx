@@ -33,7 +33,7 @@ export default function MenuEditorSheet({
   open, onClose, focusSection,
   editingItem, newItem, setNewItem, onSubmit, onDelete, onCakeStock,
   menu, stock, stockById, stockLinkGroups, dynamicCategories, beanModifiers, cakeSaleCategories,
-  geminiApiKey, callGeminiAPI, toast,
+  geminiApiKey, aiReady, callGeminiAPI, toast,
   isUploading, isUploadingPoster, onImageUpload, onPosterUpload,
 }) {
   const [isSuggestingStock, setIsSuggestingStock] = useState(false);
@@ -109,7 +109,7 @@ export default function MenuEditorSheet({
 
   const magicWrite = async () => {
     if (!newItem.name || !newItem.category) { toast.warning('กรุณาระบุชื่อและหมวดหมู่ก่อนใช้ Magic Write'); return; }
-    if (!geminiApiKey) { toast.warning('กรุณาใส่ Gemini API Key ในการตั้งค่าก่อน'); return; }
+    if (!aiReady) { toast.warning('ยังไม่ได้เชื่อม AI'); return; }
     setIsMagicWriting(true);
     try {
       const prompt = `Write a short, appetizing, and premium description for a menu item named '${newItem.name}' in the category '${newItem.category}' for a modern cafe. Keep it under 150 characters. Thai language.`;
@@ -126,7 +126,7 @@ export default function MenuEditorSheet({
   const suggestStock = async () => {
     if (!newItem.name) { toast.warning('กรุณาระบุชื่อเมนูก่อน'); return; }
     if (!stock.length) { toast.warning('ยังไม่มีวัตถุดิบในระบบ'); return; }
-    if (!geminiApiKey) { toast.warning('กรุณาตั้งค่า Gemini API Key ก่อน'); return; }
+    if (!aiReady) { toast.warning('ยังไม่ได้เชื่อม AI'); return; }
     setIsSuggestingStock(true);
     try {
       const stockList = stock.map((s) => `- id:"${s.id}" name:"${s.name}" unit:"${s.unit}"`).join('\n');
