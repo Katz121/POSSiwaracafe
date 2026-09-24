@@ -122,7 +122,7 @@ const Input = forwardRef(({
                 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-[var(--bg-tertiary)]
             ${sizes[size]}
             ${leftIcon || prefix ? 'pl-10' : ''}
-            ${rightIcon || suffix || isPassword ? 'pr-10' : ''}
+            ${isPassword ? 'pr-12' : rightIcon || suffix ? 'pr-10' : ''}
             ${inputClassName}
           `}
           {...props}
@@ -138,7 +138,8 @@ const Input = forwardRef(({
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                aria-label={showPassword ? 'ซ่อนรหัส' : 'แสดงรหัส'}
+                className="-mr-3 w-11 h-11 flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
                 tabIndex={-1}
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}

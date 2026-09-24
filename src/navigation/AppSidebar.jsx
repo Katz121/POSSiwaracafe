@@ -134,7 +134,7 @@ export default function AppSidebar({
                   onClick={onToggleCollapse}
                   aria-label="ย่อแถบเมนู"
                   title="ย่อแถบเมนู"
-                  className="shrink-0 w-10 h-10 flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[var(--focus-ring)]"
+                  className="shrink-0 w-11 h-11 flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[var(--focus-ring)]"
                 >
                   <PanelLeftClose size={18} />
                 </button>
@@ -213,7 +213,7 @@ export default function AppSidebar({
                     type="button"
                     onClick={() => setOverlayOpen(false)}
                     aria-label="ปิดเมนู"
-                    className="shrink-0 w-10 h-10 flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[var(--focus-ring)]"
+                    className="shrink-0 w-11 h-11 flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[var(--focus-ring)]"
                   >
                     <X size={18} />
                   </button>

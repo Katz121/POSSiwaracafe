@@ -142,7 +142,7 @@ export default function DataTable({
                     <button
                       type="button"
                       onClick={() => toggleSort(col)}
-                      className={`inline-flex items-center gap-1 min-h-11 -my-3 px-1 -mx-1 outline-none focus-visible:shadow-[var(--focus-ring)] rounded ${align === 'right' ? 'flex-row-reverse' : ''}`}
+                      className={`inline-flex items-center gap-1 min-h-11 min-w-11 -my-3 px-1 -mx-1 outline-none focus-visible:shadow-[var(--focus-ring)] rounded ${align === 'right' ? 'flex-row-reverse' : ''}`}
                     >
                       {col.header}
                       {active ? (sort.dir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />) : null}

@@ -45,7 +45,7 @@ export default function NewOrderAlert({ alerts = [], dismiss, dismissAll }) {
             type="button"
             onClick={() => dismiss?.(o.id)}
             aria-label="ปิดการแจ้งเตือน"
-            className="shrink-0 w-10 h-10 rounded-[var(--radius-sm)] bg-black/15 flex items-center justify-center active:scale-95"
+            className="shrink-0 w-11 h-11 rounded-[var(--radius-sm)] bg-black/15 flex items-center justify-center active:scale-95"
           >
             <X size={16} />
           </button>
@@ -55,7 +55,7 @@ export default function NewOrderAlert({ alerts = [], dismiss, dismissAll }) {
         <button
           type="button"
           onClick={dismissAll}
-          className="self-center text-xs font-semibold text-[var(--text-on-inverse)] bg-[var(--surface-inverse)] px-3 min-h-9 rounded-full"
+          className="self-center text-xs font-semibold text-[var(--text-on-inverse)] bg-[var(--surface-inverse)] px-4 min-h-11 rounded-full"
         >
           ปิดทั้งหมด ({alerts.length})
         </button>
