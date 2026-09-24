@@ -46,7 +46,7 @@ export default function Banner({
           <button
             type="button"
             onClick={action.onClick}
-            className={`shrink-0 self-center min-h-10 px-3 rounded-[var(--radius-sm)] text-sm font-semibold ${t.ink} hover:bg-[var(--bg-surface)] outline-none focus-visible:shadow-[var(--focus-ring)]`}
+            className={`shrink-0 self-center min-h-11 px-3 rounded-[var(--radius-sm)] text-sm font-semibold ${t.ink} hover:bg-[var(--bg-surface)] outline-none focus-visible:shadow-[var(--focus-ring)]`}
           >
             {action.label}
           </button>
@@ -57,7 +57,7 @@ export default function Banner({
           type="button"
           onClick={onDismiss}
           aria-label="ปิดข้อความ"
-          className="shrink-0 w-10 h-10 min-h-0 -my-1 -mr-1 flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] outline-none focus-visible:shadow-[var(--focus-ring)]"
+          className="shrink-0 w-11 h-11 min-h-0 -my-1 -mr-1 flex items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] outline-none focus-visible:shadow-[var(--focus-ring)]"
         >
           <X size={18} />
         </button>
