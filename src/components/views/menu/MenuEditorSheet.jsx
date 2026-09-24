@@ -97,10 +97,21 @@ export default function MenuEditorSheet({
   };
 
   // Stock link handlers (same shape as v1)
-  const addStockLink = () => setNewItem((p) => ({
-    ...p,
-    stockLinks: [...(p.stockLinks || []), p.recipeMode === 'whole' ? { stockId: '', usage: 0, perWhole: '' } : { stockId: '', usage: 1 }],
-  }));
+  // แถวใหม่ขึ้นบนสุด + โฟกัสช่องค้นหาเลย · เมนูที่ผูกหลายวัตถุดิบไม่ต้องเลื่อนลงไปหา
+  // _k = key ชั่วคราวให้ React จับแถวถูกตัวหลังแทรกหัวแถว (ตัดทิ้งตอนบันทึก)
+  const linkListRef = useRef(null);
+  const addStockLink = () => {
+    const _k = `n${Date.now().toString(36)}`;
+    setNewItem((p) => ({
+      ...p,
+      stockLinks: [p.recipeMode === 'whole' ? { _k, stockId: '', usage: 0, perWhole: '' } : { _k, stockId: '', usage: 1 }, ...(p.stockLinks || [])],
+    }));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const first = linkListRef.current?.querySelector('li:first-child input');
+      first?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      first?.focus({ preventScroll: true });
+    }));
+  };
   // ทางลัดชุดแก้ว/หลอด (ตั้งที่ ตั้งค่า → ตัวเลือกเมนู) · ของที่มีในสูตรแล้วไม่ใส่ซ้ำ
   const addPackaging = (preset) => {
     const whole = newItem.recipeMode === 'whole';
@@ -365,7 +376,7 @@ Return [] if no stock items match.`;
             )}
 
             {links.length > 0 && (
-              <ol className="flex flex-col gap-3">
+              <ol ref={linkListRef} className="flex flex-col gap-3">
                 {links.map((link, idx) => {
                   const s = stockById.get(link.stockId);
                   const dead = Boolean(link.stockId) && !s;
@@ -373,7 +384,7 @@ Return [] if no stock items match.`;
                   const usage = Number(link.usage || 0);
                   return (
                     <li
-                      key={idx}
+                      key={link._k || `s-${link.stockId}-${idx}`}
                       className={`rounded-[var(--radius)] border p-3 flex flex-col gap-3 ${dead ? 'border-[var(--state-danger)] bg-[var(--state-danger-soft)]' : 'border-[var(--border-color)] bg-[var(--bg-canvas)]'}`}
                     >
                       <div className="flex items-start gap-2">

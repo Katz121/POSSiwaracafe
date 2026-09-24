@@ -299,7 +299,7 @@ export default function MenuManageView() {
 
   // Menu CRUD
   const withoutPerWhole = (link) => {
-    const { perWhole: _perWhole, ...rest } = link;
+    const { perWhole: _perWhole, _k: _key, ...rest } = link;
     return rest;
   };
   const saveMenuItem = async (e) => {
