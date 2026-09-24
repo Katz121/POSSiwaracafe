@@ -74,6 +74,7 @@ const Tab = ({
   value,
   disabled = false,
   icon,
+  count,
   className = '',
 }) => {
   const { value: activeValue, onChange, variant, fullWidth, tabsId } = useTabsContext('Tabs.Tab');
@@ -83,23 +84,23 @@ const Tab = ({
 
   const variantStyles = {
     default: `
-      px-4 py-2 rounded-[var(--radius-sm)] text-sm
+      px-4 py-2 min-h-10 rounded-[var(--radius-sm)] text-sm
       ${isActive
-        ? 'text-[var(--accent-emerald)]'
+        ? 'text-[var(--text-primary)] font-semibold'
         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
       }
     `,
     pills: `
       px-4 py-2 rounded-[var(--radius-sm)] text-sm
       ${isActive
-        ? 'bg-[var(--accent-emerald)] text-white shadow-[var(--elev-1)]'
-        : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-light)]'
+        ? 'bg-[var(--accent)] text-[var(--text-on-accent)] shadow-[var(--elev-1)]'
+        : 'bg-[var(--bg-sunken)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
       }
     `,
     underline: `
-      px-4 py-3 text-sm border-b-2 -mb-px
+      px-4 py-3 min-h-11 text-sm border-b-2 -mb-px
       ${isActive
-        ? 'border-[var(--accent-emerald)] text-[var(--accent-emerald)]'
+        ? 'border-[var(--accent)] text-[var(--accent)] font-semibold'
         : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-color)]'
       }
     `,
@@ -132,6 +133,11 @@ const Tab = ({
       <span className="relative z-[var(--z-dropdown)] flex items-center gap-2">
         {icon && <span className="w-4 h-4">{icon}</span>}
         {children}
+        {count > 0 && (
+          <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold num bg-[var(--bg-sunken)] text-[var(--text-secondary)]">
+            {count > 99 ? '99+' : count}
+          </span>
+        )}
       </span>
     </button>
   );

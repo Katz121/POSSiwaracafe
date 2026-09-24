@@ -120,7 +120,7 @@ const Table = ({
       <div className="overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border-color)]">
         <table className="w-full">
           {/* Header */}
-          <thead className="bg-[var(--bg-tertiary)]">
+          <thead className="sticky top-0 z-[1] bg-[var(--bg-sunken)]">
             <tr>
               {columns.map((column) => (
                 <th
@@ -129,9 +129,9 @@ const Table = ({
                   onClick={() => column.sortable !== false && handleSort(column.key)}
                   className={`
                     ${cellPadding}
-                    text-left text-xs font-semibold tracking-wider
+                    text-left text-xs font-semibold leading-normal
                     text-[var(--text-secondary)]
-                    ${column.sortable !== false && sortable ? 'cursor-pointer hover:bg-[var(--border-light)]' : ''}
+                    ${column.sortable !== false && sortable ? 'cursor-pointer hover:bg-[var(--bg-hover)]' : ''}
                     ${column.align === 'right' ? 'text-right' : ''}
                     ${column.align === 'center' ? 'text-center' : ''}
                   `}
@@ -140,7 +140,7 @@ const Table = ({
                   <div className={`flex items-center gap-1 ${column.align === 'right' ? 'justify-end' : ''}`}>
                     {column.label}
                     {sortable && column.sortable !== false && sortConfig.key === column.key && (
-                      <span className="text-emerald-500">
+                      <span className="text-[var(--accent)]">
                         {sortConfig.direction === 'asc' ? (
                           <ChevronUp size={14} />
                         ) : (
@@ -188,9 +188,9 @@ const Table = ({
                     exit={{ opacity: 0 }}
                     onClick={() => onRowClick?.(row)}
                     className={`
-                      bg-[var(--bg-secondary)]
-                      ${striped && index % 2 === 1 ? 'bg-[var(--bg-tertiary)]' : ''}
-                      ${hoverable ? 'hover:bg-[var(--bg-tertiary)]' : ''}
+                      bg-[var(--bg-surface)]
+                      ${striped && index % 2 === 1 ? 'bg-[var(--bg-sunken)]' : ''}
+                      ${hoverable ? 'hover:bg-[var(--bg-hover)]' : ''}
                       ${onRowClick ? 'cursor-pointer' : ''}
                       ${typeof rowClassName === 'function' ? rowClassName(row) : rowClassName || ''}
                     `}
@@ -255,7 +255,7 @@ const Table = ({
                     className={`
                       w-8 h-8 rounded-[var(--radius-sm)] text-sm font-medium transition-colors num
                       ${pageNum === currentPage
-                        ? 'bg-emerald-500 text-white'
+                        ? 'bg-[var(--accent)] text-[var(--text-on-accent)]'
                         : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
                       }
                     `}

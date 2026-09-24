@@ -10,23 +10,23 @@ const ToastContext = createContext(null);
 const toastConfig = {
   success: {
     icon: CheckCircle,
-    className: 'bg-emerald-500 text-white',
-    iconClass: 'text-white',
+    className: 'bg-[var(--accent)] text-[var(--text-on-accent)]',
+    iconClass: 'text-[var(--text-on-accent)]',
   },
   error: {
     icon: XCircle,
-    className: 'bg-red-500 text-white',
-    iconClass: 'text-white',
+    className: 'bg-[var(--state-danger)] text-[var(--text-on-danger)]',
+    iconClass: 'text-[var(--text-on-danger)]',
   },
   warning: {
     icon: AlertTriangle,
-    className: 'bg-amber-500 text-white',
-    iconClass: 'text-white',
+    className: 'bg-[var(--state-warn)] text-[var(--text-on-warn)]',
+    iconClass: 'text-[var(--text-on-warn)]',
   },
   info: {
     icon: Info,
-    className: 'bg-blue-500 text-white',
-    iconClass: 'text-white',
+    className: 'bg-[var(--surface-inverse)] text-[var(--text-on-inverse)]',
+    iconClass: 'text-[var(--text-on-inverse)]',
   },
 };
 

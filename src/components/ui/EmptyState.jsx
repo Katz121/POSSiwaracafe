@@ -21,6 +21,7 @@ const EmptyState = forwardRef(({
   actionLabel,
   onAction,
   size = 'md',
+  tone = 'neutral',
   className = '',
   ...props
 }, ref) => {
@@ -47,7 +48,14 @@ const EmptyState = forwardRef(({
     },
   };
 
-  const s = sizes[size];
+  const s = sizes[size] || sizes.md;
+  const toneClasses = {
+    neutral: 'bg-[var(--bg-sunken)] text-[var(--text-muted)]',
+    ok: 'bg-[var(--state-ok-soft)] text-[var(--state-ok)]',
+    warn: 'bg-[var(--state-warn-soft)] text-[var(--state-warn)]',
+    danger: 'bg-[var(--state-danger-soft)] text-[var(--state-danger)]',
+    info: 'bg-[var(--state-info-soft)] text-[var(--state-info)]',
+  };
 
   return (
     <motion.div
@@ -61,20 +69,19 @@ const EmptyState = forwardRef(({
       `}
       {...props}
     >
-      <div className="mb-4 p-4 rounded-[var(--radius-sm)] bg-[var(--bg-tertiary)]">
+      <div className={`mb-4 p-4 rounded-[var(--radius)] ${toneClasses[tone] || toneClasses.neutral}`}>
         <Icon
           size={s.icon}
-          className="text-[var(--text-muted)]"
           strokeWidth={1.5}
         />
       </div>
 
-      <h3 className={`font-semibold text-[var(--text-primary)] ${s.title}`}>
+      <h3 className={`font-semibold leading-normal text-[var(--text-primary)] ${s.title}`}>
         {title}
       </h3>
 
       {description && (
-        <p className={`mt-1 text-[var(--text-secondary)] max-w-sm ${s.desc}`}>
+        <p className={`mt-1 leading-relaxed text-[var(--text-secondary)] max-w-sm ${s.desc}`}>
           {description}
         </p>
       )}

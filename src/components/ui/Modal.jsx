@@ -77,7 +77,7 @@ const Modal = forwardRef(({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[var(--z-modal-bg)] bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 z-[var(--z-modal-bg)] bg-black/50"
           />
 
           {/* Modal Content */}
@@ -185,7 +185,7 @@ export const ConfirmModal = ({
         <div className={`w-20 h-20 rounded-[var(--radius-sm)] mx-auto flex items-center justify-center mb-6 shadow-inner ${iconBgColors[variant]}`}>
           <IconComponent size={40} />
         </div>
-        <h3 className="font-bold text-2xl mb-3 tracking-tight text-[var(--text-primary)]">{title}</h3>
+        <h3 className="font-semibold text-2xl leading-snug mb-3 text-[var(--text-primary)]">{title}</h3>
         <p className="text-[var(--text-secondary)] font-medium mb-8 text-sm px-4">
           {message}
         </p>
@@ -267,7 +267,7 @@ export const InputModal = ({
           <div className={`w-16 h-16 rounded-[var(--radius-sm)] mx-auto flex items-center justify-center mb-4 shadow-[var(--elev-1)] ${iconBgColors[variant]}`}>
             <IconComponent size={32} />
           </div>
-          <h3 className="font-bold text-xl mb-1 tracking-tight text-[var(--text-primary)]">{title}</h3>
+          <h3 className="font-semibold text-xl leading-snug mb-1 text-[var(--text-primary)]">{title}</h3>
           {description && (
             <p className="text-[var(--text-muted)] font-medium text-sm">{description}</p>
           )}

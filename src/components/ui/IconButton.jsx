@@ -2,12 +2,12 @@ import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
 
 const variants = {
-  primary: 'bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-dark)] text-white',
-  secondary: 'bg-[var(--bg-tertiary)] hover:bg-[var(--border-light)] text-[var(--text-primary)]',
-  danger: 'bg-[var(--state-danger)] text-white',
-  warning: 'bg-[var(--state-warn)] text-white',
-  ghost: 'bg-transparent hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
-  outline: 'bg-transparent border-2 border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]',
+  primary: 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--text-on-accent)]',
+  secondary: 'bg-[var(--bg-sunken)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)]',
+  danger: 'bg-[var(--state-danger)] text-[var(--text-on-danger)]',
+  warning: 'bg-[var(--state-warn)] text-[var(--text-on-warn)]',
+  ghost: 'bg-transparent hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]',
+  outline: 'bg-transparent border border-[var(--border-strong)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]',
 };
 
 const sizes = {
@@ -53,7 +53,7 @@ const IconButton = forwardRef(({
         inline-flex items-center justify-center
         ${roundedClasses[rounded] ?? 'rounded-full'}
         transition-all duration-200
-        focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2
+        focus:outline-none focus-visible:shadow-[var(--focus-ring)]
         disabled:opacity-50 disabled:cursor-not-allowed
         ${variants[variant]}
         ${sizes[size]}

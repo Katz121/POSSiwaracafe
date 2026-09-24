@@ -1,13 +1,30 @@
 import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
 
+// Soft tinted backgrounds + semantic ink (all >= 4.5:1 in both themes).
 const variants = {
-  success: 'bg-[var(--bg-tertiary)] text-[var(--state-ok)]',
-  warning: 'bg-[var(--bg-tertiary)] text-[var(--state-warn)]',
-  danger: 'bg-[var(--bg-tertiary)] text-[var(--state-danger)]',
-  info: 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
-  neutral: 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]',
-  primary: 'bg-[var(--accent-emerald)] text-white',
+  success: 'bg-[var(--state-ok-soft)] text-[var(--state-ok)]',
+  warning: 'bg-[var(--state-warn-soft)] text-[var(--state-warn)]',
+  danger: 'bg-[var(--state-danger-soft)] text-[var(--state-danger)]',
+  info: 'bg-[var(--state-info-soft)] text-[var(--state-info)]',
+  neutral: 'bg-[var(--bg-sunken)] text-[var(--text-secondary)]',
+  primary: 'bg-[var(--accent)] text-[var(--text-on-accent)]',
+  accent: 'bg-[var(--accent-soft)] text-[var(--accent-soft-fg)]',
+  ai: 'bg-[var(--accent-ai-light)] text-[var(--accent-ai)]',
+};
+
+// `tone` (spec name) → variant
+const TONE_TO_VARIANT = { ok: 'success', warn: 'warning', danger: 'danger', info: 'info', neutral: 'neutral', accent: 'accent', ai: 'ai' };
+
+const dotColors = {
+  success: 'bg-[var(--state-ok)]',
+  warning: 'bg-[var(--state-warn)]',
+  danger: 'bg-[var(--state-danger)]',
+  info: 'bg-[var(--state-info)]',
+  neutral: 'bg-[var(--text-secondary)]',
+  primary: 'bg-[var(--text-on-accent)]',
+  accent: 'bg-[var(--accent)]',
+  ai: 'bg-[var(--accent-ai)]',
 };
 
 const sizes = {
@@ -31,7 +48,8 @@ const roundedClasses = {
 
 const Badge = forwardRef(({
   children,
-  variant = 'neutral',
+  variant: variantProp = 'neutral',
+  tone,
   size = 'sm',
   rounded = 'full',
   dot = false,
@@ -43,6 +61,7 @@ const Badge = forwardRef(({
   className = '',
   ...props
 }, ref) => {
+  const variant = (tone && TONE_TO_VARIANT[tone]) || variantProp;
   const Component = animate ? motion.span : 'span';
   const animationProps = animate ? {
     initial: { scale: 0.8, opacity: 0 },
@@ -54,9 +73,9 @@ const Badge = forwardRef(({
     <Component
       ref={ref}
       className={`
-        inline-flex items-center gap-1.5 font-medium
+        inline-flex items-center gap-1.5 font-medium leading-normal whitespace-nowrap
         ${roundedClasses[rounded] ?? 'rounded-full'}
-        ${variants[variant]}
+        ${variants[variant] || variants.neutral}
         ${sizes[size]}
         ${className}
       `}
@@ -65,16 +84,7 @@ const Badge = forwardRef(({
     >
       {/* Dot indicator */}
       {dot && (
-        <span className={`
-          w-1.5 h-1.5 rounded-full
-          ${variant === 'success' ? 'bg-emerald-500' : ''}
-          ${variant === 'warning' ? 'bg-amber-500' : ''}
-          ${variant === 'danger' ? 'bg-red-500' : ''}
-          ${variant === 'info' ? 'bg-blue-500' : ''}
-          ${variant === 'neutral' ? 'bg-[var(--text-secondary)]' : ''}
-          ${variant === 'primary' ? 'bg-white' : ''}
-          ${pulse ? 'animate-pulse' : ''}
-        `} />
+        <span className={`w-1.5 h-1.5 rounded-full ${dotColors[variant] || dotColors.neutral} ${pulse ? 'animate-pulse' : ''}`} />
       )}
 
       {/* Icon */}
@@ -134,21 +144,41 @@ export const StatusBadge = forwardRef(({ status, ...props }, ref) => {
 
 StatusBadge.displayName = 'StatusBadge';
 
-// Count Badge - for notifications
-export const CountBadge = forwardRef(({ count, max = 99, variant = 'danger', className = '', ...props }, ref) => {
+// Count Badge · nav / tab counters. `solid` (default) = filled pill that reads
+// on any surface; `soft` = tinted. Renders nothing for 0 / empty.
+const COUNT_SOLID = {
+  danger: 'bg-[var(--state-danger)] text-[var(--text-on-danger)]',
+  warning: 'bg-[var(--state-warn)] text-[var(--text-on-warn)]',
+  primary: 'bg-[var(--accent)] text-[var(--text-on-accent)]',
+  neutral: 'bg-[var(--surface-inverse)] text-[var(--text-on-inverse)]',
+};
+
+export const CountBadge = forwardRef(({ count, max = 99, variant = 'danger', tone, appearance = 'solid', className = '', ...props }, ref) => {
   if (!count || count <= 0) return null;
 
   const displayCount = count > max ? `${max}+` : count;
+  const v = (tone && TONE_TO_VARIANT[tone]) || variant;
+
+  if (appearance === 'solid') {
+    return (
+      <span
+        ref={ref}
+        className={`inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold num leading-none ${COUNT_SOLID[v] || COUNT_SOLID.danger} ${className}`}
+        {...props}
+      >
+        {displayCount}
+      </span>
+    );
+  }
 
   return (
     <Badge
       ref={ref}
-      variant={variant}
+      variant={v}
       size="xs"
       rounded="full"
-      animate
       {...props}
-      className={`min-w-[1.25rem] justify-center ${className}`}
+      className={`min-w-[1.25rem] justify-center num ${className}`}
     >
       {displayCount}
     </Badge>

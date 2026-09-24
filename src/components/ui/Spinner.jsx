@@ -9,7 +9,7 @@ const sizes = {
 };
 
 const colors = {
-  emerald: 'text-emerald-500',
+  emerald: 'text-[var(--accent)]',
   white: 'text-white',
   gray: 'text-[var(--text-muted)]',
   current: 'text-current',

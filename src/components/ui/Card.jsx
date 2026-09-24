@@ -2,12 +2,14 @@ import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
 
 const variants = {
-  default: 'bg-[var(--bg-secondary)] border border-[var(--border-color)]',
-  elevated: 'bg-[var(--bg-secondary)] shadow-[var(--elev-1)]',
+  default: 'bg-[var(--bg-surface)] border border-[var(--border-color)]',
+  elevated: 'bg-[var(--bg-surface)] shadow-[var(--elev-1)]',
+  // SectionCard look: flat surface, one elevation, no border+shadow stack.
+  section: 'bg-[var(--bg-surface)] shadow-[var(--elev-1)]',
   bordered: 'bg-[var(--bg-secondary)] border-2 border-[var(--border-color)]',
   ghost: 'bg-[var(--bg-tertiary)]',
-  success: 'bg-[var(--accent-emerald-light)] border border-[var(--state-ok)]',
-  warning: 'bg-[var(--accent-orange-light)] border border-[var(--state-warn)]',
+  success: 'bg-[var(--state-ok-soft)] border border-[var(--state-ok)]',
+  warning: 'bg-[var(--state-warn-soft)] border border-[var(--state-warn)]',
   danger: 'bg-[var(--bg-secondary)] border border-[var(--state-danger)]',
 };
 
@@ -36,6 +38,9 @@ const roundedClasses = {
 
 const Card = forwardRef(({
   children,
+  title,
+  description,
+  actions,
   variant = 'default',
   padding = 'md',
   rounded = 'card',
@@ -68,12 +73,31 @@ const Card = forwardRef(({
       {...animationProps}
       {...props}
     >
+      {(title || description || actions) && (
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 mb-4">
+          <div className="min-w-0">
+            {title && <h3 className="text-[length:var(--fs-lg)] leading-[var(--lh-lg)] font-semibold text-[var(--text-primary)]">{title}</h3>}
+            {description && <p className="text-sm leading-[var(--lh-sm)] text-[var(--text-muted)] mt-0.5">{description}</p>}
+          </div>
+          {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+        </div>
+      )}
       {children}
     </Component>
   );
 });
 
 Card.displayName = 'Card';
+
+/**
+ * SectionCard · the spec's standard content block (flat surface, --radius,
+ * --elev-1). Same API as Card plus `title`, `description`, `actions`.
+ */
+export const SectionCard = forwardRef(({ variant = 'section', padding = 'lg', ...props }, ref) => (
+  <Card ref={ref} variant={variant} padding={padding} {...props} />
+));
+
+SectionCard.displayName = 'SectionCard';
 
 // Card Header
 const CardHeader = forwardRef(({

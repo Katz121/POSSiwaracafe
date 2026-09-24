@@ -8,82 +8,137 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ============================================================
-   SIWARA POS — Glass Morphism Design System v2.0
+   SIWARA POS · Design tokens v3 (UX v2 spec §4)
+   New names first; legacy names stay as aliases until the cleanup step so
+   views that have not migrated yet keep rendering.
+   Contrast: every text token is >= 4.5:1 on --bg-surface AND --bg-canvas.
    ============================================================ */
 
 :root {
-  /* === GRADIENT BACKGROUND STOPS === */
-  --bg-grad-1: #EDFAF4;
-  --bg-grad-2: #F2F8FC;
-  --bg-grad-3: var(--bg-grad-2);
-  --bg-grad-4: var(--bg-grad-2);
+  /* === Canvas & surfaces (neutral warm grey) === */
+  --bg-canvas:   #F5F6F4;
+  --bg-surface:  #FFFFFF;
+  --bg-sunken:   #EEF1EE;   /* inputs, table header, segmented track */
+  --bg-raised:   #FFFFFF;   /* sheets / modals (pair with --elev-3) */
+  --bg-hover:    #F0F3F0;
+  --bg-selected: #E6F4EE;
 
-  /* === BASE COLORS === */
-  --bg-primary: #effdf6;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #F3FBF7;
+  /* legacy aliases */
+  --bg-primary:   var(--bg-canvas);
+  --bg-secondary: var(--bg-surface);
+  --bg-tertiary:  var(--bg-sunken);
+  --bg-grad-1: var(--bg-canvas);
+  --bg-grad-2: var(--bg-canvas);
+  --bg-grad-3: var(--bg-canvas);
+  --bg-grad-4: var(--bg-canvas);
 
-  /* === RADIUS === */
-  --radius: 18px;
-  --radius-sm: 12px;
+  /* === Text === */
+  --text-primary:   #101828;
+  --text-secondary: #475467;
+  --text-muted:     #636C80;   /* 5.27:1 white · 4.63:1 sunken (spec #667085 was 4.37 on sunken; was #94a3b8 = 2.56:1) */
+  --text-disabled:  #98A2B3;   /* disabled controls only (WCAG-exempt) */
+  --text-on-accent: #FFFFFF;
+  --text-on-danger: #FFFFFF;
+  --text-on-warn:   #FFFFFF;
+
+  /* === Brand / primary === */
+  --accent:         #0E7A5A;   /* white on it 5.32:1 (was #059669 = 3.77:1) */
+  --accent-hover:   #0B6B4F;
+  --accent-pressed: #095C44;
+  --accent-soft:    #E6F4EE;
+  --accent-soft-fg: #0B6B4F;
+  --accent-emerald:       var(--accent);
+  --accent-emerald-dark:  var(--accent-hover);
+  --accent-emerald-light: var(--accent-soft);
+
+  /* === Semantic === */
+  --state-ok:     #0E7A5A;  --state-ok-soft:     #E6F4EE;
+  --state-warn:   #B45309;  --state-warn-soft:   #FEF3E2;
+  --state-danger: #B42318;  --state-danger-soft: #FDECEA;
+  --state-info:   #1D4ED8;  --state-info-soft:   #EAF1FF;
+  --accent-orange:       var(--state-warn);
+  --accent-orange-light: var(--state-warn-soft);
+  --accent-ai:       #6941C6;  /* icon / text only, never a surface */
+  --accent-ai-dark:  #53389E;
+  --accent-ai-light: #F4F0FF;
+
+  /* === Inverse === */
+  --surface-inverse:       #101828;
+  --surface-inverse-hover: #1D2939;
+  --text-on-inverse:       #FFFFFF;
+
+  /* === Borders === */
+  --border-color:  #E4E7EC;
+  --border-strong: #D0D5DD;
+  --border-light:  #F2F4F7;
+  --focus-ring:    0 0 0 3px rgba(14,122,90,.35);
+
+  /* === Radius === */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius:    12px;
+  --radius-lg: 16px;
   --radius-full: 9999px;
 
-  /* === GLASS MORPHISM === */
-  --glass-bg: rgba(255, 255, 255, 0.65);
-  --glass-bg-strong: rgba(255, 255, 255, 0.88);
-  --glass-border: rgba(255, 255, 255, 0.90);
-  --glass-border-subtle: rgba(255, 255, 255, 0.50);
-  --glass-shadow: 0 8px 32px rgba(0,0,0,0.07), 0 2px 8px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.80);
-
-  /* === NAV GLASS === */
-  --nav-bg: rgba(255, 255, 255, 0.90);
-  --nav-border: rgba(255, 255, 255, 0.96);
-  --nav-shadow: 0 12px 50px rgba(0,0,0,0.10), 0 3px 14px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.90);
-
-  /* === TEXT === */
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-
-  /* === INVERSE SURFACE (การ์ดสรุป/ปุ่มหลักพื้นทึบ) === */
-  --surface-inverse: #0f172a;
-  --surface-inverse-hover: #1e293b;
-  --text-on-inverse: #ffffff;
-
-  /* === BORDER === */
-  --border-color: rgba(226, 232, 240, 0.80);
-  --border-light: rgba(241, 245, 249, 0.90);
-
-  /* === ACCENT — EMERALD === */
-  --accent-emerald: #059669;
-  --accent-emerald-dark: #047857;
-  --accent-emerald-light: rgba(167, 243, 208, 0.45);
-
-  /* === ACCENT — ORANGE === */
-  --accent-orange: #f97316;
-  --accent-orange-light: rgba(254, 215, 170, 0.45);
-
-  /* === ACCENT — AI VIOLET === */
-  --accent-ai: #7c3aed;
-  --accent-ai-dark: #5b21b6;
-  --accent-ai-light: rgba(196, 181, 253, 0.35);
-
-  /* === STATE COLORS === */
-  --state-ok: #059669;
-  --state-warn: #C2410C;
-  --state-danger: #B91C1C;
-
-  /* === SHADOW SCALE === */
-  --shadow-color: rgba(15, 23, 42, 0.07);
-  --elev-1: 0 1px 2px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.04);
-  --elev-2: 0 6px 24px rgba(15,23,42,.08), 0 2px 6px rgba(15,23,42,.05);
-  --elev-3: 0 24px 60px rgba(15,23,42,.16), 0 8px 20px rgba(15,23,42,.10);
-  --shadow-sm: var(--elev-1);
-  --shadow-card: var(--elev-1);
-  --shadow-nav: var(--nav-shadow);
+  /* === Elevation (flat by default) === */
+  --elev-0: none;
+  --elev-1: 0 1px 2px rgba(16,24,40,.06);
+  --elev-2: 0 4px 12px rgba(16,24,40,.08), 0 1px 3px rgba(16,24,40,.06);
+  --elev-3: 0 16px 40px rgba(16,24,40,.16), 0 4px 12px rgba(16,24,40,.08);
+  --shadow-color: rgba(16, 24, 40, 0.08);
+  --shadow-sm:    var(--elev-1);
+  --shadow-card:  var(--elev-1);
   --shadow-modal: var(--elev-3);
 
-  /* === Z-INDEX SCALE === */
+  /* legacy glass tokens · now opaque surfaces (no blur) */
+  --glass-bg:            var(--bg-surface);
+  --glass-bg-strong:     var(--bg-surface);
+  --glass-border:        var(--border-color);
+  --glass-border-subtle: var(--border-light);
+  --glass-shadow:        var(--elev-1);
+  --nav-bg:     var(--bg-surface);
+  --nav-border: var(--border-color);
+  --nav-shadow: var(--elev-2);
+  --shadow-nav: var(--nav-shadow);
+
+  /* === Spacing (4px grid) === */
+  --space-1: 4px;  --space-2: 8px;   --space-3: 12px; --space-4: 16px; --space-5: 20px;
+  --space-6: 24px; --space-8: 32px;  --space-10: 40px; --space-12: 48px;
+  --page-pad: 24px;
+
+  /* === Touch === */
+  --tap-min: 44px;
+  --tap-pos: 56px;
+
+  /* === Type === */
+  --font-sans: 'Anuphan', 'Noto Sans Thai', 'Inter', system-ui, sans-serif;
+  --font-num:  'Inter', 'Anuphan', system-ui, sans-serif;
+  --fs-xs: 12px;  --lh-xs: 18px;
+  --fs-sm: 14px;  --lh-sm: 22px;
+  --fs-md: 16px;  --lh-md: 26px;
+  --fs-lg: 18px;  --lh-lg: 28px;
+  --fs-xl: 20px;  --lh-xl: 30px;
+  --fs-2xl: 24px; --lh-2xl: 34px;
+  --fs-3xl: 30px; --lh-3xl: 40px;
+  --fs-display: 40px; --lh-display: 52px;
+
+  /* === Motion === */
+  --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms;
+  --ease-out: cubic-bezier(.2,.8,.2,1);
+  --ease-in-out: cubic-bezier(.4,0,.2,1);
+
+  /* === Layout === */
+  --sidebar-w: 232px;
+  --sidebar-rail-w: 72px;
+  --tabbar-h: 64px;
+  --header-h: 64px;
+
+  /* === KDS (always dark) === */
+  --kds-bg: #0A0F1A; --kds-surface: #121A2A; --kds-border: #243044;
+  --kds-text: #E8EDF4; --kds-muted: #9AA6B8;
+  --kds-age-ok: #3ECF9A; --kds-age-5: #F5C451; --kds-age-10: #F59E0B; --kds-age-15: #F87171;
+
+  /* === Z-index === */
   --z-dropdown: 100;
   --z-nav: 150;
   --z-modal-bg: 200;
@@ -92,98 +147,77 @@
   --z-overlay: 500;
 }
 
+@media (max-width: 767px) {
+  :root { --page-pad: 16px; }
+}
+
 /* ============================================================
    DARK MODE
    ============================================================ */
 html.dark {
-  /* === GRADIENT STOPS === */
-  --bg-grad-1: #0B1220;
-  --bg-grad-2: #0E1626;
-  --bg-grad-3: var(--bg-grad-2);
-  --bg-grad-4: var(--bg-grad-2);
+  --bg-canvas:   #0B111B;
+  --bg-surface:  #131B2B;
+  --bg-sunken:   #0F1623;
+  --bg-raised:   #1A2333;
+  --bg-hover:    #1A2333;
+  --bg-selected: #13302A;
 
-  /* === BASE === */
-  --bg-primary: #020817;
-  --bg-secondary: #111A2B;
-  --bg-tertiary: #16202F;
+  --text-primary:   #E8EDF4;
+  --text-secondary: #9AA6B8;
+  --text-muted:     #8A94A6;
+  --text-disabled:  #5B6576;
+  --text-on-accent: #0F1623;   /* dark text on mint: 9.1:1 (white on #34d399 was ~2:1) */
+  --text-on-danger: #1A0B0C;
+  --text-on-warn:   #1A1204;
 
-  /* === GLASS DARK === */
-  --glass-bg: rgba(15, 23, 42, 0.72);
-  --glass-bg-strong: rgba(15, 23, 42, 0.92);
-  --glass-border: rgba(148, 163, 184, 0.12);
-  --glass-border-subtle: rgba(148, 163, 184, 0.07);
-  --glass-shadow: 0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04);
+  --accent:         #3ECF9A;
+  --accent-hover:   #5ADBAB;
+  --accent-pressed: #2FB888;
+  --accent-soft:    #13302A;
+  --accent-soft-fg: #6EE7B7;
 
-  /* === NAV DARK === */
-  --nav-bg: rgba(8, 12, 26, 0.95);
-  --nav-border: rgba(148, 163, 184, 0.13);
-  --nav-shadow: 0 12px 50px rgba(0,0,0,0.55), 0 3px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+  --state-ok:     #3ECF9A; --state-ok-soft:     #13302A;
+  --state-warn:   #F59E0B; --state-warn-soft:   #2D2210;
+  --state-danger: #F87171; --state-danger-soft: #331A1D;
+  --state-info:   #7CA7FF; --state-info-soft:   #16223D;
+  --accent-ai: #B69CFF; --accent-ai-dark: #9B7BFF; --accent-ai-light: #221B38;
 
-  /* === TEXT === */
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-
-  /* === INVERSE SURFACE === */
-  --surface-inverse: #2B3A54;
+  --surface-inverse:       #2B3A54;
   --surface-inverse-hover: #364766;
-  --text-on-inverse: #f1f5f9;
+  --text-on-inverse:       #F1F5F9;
 
-  /* === BORDER === */
-  --border-color: rgba(51, 65, 85, 0.65);
-  --border-light: rgba(30, 41, 59, 0.80);
+  --border-color:  #243044;
+  --border-strong: #33415A;
+  --border-light:  #1A2333;
+  --focus-ring:    0 0 0 3px rgba(62,207,154,.40);
 
-  /* === ACCENT === */
-  --accent-emerald: #34d399;
-  --accent-emerald-dark: #10b981;
-  --accent-emerald-light: rgba(16, 185, 129, 0.15);
-
-  --accent-orange: #fb923c;
-  --accent-orange-light: rgba(251, 146, 60, 0.15);
-
-  --accent-ai: #a78bfa;
-  --accent-ai-dark: #7c3aed;
-  --accent-ai-light: rgba(139, 92, 246, 0.15);
-
-  /* === STATE COLORS === */
-  --state-ok: #34d399;
-  --state-warn: #fb923c;
-  --state-danger: #f87171;
-
-  /* === SHADOWS === */
+  --elev-1: 0 1px 2px rgba(0,0,0,.4);
+  --elev-2: 0 6px 20px rgba(0,0,0,.45);
+  --elev-3: 0 20px 48px rgba(0,0,0,.6);
   --shadow-color: rgba(0, 0, 0, 0.45);
-  --elev-1: 0 1px 2px rgba(0,0,0,.40);
-  --elev-2: 0 6px 24px rgba(0,0,0,.45), 0 2px 6px rgba(0,0,0,.30);
-  --elev-3: 0 24px 60px rgba(0,0,0,.60), 0 8px 20px rgba(0,0,0,.40);
-  --shadow-sm: var(--elev-1);
-  --shadow-card: var(--elev-1);
-  --shadow-modal: var(--elev-3);
 }
 
 /* ============================================================
-   BASE LAYER — Typography + Body
+   BASE LAYER · Typography + body
    ============================================================ */
 @layer base {
   html {
-    font-size: clamp(14px, 1.1vw + 10px, 16px);
+    font-size: 16px;
     -webkit-tap-highlight-color: transparent;
   }
 
   body {
-    font-family: 'Anuphan', 'Inter', system-ui, -apple-system, 'Segoe UI', Helvetica, sans-serif;
+    font-family: var(--font-sans);
     line-height: 1.6;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     overscroll-behavior-y: contain;
-    background: linear-gradient(160deg, var(--bg-grad-1) 0%, var(--bg-grad-2) 100%);
-    background-attachment: fixed;
+    background: var(--bg-canvas);
     color: var(--text-primary);
-    transition: background-color 0.4s ease, color 0.4s ease;
   }
 
   /* Prevent text selection on UI elements */
@@ -198,47 +232,60 @@ html.dark {
     font-family: inherit;
   }
 
-  /* Typography scale — cleaner hierarchy */
+  /* Latin headings keep a slight negative tracking; Thai headings never do
+     (tracking pushes stacked vowels/tone marks away from their consonant). */
   h1, h2, h3, h4, h5, h6 {
-    letter-spacing: -0.02em;
+    letter-spacing: -0.01em;
+  }
+  :lang(th) h1, :lang(th) h2, :lang(th) h3, :lang(th) h4 {
+    letter-spacing: 0;
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+}
+
+/* Tabular money. Inter for digits, Anuphan for the ฿ sign / Thai units. */
+.num, .tabular {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
   }
 }
 
 /* ============================================================
-   ROOT ELEMENT — Transparent so body gradient shows
+   SURFACE UTILITIES
+   `.glass` / `.glass-strong` are kept as names but are now plain opaque
+   surfaces: backdrop blur is expensive on iPad GPUs and added nothing.
    ============================================================ */
-[data-app="root"] {
-  background: transparent !important;
-}
-
-/* ============================================================
-   GLASS MORPHISM UTILITIES
-   ============================================================ */
-.glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
-}
-
+.glass,
 .glass-strong {
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(28px) saturate(200%);
-  -webkit-backdrop-filter: blur(28px) saturate(200%);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--elev-1);
 }
 
 .glass-nav {
-  background: var(--nav-bg);
-  backdrop-filter: blur(32px) saturate(200%);
-  -webkit-backdrop-filter: blur(32px) saturate(200%);
-  border: 1px solid var(--nav-border);
-  box-shadow: var(--nav-shadow);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-color);
 }
 
-.num, .tabular { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
+/* Bottom padding that clears the phone tab bar + the iOS home indicator. */
+.pb-tabbar {
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+}
+@media (min-width: 768px) {
+  .pb-tabbar { padding-bottom: env(safe-area-inset-bottom); }
+}
 
 /* ============================================================
    SCROLLBAR UTILITIES
@@ -270,19 +317,6 @@ html.dark {
   animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes float-blob {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-20px) scale(1.05); }
-}
-
-.animate-blob {
-  animation: float-blob 7s ease-in-out infinite;
-}
-
-.animate-blob-delay {
-  animation: float-blob 9s ease-in-out infinite 2s;
-}
-
 /* Horizontal auto-scroll (marquee) for the best-seller rail. Content is
    duplicated, so translating -50% loops seamlessly. Duration + play-state are
    set inline per-rail. Disabled when the user prefers reduced motion. */
@@ -309,43 +343,6 @@ html.dark {
 }
 @media (prefers-reduced-motion: reduce) {
   .animate-bounce-once { animation: none; }
-}
-
-/* ============================================================
-   RESPONSIVE FONT SCALING
-   ============================================================ */
-@media (max-width: 1024px) {
-  .text-6xl { font-size: clamp(2rem, 6vw, 3.25rem); }
-  .text-5xl { font-size: clamp(1.75rem, 5vw, 3rem); }
-  .text-4xl { font-size: clamp(1.5rem, 4.5vw, 2.25rem); }
-  .text-3xl { font-size: clamp(1.25rem, 3.8vw, 2rem); }
-  .text-2xl { font-size: clamp(1.125rem, 3.2vw, 1.5rem); }
-  .text-xl  { font-size: clamp(1rem, 2.6vw, 1.25rem); }
-  .tracking-widest        { letter-spacing: 0.2em; }
-  .tracking-\[0\.4em\]   { letter-spacing: 0.25em; }
-  .tracking-\[0\.3em\]   { letter-spacing: 0.2em; }
-  .tracking-\[0\.2em\]   { letter-spacing: 0.14em; }
-}
-
-@media (max-width: 768px) {
-  .text-6xl { font-size: clamp(1.5rem, 8vw, 2.5rem); }
-  .text-5xl { font-size: clamp(1.35rem, 7vw, 2.25rem); }
-  .text-4xl { font-size: clamp(1.25rem, 6vw, 2rem); }
-  .text-3xl { font-size: clamp(1.1rem, 5vw, 1.75rem); }
-  .text-2xl { font-size: clamp(1rem, 4.5vw, 1.4rem); }
-  .text-xl  { font-size: clamp(0.95rem, 4vw, 1.15rem); }
-  .tracking-widest        { letter-spacing: 0.12em; }
-  .tracking-\[0\.4em\]   { letter-spacing: 0.15em; }
-  .tracking-\[0\.3em\]   { letter-spacing: 0.12em; }
-  .tracking-\[0\.2em\]   { letter-spacing: 0.08em; }
-}
-
-@media (max-width: 375px) {
-  html { font-size: 13px; }
-  .text-6xl { font-size: clamp(1.25rem, 7vw, 2rem); }
-  .text-5xl { font-size: clamp(1.15rem, 6vw, 1.75rem); }
-  .text-4xl { font-size: clamp(1.1rem, 5vw, 1.5rem); }
-  .text-3xl { font-size: clamp(1rem, 4.5vw, 1.35rem); }
 }
 
 /* ============================================================
@@ -377,26 +374,10 @@ html.dark {
 }
 
 /* ============================================================
-   TABLET OVERRIDES
+   POS LAYOUT OVERRIDES (legacy · WP1 drops the data-pos hooks, then the
+   cleanup step deletes this block)
    ============================================================ */
-@media (min-width: 1024px) and (max-width: 1366px) and (orientation: landscape) {
-  html { font-size: 15px; }
-}
-
-@media (min-width: 768px) and (max-width: 1024px) and (orientation: portrait) {
-  html { font-size: 14px; }
-}
-
 @media (pointer: coarse) and (min-device-width: 768px) {
-  [data-app="root"] {
-    padding-bottom: 5rem !important;
-  }
-  [data-app="nav"] {
-    bottom: 1rem !important;
-    padding: 0.5rem !important;
-    gap: 0.25rem !important;
-    border-radius: 3rem !important;
-  }
   [data-pos="main"]        { flex-direction: row !important; }
   [data-pos="sidebar-cat"] {
     display: flex !important;
@@ -472,7 +453,11 @@ html.dark .bg-black\/80 {
 }
 
 /* Emerald accent */
-html.dark .bg-emerald-500      { background-color: var(--accent-emerald) !important; }
+html.dark .bg-emerald-500,
+html.dark .bg-emerald-600      { background-color: var(--accent-emerald) !important; }
+/* white text on the dark-mode mint accent was ~2:1 · force the on-accent ink */
+html.dark .bg-emerald-500.text-white,
+html.dark .bg-emerald-600.text-white { color: var(--text-on-accent) !important; }
 html.dark .bg-emerald-50       { background-color: var(--accent-emerald-light) !important; }
 html.dark .text-emerald-500,
 html.dark .text-emerald-600    { color: var(--accent-emerald) !important; }

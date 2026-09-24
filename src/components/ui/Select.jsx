@@ -104,12 +104,12 @@ const Select = forwardRef(({
           ${error
             ? 'border-[var(--state-danger)]'
             : isOpen
-              ? 'border-[var(--accent-emerald)]'
-              : 'border-[var(--border-color)]'
+              ? 'border-[var(--accent)]'
+              : 'border-[var(--border-strong)]'
           }
           text-left
           transition-all duration-200
-          focus:outline-none focus:ring-4 focus:ring-emerald-500/20
+          focus:outline-none focus-visible:shadow-[var(--focus-ring)]
           disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-[var(--bg-tertiary)]
           ${sizes[size]}
         `}
@@ -180,7 +180,7 @@ const Select = forwardRef(({
                       </div>
                     </div>
                     {option.value === value && (
-                      <Check size={18} className="text-emerald-500 flex-shrink-0" />
+                      <Check size={18} className="text-[var(--accent)] flex-shrink-0" />
                     )}
                   </button>
                 ))

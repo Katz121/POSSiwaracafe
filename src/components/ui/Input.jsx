@@ -112,13 +112,13 @@ const Input = forwardRef(({
             ${error
               ? 'border-[var(--state-danger)]'
               : isFocused
-                ? 'border-[var(--accent-emerald)]'
-                : 'border-[var(--border-color)]'
+                ? 'border-[var(--accent)]'
+                : 'border-[var(--border-strong)]'
             }
             text-[var(--text-primary)]
             placeholder:text-[var(--text-muted)]
             transition-all duration-200
-            focus:outline-none focus:ring-4 focus:ring-emerald-500/20
+            focus:outline-none focus:shadow-[var(--focus-ring)]
                 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-[var(--bg-tertiary)]
             ${sizes[size]}
             ${leftIcon || prefix ? 'pl-10' : ''}
@@ -232,12 +232,12 @@ export const Textarea = forwardRef(({
           border-2
           ${error
             ? 'border-[var(--state-danger)]'
-            : 'border-[var(--border-color)]'
+            : 'border-[var(--border-strong)]'
           }
           text-[var(--text-primary)]
           placeholder:text-[var(--text-muted)]
           transition-all duration-200
-          focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20
+          focus:outline-none focus:border-[var(--accent)] focus:shadow-[var(--focus-ring)]
           disabled:opacity-50 disabled:cursor-not-allowed
           ${sizes[size]}
           ${resizeClasses[resize]}
