@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ClipboardCheck, Download, Link2, Package, ShoppingBag } from 'lucide-react';
+import { AlertTriangle, ClipboardCheck, CookingPot, Download, Link2, Package, ShoppingBag } from 'lucide-react';
 import { useDataContext, useUIContext } from '../../context/AppContext';
 import { useNavigate, useRouteParams } from '../../navigation';
 import { getISODate } from '../../utils/calculations';
@@ -9,6 +9,9 @@ import { auditDay, auditDays, auditMenuLinks, negativeStock, STATUS_LABEL } from
 import { AuditEmpty, IssueList, MenuHealth, SoldList, StockUsedList } from './inventory/AuditSections';
 import { pct, qtyText } from './inventory/auditFormat';
 import { auditDateFromParam, auditParams, auditTabFromParam } from './inventory/stockStatus';
+import ProductionAuditList from './production/ProductionAuditList';
+import useProductionBatches from './production/useProductionBatches';
+import { summarizeProduction } from '../../utils/production';
 
 const WEEKDAY_SHORT = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
 const dayLabel = (iso) => {
@@ -88,6 +91,8 @@ export default function StockAuditView() {
   }, [orders, stock, menu, date, today]);
   const links = useMemo(() => auditMenuLinks({ menu, stock, beanModifiers }), [menu, stock, beanModifiers]);
   const negatives = useMemo(() => negativeStock(stock), [stock]);
+  const { batches: prodBatches, loading: prodLoading } = useProductionBatches(date);
+  const producedCount = useMemo(() => summarizeProduction(prodBatches, date).count, [prodBatches, date]);
 
   const { summary, sold, stockUsed, issues } = audit;
   const verdict = VERDICT[summary.verdict] || VERDICT.empty;
@@ -132,6 +137,7 @@ export default function StockAuditView() {
     { value: 'stock', label: 'สต็อกที่ตัด', icon: <Package size={16} />, count: stockUsed.length },
     { value: 'issues', label: 'ต้องแก้', icon: <AlertTriangle size={16} />, count: actionable },
     { value: 'menu', label: 'ผูกสต็อก', icon: <Link2 size={16} />, count: links.needsAttention + links.modifiers.length },
+    { value: 'production', label: 'ผลิต', icon: <CookingPot size={16} />, count: producedCount },
   ];
   const searchable = tab === 'sold' || tab === 'stock';
 
@@ -237,6 +243,14 @@ export default function StockAuditView() {
             {tab === 'stock' && <StockUsedList rows={stockFiltered} />}
             {tab === 'issues' && <IssueList issues={issues} onFix={goFix} />}
             {tab === 'menu' && <MenuHealth links={links} negatives={negatives} onFix={goFix} />}
+            {tab === 'production' && (
+              <ProductionAuditList
+                batches={prodBatches}
+                date={date}
+                loading={prodLoading}
+                onOpen={() => handleViewChange?.('production', date === today ? undefined : { date })}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -48,7 +48,7 @@ describe('hash routes', () => {
     const keys = NAV_ITEMS.map((i) => i.key).sort();
     expect(keys).toEqual([
       'admin', 'bills', 'cake_queue', 'category_summary', 'dashboard', 'expenses', 'financial',
-      'members_manage', 'menu_manage', 'merchant', 'pos', 'profitability', 'recipes',
+      'members_manage', 'menu_manage', 'merchant', 'pos', 'production', 'profitability', 'recipes',
       'sales_history', 'stock', 'stock_audit',
     ]);
   });
@@ -70,5 +70,12 @@ describe('gateRoute (PIN gate)', () => {
   });
   it('lets protected views through once settings say the lock is off', () => {
     expect(gateRoute({ view: 'admin', needsLock: false, settingsReady: true })).toEqual({ blocked: false, held: false });
+  });
+});
+
+describe('production route', () => {
+  it('parses #/production with make/date params and round-trips', () => {
+    expect(parseHash('#/production?make=abc')).toEqual({ view: 'production', params: { make: 'abc' } });
+    expect(buildHash('production', { date: '2026-09-24' })).toBe('#/production?date=2026-09-24');
   });
 });

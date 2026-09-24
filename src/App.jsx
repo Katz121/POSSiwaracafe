@@ -42,6 +42,7 @@ import useNewQrOrderAlert from './hooks/useNewQrOrderAlert';
 import useDarkMode from './hooks/useDarkMode';
 import { getISODate, getOrderDate } from './utils/calculations';
 import { planOrderDeduction, auditMenuLinks } from './utils/stockAudit';
+import { activeStock } from './utils/stockMerge';
 import { runDeleteOrderTransaction } from './utils/pointsActions';
 
 // View Components (Lazy Loaded for Performance)
@@ -61,6 +62,7 @@ const FinancialView = lazy(() => import('./components/views/FinancialView'));
 const SalesHistoryView = lazy(() => import('./components/views/SalesHistoryView'));
 const CakeQueueView = lazy(() => import('./components/views/CakeQueueView'));
 const StockAuditView = lazy(() => import('./components/views/StockAuditView'));
+const ProductionView = lazy(() => import('./components/views/ProductionView'));
 // Dev-only component gallery at #/__ui (dead-code-eliminated from production builds).
 const UiGallery = import.meta.env.DEV ? lazy(() => import('./navigation/UiGallery')) : null;
 
@@ -186,6 +188,10 @@ export default function App() {
   // Get today's date for alerts
   const today = getISODate();
   const currentMonth = today.substring(0, 7);
+
+  // `stock` keeps merged/archived docs (mergedInto) so old bills and deductions
+  // can follow them · lists, pickers and low-stock counts use the active ones.
+  const liveStock = useMemo(() => activeStock(stock), [stock]);
 
   // Smart Alerts Data
   const alertsData = useMemo(() => ({
@@ -452,10 +458,10 @@ export default function App() {
 
   // Split context into 3 parts for performance — consumers only re-render when their part changes
   const dataValue = useMemo(() => ({
-    user, orders, menu, stock, expenses, members,
+    user, orders, menu, stock, activeStock: liveStock, expenses, members,
     dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes,
     isSyncing, alertsData,
-  }), [user, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers,
+  }), [user, orders, menu, stock, liveStock, expenses, members, dynamicCategories, beanModifiers,
     quickExpenses, queueCounter, queueInfo, recipes, isSyncing, alertsData]);
 
   const configValue = useMemo(() => ({
@@ -506,8 +512,8 @@ export default function App() {
     return { merchant, bills };
   }, [orders, today]);
   const lowStockCount = useMemo(
-    () => stock.filter((s) => (Number(s.quantity) || 0) <= (Number(s.minQuantity) || 5)).length,
-    [stock],
+    () => liveStock.filter((s) => (Number(s.quantity) || 0) <= (Number(s.minQuantity) || 5)).length,
+    [liveStock],
   );
   const stockAuditIssues = useMemo(() => {
     const audit = auditMenuLinks({ menu, stock, beanModifiers });
@@ -716,6 +722,7 @@ export default function App() {
                   {view === 'sales_history' && <SalesHistoryView />}
                   {view === 'cake_queue' && <CakeQueueView />}
                   {view === 'stock_audit' && <StockAuditView />}
+                  {view === 'production' && <ProductionView />}
                   {view === '__ui' && UiGallery && <UiGallery />}
                 </Suspense>
                 )}

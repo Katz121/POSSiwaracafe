@@ -1,4 +1,5 @@
 // Pure helpers for the inventory screens (status, filters, route params).
+import { isArchivedStock } from '../../../utils/stockMerge';
 import { DEFAULT_MIN_QUANTITY, DEFAULT_STOCK_UNIT, STOCK_CATEGORIES, getStockCategory } from '../../../config/constants';
 
 /**
@@ -27,10 +28,13 @@ export function stockStatus(item) {
 export const needsRestock = (item) => stockStatus(item).rank > 0;
 export const isOut = (item) => stockStatus(item).rank >= 2;
 
-export const STOCK_FILTERS = ['all', 'low', 'out'];
+// 'merged' = รายการที่ถูกรวมเข้ากับตัวอื่นแล้ว (mergedInto) · ซ่อนจากตัวกรองอื่นทั้งหมด
+export const STOCK_FILTERS = ['all', 'low', 'out', 'merged'];
 export const normalizeStockFilter = (value) => (STOCK_FILTERS.includes(value) ? value : 'all');
 
 export function matchesStockFilter(item, filter) {
+  if (filter === 'merged') return isArchivedStock(item);
+  if (isArchivedStock(item)) return false;
   if (filter === 'low') return needsRestock(item);
   if (filter === 'out') return isOut(item);
   return true;
@@ -63,7 +67,7 @@ export function sortStockForReview(stock) {
 // Internal tab keys stay as the view had them (sold|stock|issues|menu). The
 // public URL vocabulary uses `links` for the menu-link tab (Dashboard and
 // MenuManage already link to `#/stock-audit?tab=links`).
-export const AUDIT_TABS = ['sold', 'stock', 'issues', 'menu'];
+export const AUDIT_TABS = ['sold', 'stock', 'issues', 'menu', 'production'];
 
 export function auditTabFromParam(value) {
   if (value === 'links') return 'menu';

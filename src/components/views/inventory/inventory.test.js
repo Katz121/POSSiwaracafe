@@ -23,6 +23,12 @@ describe('stockStatus', () => {
     expect(matchesStockFilter({ quantity: 2, minQuantity: 3 }, 'out')).toBe(false);
     expect(normalizeStockFilter('weird')).toBe('all');
     expect(normalizeStockFilter('low')).toBe('low');
+    // merged (archived) items only show under their own chip
+    expect(matchesStockFilter({ quantity: 0, mergedInto: 'x', archived: true }, 'all')).toBe(false);
+    expect(matchesStockFilter({ quantity: 0, mergedInto: 'x', archived: true }, 'out')).toBe(false);
+    expect(matchesStockFilter({ quantity: 0, mergedInto: 'x', archived: true }, 'merged')).toBe(true);
+    expect(matchesStockFilter({ quantity: 5 }, 'merged')).toBe(false);
+    expect(normalizeStockFilter('merged')).toBe('merged');
   });
 
   it('sorts worst first', () => {
