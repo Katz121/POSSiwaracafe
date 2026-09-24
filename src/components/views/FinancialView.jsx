@@ -1,13 +1,21 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import {
-    PieChart, DollarSign, TrendingUp, Save, Trash2,
-    Calculator, Wallet, Building, AlertCircle, Calendar
-} from 'lucide-react';
+import { TrendingUp, Save, Trash2, Calculator, Wallet, Building, Landmark, Sparkles } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { collection, addDoc, getDocs, query, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { getOrderDate, getISODate } from '../../utils/calculations';
-import { ConfirmModal, useToast } from '../ui';
+import { formatPercent, formatThaiDate } from '../../utils/format';
+import { Badge, Button, ConfirmModal, DateStepper, EmptyState, Input, Money, PageHeader, SectionCard, StatCard, useToast } from '../ui';
+
+const ALLOCATION_LABELS = {
+    emergency_reserve: 'เงินสำรองฉุกเฉิน',
+    marketing: 'งบการตลาด',
+    sinking_fund: 'งบซ่อมบำรุง',
+    owner_dividend: 'ปันผลเจ้าของ',
+    staff_incentive: 'โบนัสพนักงาน',
+};
+// AI answers the status in English (prompt contract) · show it in Thai.
+const HEALTH_LABELS = { Excellent: 'ดีมาก', Good: 'ดี', Warning: 'ต้องระวัง', Critical: 'วิกฤต' };
 
 const FinancialView = () => {
     const { orders, expenses, callGeminiAPI } = useAppContext();
@@ -180,210 +188,168 @@ const FinancialView = () => {
         }
     };
 
+    const totalFixed = Number(fixedCosts.rent) + Number(fixedCosts.untrackedSalaries) + Number(fixedCosts.otherFixed);
+    const estimatedNet = currentFinancials.revenue - currentFinancials.recordedExpenses - totalFixed;
+    const healthTone = aiPlan?.health_status === 'Critical' ? 'danger' : aiPlan?.health_status === 'Warning' ? 'warn' : 'ok';
+    const fixedField = (key, label) => (
+        <Input
+            label={label}
+            type="number"
+            inputMode="decimal"
+            min={0}
+            prefix="฿"
+            value={fixedCosts[key]}
+            onChange={e => setFixedCosts({ ...fixedCosts, [key]: Number(e.target.value) })}
+            inputClassName="num min-h-11"
+        />
+    );
+
     return (
-        <div className="h-full bg-[var(--bg-tertiary)] flex flex-col p-4 md:p-6 lg:p-6 overflow-y-auto">
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-4">
-                <div>
-                    <h1 className="text-xl md:text-2xl lg:text-3xl font-semibold text-[var(--text-primary)] tracking-tight flex items-center gap-2 md:gap-3">
-                        <Wallet className="text-violet-600" size={24} />
-                        วางแผนการเงิน
-                    </h1>
-                    <p className="text-[var(--text-secondary)] font-bold mt-1 ml-8 md:ml-11 text-sm md:text-base hidden md:block">วางแผนการเงินอัจฉริยะเพื่อความยั่งยืน</p>
-                </div>
-                <div className="flex items-center gap-4">
-                    <div className="bg-[var(--bg-secondary)] px-6 py-3 rounded-2xl shadow-sm border border-[var(--border-color)] hidden md:block">
-                        <p className="text-xs font-semibold text-[var(--text-muted)] tracking-widest">รายรับ (เดือนนี้)</p>
-                        <p className="num text-right text-2xl font-semibold text-emerald-600">฿{currentFinancials.revenue.toLocaleString()}</p>
-                    </div>
-                    <div className="relative bg-[var(--bg-secondary)] border-2 border-emerald-100 flex items-center gap-3 px-6 py-3 rounded-2xl shadow-sm text-emerald-600 font-semibold text-xs tracking-widest leading-none shrink-0 cursor-pointer hover:bg-emerald-50 transition-colors">
-                        <Calendar size={18} />
-                        {new Date(selectedMonth + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
-                        <input
-                            type="month"
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                            onClick={(e) => {
-                                try { e.currentTarget.showPicker(); } catch { /* showPicker not supported */ }
-                            }}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-[var(--z-nav)]"
+        <div className="h-full bg-[var(--bg-canvas)] flex flex-col overflow-hidden text-[var(--text-primary)]">
+            <PageHeader
+                title="วางแผนการเงิน"
+                subtitle="ต้นทุนคงที่ + แผนแบ่งกำไรด้วย AI"
+                icon={Landmark}
+                sticky={false}
+                actions={<DateStepper mode="month" value={selectedMonth} onChange={value => value && setSelectedMonth(value)} />}
+            />
+
+            <div className="flex-1 overflow-y-auto px-[var(--page-pad)] py-5 md:py-6 pb-24 md:pb-10">
+                <div className="max-w-[1400px] mx-auto flex flex-col gap-6">
+                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                        <StatCard label="รายรับ" icon={TrendingUp} tone="ok" value={<Money value={currentFinancials.revenue} />} hint={formatThaiDate(selectedMonth, { style: 'month' })} />
+                        <StatCard label="รายจ่ายในระบบ" icon={Wallet} value={<Money value={currentFinancials.recordedExpenses} />} hint="ทุกหมวดรวมของเสีย" />
+                        <StatCard
+                            className="col-span-2 lg:col-span-1"
+                            label="กำไรสุทธิ (โดยประมาณ)"
+                            icon={Calculator}
+                            tone={estimatedNet < 0 ? 'danger' : 'neutral'}
+                            value={<Money value={estimatedNet} />}
+                            hint="หักต้นทุนคงที่ที่กรอกด้านล่างแล้ว"
                         />
                     </div>
-                </div>
-            </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto w-full">
-
-                {/* Input Column */}
-                <div className="space-y-6">
-                    <div className="bg-[var(--bg-secondary)] p-6 rounded-[var(--radius)] shadow-sm border border-[var(--border-color)]">
-                        <h2 className="font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-                            <Building size={20} /> ต้นทุนคงที่ (Fixed Costs)
-                        </h2>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-xs font-bold text-[var(--text-muted)] block mb-1">ค่าเช่าที่ / ค่าน้ำไฟ</label>
-                                <input
-                                    type="number"
-                                    value={fixedCosts.rent}
-                                    onChange={e => setFixedCosts({ ...fixedCosts, rent: Number(e.target.value) })}
-                                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl px-4 py-2 font-bold text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-[var(--text-muted)] block mb-1">เงินเดือนพนักงาน (ที่ยังไม่ลงระบบ)</label>
-                                <input
-                                    type="number"
-                                    value={fixedCosts.untrackedSalaries}
-                                    onChange={e => setFixedCosts({ ...fixedCosts, untrackedSalaries: Number(e.target.value) })}
-                                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl px-4 py-2 font-bold text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-[var(--text-muted)] block mb-1">สำรองอื่นๆ</label>
-                                <input
-                                    type="number"
-                                    value={fixedCosts.otherFixed}
-                                    onChange={e => setFixedCosts({ ...fixedCosts, otherFixed: Number(e.target.value) })}
-                                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl px-4 py-2 font-bold text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
-                                />
-                            </div>
-                            <div className="pt-4 border-t border-[var(--border-color)]">
-                                <div className="flex justify-between text-sm font-semibold text-[var(--text-secondary)]">
-                                    <span>รายจ่ายผันแปร (เข้าระบบ)</span>
-                                    <span className="num text-right">฿{currentFinancials.recordedExpenses.toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between text-lg font-semibold text-violet-600 mt-2">
-                                    <span>กำไรสุทธิ (โดยประมาณ)</span>
-                                    <span className="num text-right">
-                                        ฿{(
-                                            currentFinancials.revenue -
-                                            currentFinancials.recordedExpenses -
-                                            Number(fixedCosts.rent) -
-                                            Number(fixedCosts.untrackedSalaries) -
-                                            Number(fixedCosts.otherFixed)
-                                        ).toLocaleString()}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        <button
-                            onClick={generatePlan}
-                            disabled={isAnalyzing}
-                            className="w-full mt-6 bg-gradient-to-r from-violet-600 to-indigo-600 text-white py-4 rounded-xl font-semibold shadow-[var(--elev-2)] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isAnalyzing ? (
-                                <>กำลังวิเคราะห์...</>
-                            ) : (
-                                <><Calculator size={20} /> วิเคราะห์แผนการเงินด้วย AI</>
-                            )}
-                        </button>
-                    </div>
-
-                    {/* History List */}
-                    <div className="bg-[var(--bg-secondary)] p-6 rounded-[var(--radius)] shadow-sm border border-[var(--border-color)]">
-                        <h2 className="font-semibold text-[var(--text-primary)] mb-4 text-sm tracking-wider">ประวัติการวางแผน</h2>
-                        <div className="space-y-3">
-                            {history.length > 0 ? (
-                                history.map(plan => (
-                                    <div key={plan.id} className="p-3 bg-[var(--bg-tertiary)] rounded-xl border border-[var(--border-color)] text-xs text-[var(--text-secondary)]">
-                                        <div className="flex justify-between font-bold mb-1">
-                                            <span>{new Date(plan.createdAt).toLocaleDateString()}</span>
-                                            <span className={plan.health_status === 'Excellent' ? 'text-[var(--state-ok)]' : 'text-[var(--state-warn)]'}>{plan.health_status}</span>
+                    <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-6">
+                        {/* Input Column */}
+                        <div className="flex flex-col gap-6">
+                            <SectionCard
+                                title={<span className="inline-flex items-center gap-2"><Building size={20} className="text-[var(--text-secondary)]" />ต้นทุนคงที่</span>}
+                                description="ค่าใช้จ่ายที่ยังไม่ได้บันทึกในระบบ"
+                            >
+                                <div className="flex flex-col gap-4">
+                                    {fixedField('rent', 'ค่าเช่าที่ / ค่าน้ำไฟ')}
+                                    {fixedField('untrackedSalaries', 'เงินเดือนพนักงาน (ที่ยังไม่ลงระบบ)')}
+                                    {fixedField('otherFixed', 'สำรองอื่นๆ')}
+                                    <dl className="pt-4 border-t border-[var(--border-color)] flex flex-col gap-2">
+                                        <div className="flex justify-between gap-3 text-sm text-[var(--text-secondary)]">
+                                            <dt>รายจ่ายผันแปร (เข้าระบบ)</dt>
+                                            <dd><Money value={currentFinancials.recordedExpenses} /></dd>
                                         </div>
-                                        <div className="num text-right truncate opacity-70">Rev: ฿{plan.financials?.revenue?.toLocaleString()}</div>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-center text-[var(--text-muted)] text-xs py-4">ยังไม่มีประวัติ</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Result Column */}
-                <div className="lg:col-span-2 space-y-6">
-                    {aiPlan ? (
-                        <div className="bg-[var(--bg-secondary)] p-6 rounded-[var(--radius)] shadow-[var(--elev-3)] border border-violet-100 space-y-8 animate-in slide-in-from-bottom-4">
-
-                            {/* Health Header */}
-                            <div className="flex items-start justify-between">
-                                <div>
-                                    <h2 className="text-2xl font-semibold text-[var(--text-primary)]">แผนการเงินแนะนำ</h2>
-                                    <p className={`text-sm font-bold mt-1 ${aiPlan.health_status === 'Critical' ? 'text-[var(--state-danger)]' :
-                                        aiPlan.health_status === 'Warning' ? 'text-[var(--state-warn)]' : 'text-[var(--state-ok)]'
-                                        }`}>
-                                        Health Status: {aiPlan.health_status}
-                                    </p>
-                                    <p className="text-[var(--text-secondary)] text-sm mt-2 max-w-md">{aiPlan.health_reason}</p>
+                                        <div className="flex justify-between gap-3 text-sm text-[var(--text-secondary)]">
+                                            <dt>ต้นทุนคงที่ที่กรอก</dt>
+                                            <dd><Money value={totalFixed} /></dd>
+                                        </div>
+                                        <div className="flex justify-between gap-3 font-semibold text-[var(--text-primary)]">
+                                            <dt>กำไรสุทธิ (โดยประมาณ)</dt>
+                                            <dd><Money value={estimatedNet} size="lg" tone={estimatedNet < 0 ? 'danger' : undefined} /></dd>
+                                        </div>
+                                    </dl>
+                                    <Button variant="ai" size="lg" fullWidth loading={isAnalyzing} leftIcon={<Sparkles size={18} />} onClick={generatePlan}>
+                                        วิเคราะห์แผนการเงินด้วย AI
+                                    </Button>
                                 </div>
-                                <div className="flex gap-2">
-                                    {aiPlan.id && (
-                                        <button
-                                            onClick={deletePlan}
-                                            className="px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all bg-red-50 text-red-500 hover:bg-red-100"
-                                        >
-                                            <Trash2 size={18} /> ลบแผน
-                                        </button>
+                            </SectionCard>
+
+                            {/* History List */}
+                            <SectionCard title="ประวัติการวางแผน" description="5 แผนล่าสุด">
+                                {history.length > 0 ? (
+                                    <ul className="flex flex-col divide-y divide-[var(--border-light)]">
+                                        {history.map(plan => (
+                                            <li key={plan.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                                                <div className="min-w-0">
+                                                    <p className="text-[var(--text-primary)]">{formatThaiDate(plan.createdAt)}</p>
+                                                    <p className="text-[var(--text-muted)]">รายรับ <Money value={plan.financials?.revenue || 0} /></p>
+                                                </div>
+                                                <Badge tone={plan.health_status === 'Critical' ? 'danger' : plan.health_status === 'Warning' ? 'warn' : 'ok'} size="sm">{HEALTH_LABELS[plan.health_status] || plan.health_status || '-'}</Badge>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <p className="text-center text-[var(--text-muted)] text-sm py-4">ยังไม่มีประวัติ</p>
+                                )}
+                            </SectionCard>
+                        </div>
+
+                        {/* Result Column */}
+                        <div className="flex flex-col gap-6 min-w-0">
+                            {aiPlan ? (
+                                <SectionCard
+                                    title="แผนการเงินแนะนำ"
+                                    description={aiPlan.health_reason}
+                                    actions={(
+                                        <>
+                                            {aiPlan.id && (
+                                                <Button variant="outline-danger" leftIcon={<Trash2 size={18} />} onClick={deletePlan}>ลบแผน</Button>
+                                            )}
+                                            <Button
+                                                variant={saveStatus === 'success' || aiPlan.id ? 'secondary' : 'primary'}
+                                                leftIcon={<Save size={18} />}
+                                                onClick={savePlan}
+                                                disabled={saveStatus === 'success' || !!aiPlan.id}
+                                                loading={saveStatus === 'saving'}
+                                            >
+                                                {saveStatus === 'success' || aiPlan.id ? 'บันทึกแล้ว' : 'บันทึกแผน'}
+                                            </Button>
+                                        </>
                                     )}
-                                    <button
-                                        onClick={savePlan}
-                                        disabled={saveStatus === 'success' || aiPlan.id}
-                                        className={`px-6 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 transition-all ${saveStatus === 'success' || aiPlan.id ? 'bg-[var(--state-ok)]/10 text-[var(--state-ok)] cursor-default' : 'bg-[var(--surface-inverse)] text-white hover:bg-[var(--surface-inverse-hover)]'
-                                            }`}
-                                    >
-                                        <Save size={18} /> {saveStatus === 'success' || aiPlan.id ? 'บันทึกแล้ว' : 'บันทึกแผน'}
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Allocation Cards */}
-                            <div className="grid grid-cols-2 gap-4">
-                                {Object.entries(aiPlan.allocations || {}).map(([key, data]) => {
-                                    const labels = {
-                                        emergency_reserve: '💰 เงินสำรองฉุกเฉิน (Cash Reserve)',
-                                        marketing: '📣 งบการตลาด (Marketing)',
-                                        sinking_fund: '🛠️ งบซ่อมบำรุง (Sinking Fund)',
-                                        owner_dividend: '💼 ปันผลเจ้าของ (Owner\'s Dividend)',
-                                        staff_incentive: '🎁 โบนัสพนักงาน (Staff Incentive)'
-                                    };
-                                    return (
-                                        <div key={key} className="p-4 rounded-2xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <span className="text-xs font-semibold text-[var(--text-muted)] tracking-widest">{labels[key] || key}</span>
-                                            <span className="num text-right bg-[var(--bg-secondary)] px-2 py-1 rounded-lg text-xs font-semibold shadow-sm">{data?.percentage ?? 0}%</span>
-                                            </div>
-                                            <p className="num text-right text-2xl font-semibold text-[var(--text-primary)] mb-2">฿{Number(data?.amount || 0).toLocaleString()}</p>
-                                            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{data?.reason}</p>
+                                >
+                                    <div className="flex flex-col gap-6">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm text-[var(--text-secondary)]">สุขภาพการเงิน</span>
+                                            <Badge tone={healthTone}>{HEALTH_LABELS[aiPlan.health_status] || aiPlan.health_status}</Badge>
                                         </div>
-                                    );
-                                })}
-                            </div>
 
-                            {/* Action Plan */}
-                            <div className="bg-violet-50 rounded-2xl p-6 border border-violet-100">
-                                <h3 className="font-semibold text-violet-700 mb-4 flex items-center gap-2">
-                                    <TrendingUp size={20} /> แผนปฏิบัติการเชิงกลยุทธ์ (Action Plan)
-                                </h3>
-                                <div className="space-y-3">
-                                    {(aiPlan.action_plan || []).map((step, idx) => (
-                                        <div key={idx} className="flex gap-3 items-start">
-                                            <div className="w-6 h-6 rounded-full bg-violet-200 text-violet-700 flex items-center justify-center font-semibold text-xs shrink-0 mt-0.5">
-                                                {idx + 1}
-                                            </div>
-                                            <p className="text-[var(--text-primary)] text-sm font-medium">{step}</p>
+                                        {/* Allocation Cards */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {Object.entries(aiPlan.allocations || {}).map(([key, data]) => (
+                                                <div key={key} className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-sunken)] flex flex-col gap-1.5">
+                                                    <div className="flex justify-between items-start gap-2">
+                                                        <span className="text-sm font-medium text-[var(--text-secondary)]">{ALLOCATION_LABELS[key] || key}</span>
+                                                        <span className="num shrink-0 text-sm font-semibold text-[var(--text-primary)]">{formatPercent(data?.percentage ?? 0, { digits: 0 })}</span>
+                                                    </div>
+                                                    <Money value={Number(data?.amount || 0)} size="2xl" className="font-semibold text-[var(--text-primary)]" />
+                                                    <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{data?.reason}</p>
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
 
+                                        {/* Action Plan */}
+                                        <div>
+                                            <h3 className="font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
+                                                <TrendingUp size={20} className="text-[var(--accent)]" /> แผนปฏิบัติการ
+                                            </h3>
+                                            <ol className="flex flex-col gap-3">
+                                                {(aiPlan.action_plan || []).map((step, idx) => (
+                                                    <li key={idx} className="flex gap-3 items-start">
+                                                        <span className="w-7 h-7 rounded-full bg-[var(--accent-soft)] text-[var(--accent-soft-fg)] flex items-center justify-center font-semibold text-sm shrink-0 num">{idx + 1}</span>
+                                                        <p className="text-[var(--text-primary)] leading-relaxed">{step}</p>
+                                                    </li>
+                                                ))}
+                                            </ol>
+                                        </div>
+                                    </div>
+                                </SectionCard>
+                            ) : (
+                                <SectionCard className="flex-1 flex items-center justify-center">
+                                    <EmptyState
+                                        icon={Wallet}
+                                        title="เริ่มต้นวางแผนการเงิน"
+                                        description={'กรอกต้นทุนคงที่ แล้วกด "วิเคราะห์แผนการเงินด้วย AI"'}
+                                    />
+                                </SectionCard>
+                            )}
                         </div>
-                    ) : (
-                        <div className="h-full flex flex-col items-center justify-center p-12 text-center text-[var(--text-muted)] border-2 border-dashed border-[var(--border-color)] rounded-[var(--radius)]">
-                            <Wallet size={64} className="mb-4 opacity-20" />
-                            <p className="font-bold text-lg">เริ่มต้นวางแผนการเงิน</p>
-                            <p className="text-sm">กรอกข้อมูลต้นทุนคงที่ด้านซ้าย แล้วกดปุ่ม "วิเคราะห์แผนการเงินด้วย AI"</p>
-                        </div>
-                    )}
+                    </div>
                 </div>
             </div>
 
@@ -398,7 +364,7 @@ const FinancialView = () => {
                 cancelText="ยกเลิก"
                 variant="danger"
             />
-        </div >
+        </div>
     );
 };
 

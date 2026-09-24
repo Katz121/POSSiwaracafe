@@ -1,181 +1,117 @@
 /**
- * SmartAlerts Component
- * Displays AI-powered alerts based on shop data
+ * SmartAlerts · the dashboard "ต้องจัดการ" list (UX v2 · WP3).
+ *
+ * Alerts come from services/alertService (low stock, stock-link / stock_audit
+ * issues, sales drop, high expense, waste, new members…). Each one renders as a
+ * Banner row: a sentence + one button that deep-links to where it is fixed
+ * (spec principle 6). Dismissing hides an alert for this visit only.
+ *
+ * Props:
+ *  data         input for generateSmartAlerts ({ orders, expenses, stock, members, menu, beanModifiers, today, currentMonth })
+ *  onAction     (view, alert) => void
+ *  extraAlerts  alerts computed by the caller, same shape as alertService's
+ *  limit        rows shown before "ดูอีก N รายการ" (default 5)
+ *  emptyState   node shown when nothing needs attention (default: nothing)
  */
-import React, { useMemo, useState } from 'react';
-import {
-  Bell, Package, TrendingDown, DollarSign, Trophy, Clock, Trash2,
-  X, ChevronRight, AlertTriangle, CheckCircle2, Info
-} from 'lucide-react';
-import { generateSmartAlerts, getAlertColor, ALERT_SEVERITY } from '../services/alertService';
+import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { generateSmartAlerts, ALERT_SEVERITY } from '../services/alertService';
+import { Banner } from './ui';
 
-const ICON_MAP = {
-  Package,
-  TrendingDown,
-  DollarSign,
-  Trophy,
-  Clock,
-  Trash2,
-  Bell
+const SEVERITY_TONE = {
+  [ALERT_SEVERITY.CRITICAL]: 'danger',
+  [ALERT_SEVERITY.WARNING]: 'warn',
+  [ALERT_SEVERITY.SUCCESS]: 'ok',
+  [ALERT_SEVERITY.INFO]: 'info',
+};
+// Banner's own action/dismiss buttons are 40px; the dashboard list needs 44px
+// targets, so the row renders its own pair inside Banner's `action` slot.
+const TONE_INK = {
+  danger: 'text-[var(--state-danger)]',
+  warn: 'text-[var(--state-warn)]',
+  ok: 'text-[var(--state-ok)]',
+  info: 'text-[var(--state-info)]',
+};
+const ROW_BTN = 'min-h-11 rounded-[var(--radius-sm)] hover:bg-[var(--bg-surface)] outline-none focus-visible:shadow-[var(--focus-ring)]';
+
+const SEVERITY_ORDER = {
+  [ALERT_SEVERITY.CRITICAL]: 0,
+  [ALERT_SEVERITY.WARNING]: 1,
+  [ALERT_SEVERITY.INFO]: 2,
+  [ALERT_SEVERITY.SUCCESS]: 3,
 };
 
-const SEVERITY_ICONS = {
-  [ALERT_SEVERITY.CRITICAL]: AlertTriangle,
-  [ALERT_SEVERITY.WARNING]: AlertTriangle,
-  [ALERT_SEVERITY.SUCCESS]: CheckCircle2,
-  [ALERT_SEVERITY.INFO]: Info
-};
+// The dashboard itself is where these point; a button that reloads the page
+// you are on is noise.
+const SELF_VIEWS = new Set(['dashboard']);
 
-export default function SmartAlerts({ data, onAction, compact = false }) {
-  const [dismissedAlerts, setDismissedAlerts] = useState([]);
-  const [isExpanded, setIsExpanded] = useState(false);
+export default function SmartAlerts({ data, onAction, extraAlerts = [], limit = 5, emptyState = null }) {
+  const [dismissed, setDismissed] = useState([]);
+  const [showAll, setShowAll] = useState(false);
 
   const alerts = useMemo(() => {
-    const all = generateSmartAlerts(data);
-    return all.filter(a => !dismissedAlerts.includes(a.id));
-  }, [data, dismissedAlerts]);
+    const all = [...extraAlerts, ...generateSmartAlerts(data)];
+    return all
+      .filter((a) => !dismissed.includes(a.id))
+      .sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9));
+  }, [data, extraAlerts, dismissed]);
 
-  const dismissAlert = (alertId) => {
-    setDismissedAlerts(prev => [...prev, alertId]);
-  };
+  if (alerts.length === 0) return emptyState;
 
-  const handleAction = (alert) => {
-    if (alert.action && onAction) {
-      onAction(alert.action.view, alert);
-    }
-  };
+  const visible = showAll ? alerts : alerts.slice(0, limit);
+  const hidden = alerts.length - visible.length;
 
-  if (alerts.length === 0) {
-    return null;
-  }
-
-  // Compact mode - just show count badge
-  if (compact) {
-    const criticalCount = alerts.filter(a => a.severity === ALERT_SEVERITY.CRITICAL).length;
-    const warningCount = alerts.filter(a => a.severity === ALERT_SEVERITY.WARNING).length;
-
-    return (
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="relative p-3 rounded-[var(--radius)] bg-[var(--bg-secondary)] border border-[var(--border-color)] shadow-[var(--elev-1)] hover:shadow-[var(--elev-2)] transition-all"
-      >
-        <Bell size={22} className="text-[var(--text-secondary)]" />
-        {alerts.length > 0 && (
-          <span className={`absolute -top-1 -right-1 w-5 h-5 rounded-full text-xs font-medium num flex items-center justify-center text-white ${criticalCount > 0 ? 'bg-[var(--state-danger)]' : warningCount > 0 ? 'bg-[var(--state-warn)]' : 'bg-blue-500'}`}>
-            {alerts.length}
-          </span>
-        )}
-
-        {/* Dropdown */}
-        {isExpanded && (
-          <div className="absolute top-full right-0 mt-2 w-80 bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-3)] border border-[var(--border-color)] overflow-hidden z-[var(--z-dropdown)] animate-in slide-in-from-top-2">
-            <div className="p-4 bg-[var(--bg-tertiary)] border-b border-[var(--border-color)]">
-              <h4 className="font-semibold text-sm text-[var(--text-primary)]">การแจ้งเตือน ({alerts.length})</h4>
-            </div>
-            <div className="max-h-80 overflow-y-auto">
-              {alerts.map(alert => {
-                const colors = getAlertColor(alert.severity);
-                const SeverityIcon = SEVERITY_ICONS[alert.severity];
-
-                return (
-                  <div
-                    key={alert.id}
-                    className={`p-4 border-b border-gray-50 ${colors.bg} hover:brightness-95 transition-all cursor-pointer`}
-                    onClick={() => handleAction(alert)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <SeverityIcon size={18} className={colors.icon} />
-                      <div className="flex-1 min-w-0">
-                        <p className={`font-bold text-sm ${colors.text}`}>{alert.title}</p>
-                        <p className="text-xs text-[var(--text-secondary)] mt-1 truncate">{alert.message}</p>
-                      </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id); }}
-                        className="p-1 hover:bg-[var(--bg-tertiary)] rounded-[var(--radius-sm)]"
-                      >
-                        <X size={14} className="text-[var(--text-muted)]" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </button>
-    );
-  }
-
-  // Full mode - show all alerts
   return (
-    <div className="space-y-3 animate-in slide-in-from-top duration-500">
-      {alerts.slice(0, 3).map(alert => {
-        const colors = getAlertColor(alert.severity);
-        const SeverityIcon = SEVERITY_ICONS[alert.severity];
-
-        return (
-          <div
-            key={alert.id}
-            className={`${colors.bg} ${colors.border} border-2 rounded-[var(--radius)] p-5 flex items-center gap-4 shadow-[var(--elev-1)] hover:shadow-[var(--elev-2)] transition-all group`}
-          >
-            <div className={`w-12 h-12 rounded-[var(--radius-sm)] flex items-center justify-center ${colors.bg} border ${colors.border}`}>
-              <SeverityIcon size={24} className={colors.icon} />
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <h4 className={`font-semibold text-sm ${colors.text}`}>{alert.title}</h4>
-              <p className="text-xs text-[var(--text-secondary)] mt-1">{alert.message}</p>
-            </div>
-
-            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              {alert.action && (
-                <button
-                  onClick={() => handleAction(alert)}
-                  className={`px-4 py-2 rounded-[var(--radius-sm)] text-xs font-medium ${colors.text} bg-[var(--bg-secondary)] border ${colors.border} hover:scale-105 transition-transform flex items-center gap-1`}
-                >
-                  {alert.action.label} <ChevronRight size={12} />
-                </button>
-              )}
-              <button
-                onClick={() => dismissAlert(alert.id)}
-                className="p-2 hover:bg-[var(--bg-tertiary)] rounded-[var(--radius-sm)] transition-colors"
+    <div className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2" aria-label="รายการที่ต้องจัดการ">
+        {visible.map((alert) => {
+          const view = alert.action?.view;
+          const actionable = view && onAction && !SELF_VIEWS.has(view);
+          const tone = SEVERITY_TONE[alert.severity] || 'info';
+          const dismiss = () => setDismissed((prev) => [...prev, alert.id]);
+          return (
+            <li key={alert.id}>
+              <Banner
+                tone={tone}
+                title={alert.title}
+                action={(
+                  <div className="flex items-center gap-1">
+                    {actionable && (
+                      <button
+                        type="button"
+                        onClick={() => onAction(view, alert)}
+                        className={`${ROW_BTN} px-3 text-sm font-semibold whitespace-nowrap ${TONE_INK[tone]}`}
+                      >
+                        {alert.action.label}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={dismiss}
+                      aria-label={`ซ่อน: ${alert.title}`}
+                      className={`${ROW_BTN} w-11 -mr-2 flex items-center justify-center text-[var(--text-secondary)]`}
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                )}
               >
-                <X size={16} className="text-[var(--text-muted)]" />
-              </button>
-            </div>
-          </div>
-        );
-      })}
-
-      {alerts.length > 3 && (
+                {alert.message}
+              </Banner>
+            </li>
+          );
+        })}
+      </ul>
+      {(hidden > 0 || showAll) && alerts.length > limit && (
         <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full py-3 text-center text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          aria-expanded={showAll}
+          className="self-start inline-flex items-center gap-1 min-h-11 px-3 rounded-[var(--radius-sm)] text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[var(--focus-ring)]"
         >
-          {isExpanded ? 'ซ่อน' : `ดูเพิ่มเติม (${alerts.length - 3} รายการ)`}
+          {showAll ? <><ChevronUp size={16} /> ย่อรายการ</> : <><ChevronDown size={16} /> ดูอีก {hidden} รายการ</>}
         </button>
       )}
-
-      {isExpanded && alerts.slice(3).map(alert => {
-        const colors = getAlertColor(alert.severity);
-        const SeverityIcon = SEVERITY_ICONS[alert.severity];
-
-        return (
-          <div
-            key={alert.id}
-            className={`${colors.bg} ${colors.border} border rounded-[var(--radius)] p-4 flex items-center gap-3`}
-          >
-            <SeverityIcon size={18} className={colors.icon} />
-            <div className="flex-1">
-              <p className={`font-bold text-xs ${colors.text}`}>{alert.title}</p>
-              <p className="text-xs text-[var(--text-secondary)]">{alert.message}</p>
-            </div>
-            <button onClick={() => dismissAlert(alert.id)} className="p-1">
-              <X size={14} className="text-[var(--text-muted)]" />
-            </button>
-          </div>
-        );
-      })}
     </div>
   );
 }
