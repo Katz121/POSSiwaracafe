@@ -3,6 +3,7 @@
  * Analyzes shop data and generates intelligent alerts
  */
 import { getOrderDate } from '../utils/calculations';
+import { auditMenuLinks, auditDay } from '../utils/stockAudit';
 
 // Alert types
 export const ALERT_TYPES = {
@@ -11,7 +12,9 @@ export const ALERT_TYPES = {
   HIGH_EXPENSE: 'high_expense',
   REVENUE_MILESTONE: 'revenue_milestone',
   PEAK_HOUR: 'peak_hour',
-  WASTE_WARNING: 'waste_warning'
+  WASTE_WARNING: 'waste_warning',
+  STOCK_LINK: 'stock_link',
+  STOCK_AUDIT: 'stock_audit'
 };
 
 // Alert severity
@@ -31,6 +34,8 @@ export const generateSmartAlerts = (data) => {
     expenses = [],
     stock = [],
     members = [],
+    menu = [],
+    beanModifiers = [],
     today,
     currentMonth
   } = data;
@@ -47,7 +52,8 @@ export const generateSmartAlerts = (data) => {
   });
 
   if (lowStockItems.length > 0) {
-    const criticalItems = lowStockItems.filter(s => Number(s.quantity) === 0);
+    // ติดลบนับเป็น "หมด" ด้วย · เดิมเทียบ === 0 สต็อกติดลบจึงตกทั้งสองกลุ่มแล้วไม่เตือนเลย
+    const criticalItems = lowStockItems.filter(s => Number(s.quantity) <= 0);
     const warningItems = lowStockItems.filter(s => Number(s.quantity) > 0);
 
     if (criticalItems.length > 0) {
@@ -73,6 +79,53 @@ export const generateSmartAlerts = (data) => {
         count: warningItems.length,
         action: { label: 'ดูสต็อก', view: 'stock' },
         items: warningItems
+      });
+    }
+  }
+
+  // 1b. เมนูที่เปิดขายแต่ตัดสต็อกไม่ได้ (ไม่ผูก / ผูกกับสต็อกที่ถูกลบ)
+  if (menu.length && stock.length) {
+    const links = auditMenuLinks({ menu, stock, beanModifiers });
+    const unlinked = links.items.filter(i => i.status === 'unlinked');
+    const broken = links.items.filter(i => i.status === 'dead' || i.status === 'partial');
+    if (unlinked.length) {
+      alerts.push({
+        id: 'menu_unlinked',
+        type: ALERT_TYPES.STOCK_LINK,
+        severity: ALERT_SEVERITY.WARNING,
+        title: 'เมนูยังไม่ผูกสต็อก',
+        message: `${unlinked.length} เมนูที่เปิดขาย ขายแล้วสต็อกไม่ลด: ${unlinked.slice(0, 4).map(i => i.name).join(', ')}${unlinked.length > 4 ? '…' : ''}`,
+        count: unlinked.length,
+        action: { label: 'ตรวจสต็อก', view: 'stock_audit' },
+        items: unlinked
+      });
+    }
+    if (broken.length || links.modifiers.length) {
+      alerts.push({
+        id: 'menu_dead_link',
+        type: ALERT_TYPES.STOCK_LINK,
+        severity: ALERT_SEVERITY.CRITICAL,
+        title: 'สูตรชี้ไปสต็อกที่ถูกลบ',
+        message: `${broken.length} เมนู${links.modifiers.length ? ` + ${links.modifiers.length} ตัวเลือก` : ''} ตัดสต็อกไม่ครบ ต้องผูกใหม่`,
+        count: broken.length + links.modifiers.length,
+        action: { label: 'ตรวจสต็อก', view: 'stock_audit' },
+        items: broken
+      });
+    }
+  }
+
+  // 1c. วันนี้มีบิลที่ตัดสต็อกไม่ครบหรือไม่ตรงสูตร
+  if (orders.length && stock.length && today) {
+    const { summary } = auditDay({ orders, stock, menu, date: today });
+    if (summary.billsMissed || summary.billsMismatch) {
+      alerts.push({
+        id: 'stock_audit_today',
+        type: ALERT_TYPES.STOCK_AUDIT,
+        severity: ALERT_SEVERITY.CRITICAL,
+        title: 'วันนี้ตัดสต็อกผิด',
+        message: `${summary.billsMissed + summary.billsMismatch} บิลตัดสต็อกไม่ครบหรือไม่ตรงสูตร`,
+        count: summary.billsMissed + summary.billsMismatch,
+        action: { label: 'ดูรายละเอียด', view: 'stock_audit' },
       });
     }
   }

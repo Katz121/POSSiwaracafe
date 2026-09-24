@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect, lazy, Suspens
 import {
   User, ChefHat, FileText, Package, DollarSign, ClipboardList, Users, BookOpen,
   PieChart, LayoutDashboard, Lock, Trash2, Moon, Sun, MoreHorizontal,
-  Coffee, Sparkles, LogOut, TrendingUp, Cake
+  Coffee, Sparkles, LogOut, TrendingUp, Cake, ClipboardCheck
 } from 'lucide-react';
 
 // UI Components
@@ -38,7 +38,7 @@ import useKeyboardShortcuts, { KeyboardShortcutsHelp } from './hooks/useKeyboard
 import NewOrderAlert from './components/NewOrderAlert';
 import useDarkMode from './hooks/useDarkMode';
 import { getISODate } from './utils/calculations';
-import { computeOrderStockUsage } from './utils/wastage';
+import { planOrderDeduction } from './utils/stockAudit';
 import { runDeleteOrderTransaction } from './utils/pointsActions';
 
 // View Components (Lazy Loaded for Performance)
@@ -57,6 +57,7 @@ const AdminView = lazy(() => import('./components/views/AdminView'));
 const FinancialView = lazy(() => import('./components/views/FinancialView'));
 const SalesHistoryView = lazy(() => import('./components/views/SalesHistoryView'));
 const CakeQueueView = lazy(() => import('./components/views/CakeQueueView'));
+const StockAuditView = lazy(() => import('./components/views/StockAuditView'));
 
 // One-way token derived from the PIN. Stored on a "remembered" device so the app
 // stays unlocked across restarts — and so that changing the PIN later
@@ -158,9 +159,11 @@ export default function App() {
     expenses,
     stock,
     members,
+    menu,
+    beanModifiers,
     today,
     currentMonth
-  }), [orders, expenses, stock, members, today, currentMonth]);
+  }), [orders, expenses, stock, members, menu, beanModifiers, today, currentMonth]);
 
   // Database action wrapper (memoized to prevent context changes every render)
   //
@@ -200,18 +203,28 @@ export default function App() {
       // modifier) in stockLinks, captured at order time.
       const order = orders.find(o => o.id === id);
       if (newStatus === 'completed' && order && !order.stockDeducted) {
-        const usageByStock = computeOrderStockUsage(order);
+        // วางแผนตัดครั้งเดียวแล้วเก็บผลลงบิล (stockDeduction) · หน้า "สรุปการขาย & สต็อก"
+        // ใช้เทียบย้อนหลังว่าตัดอะไรไปจริง ข้ามอะไรไป (สต็อกถูกลบ / เมนูไม่ผูก)
+        const stockById = new Map(stock.map(s => [s.id, s]));
+        const plan = planOrderDeduction(order, stockById);
 
         const batch = writeBatch(db);
-        Object.entries(usageByStock).forEach(([stockId, used]) => {
-          if (used <= 0) return;
-          const stockItem = stock.find(s => s.id === stockId);
-          if (!stockItem) return; // linked stock was deleted — skip silently
+        Object.entries(plan.applied).forEach(([stockId, used]) => {
           // Atomic decrement so concurrent completions on two devices don't lose
           // each other's deduction (symmetric with the restore path on delete).
           batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), { quantity: increment(-used) });
         });
-        batch.update(orderRef, { status: newStatus, stockDeducted: true });
+        batch.update(orderRef, {
+          status: newStatus,
+          stockDeducted: true,
+          stockDeduction: {
+            at: new Date().toISOString(),
+            by: auth.currentUser?.email || '',
+            applied: plan.applied,
+            skipped: plan.skipped,
+            unlinked: plan.unlinked,
+          },
+        });
         await batch.commit();
         return;
       }
@@ -600,6 +613,7 @@ export default function App() {
             {view === 'financial' && <FinancialView />}
             {view === 'sales_history' && <SalesHistoryView />}
             {view === 'cake_queue' && <CakeQueueView />}
+            {view === 'stock_audit' && <StockAuditView />}
           </Suspense>
         </ErrorBoundary>
 
@@ -712,7 +726,7 @@ export default function App() {
                   'flex items-center gap-1 px-3 md:px-4 lg:px-5 py-2 md:py-3',
                   'rounded-[var(--radius-sm)] text-[11px] md:text-xs font-medium leading-none shrink-0',
                   'transition-all duration-300',
-                  ['expenses', 'menu_manage', 'recipes', 'members_manage', 'financial', 'admin', 'category_summary', 'sales_history', 'cake_queue'].includes(view)
+                  ['expenses', 'menu_manage', 'recipes', 'members_manage', 'financial', 'admin', 'category_summary', 'sales_history', 'cake_queue', 'stock_audit'].includes(view)
                     ? 'bg-emerald-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.42)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--accent-emerald)] hover:bg-black/5 active:scale-95',
                 ].join(' ')}
@@ -731,6 +745,7 @@ export default function App() {
 
                     {[
                       { key: 'cake_queue',       icon: Cake,          label: 'คิวเค้ก'      },
+                      { key: 'stock_audit',      icon: ClipboardCheck, label: 'สรุปขาย & สต็อก' },
                       { key: 'sales_history',    icon: TrendingUp,     label: 'ประวัติการขาย' },
                       { key: 'expenses',         icon: DollarSign,    label: 'รายจ่าย'      },
                       { key: 'menu_manage',       icon: ClipboardList, label: 'จัดการเมนู'   },

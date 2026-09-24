@@ -153,13 +153,20 @@ export default function MenuManageView() {
     const price = Number(item.price) || 0;
     // ใช้เกณฑ์เดียวกับ profitability เพราะการผูกเพียงบรรจุภัณฑ์อาจทำให้กำไรดูสูงเกินจริง
     const suspicious = linked && price > 0 && totalCost / price < 0.08;
-    return [item.id, { linked, count: links.length, suspicious, marginPercent: Math.round((price - totalCost) / (price || 1) * 100) }];
+    // ลิงก์ที่ชี้ไปสต็อกที่ถูกลบ · ขายแล้วระบบข้ามการตัดเงียบๆ ต้องเห็นแยกจาก "ยังไม่ผูก"
+    const deadCount = (item.stockLinks || []).filter(link => link?.stockId && !stockById.has(link.stockId)).length;
+    return [item.id, { linked, count: links.length, deadCount, suspicious, marginPercent: Math.round((price - totalCost) / (price || 1) * 100) }];
   })), [menu, stockById]);
   const stockCounts = useMemo(() => {
     const linked = menu.filter(item => menuCostStatus.get(item.id).linked).length;
     return { linked, unlinked: menu.length - linked };
   }, [menu, menuCostStatus]);
-  const stockFilteredMenu = useMemo(() => menu.filter(item => stockFilter === 'all' || menuCostStatus.get(item.id).linked === (stockFilter === 'linked')), [menu, menuCostStatus, stockFilter]);
+  const stockFilteredMenu = useMemo(() => menu.filter(item => {
+    const status = menuCostStatus.get(item.id);
+    if (stockFilter === 'broken') return status.deadCount > 0;
+    return stockFilter === 'all' || status.linked === (stockFilter === 'linked');
+  }), [menu, menuCostStatus, stockFilter]);
+  const brokenCount = useMemo(() => menu.filter(item => menuCostStatus.get(item.id).deadCount > 0).length, [menu, menuCostStatus]);
 
   const filteredMenu = useMemo(() => stockFilteredMenu.filter(item => highlightFilter === 'all' || (highlightFilter === 'featured' ? item.isFeatured === true || item.recommended === true : item.isPinnedBest === true)), [stockFilteredMenu, highlightFilter]);
   const wasteMenu = menu.find(item => item.id === wasteMenuId);
@@ -171,6 +178,16 @@ export default function MenuManageView() {
     setNewItem({ ...item, nameEn: item.nameEn || '', descriptionEn: item.descriptionEn || '' });
     editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+  // มาจากปุ่ม "ไปผูกสต็อก" หน้าสรุปการขาย & สต็อก · เปิดฟอร์มแก้เมนูนั้นทันที
+  const focusHandled = useRef(false);
+  useEffect(() => {
+    if (focusHandled.current || !menu.length) return;
+    let focusId = null;
+    try { focusId = sessionStorage.getItem('menuManage:focus'); sessionStorage.removeItem('menuManage:focus'); } catch { /* storage ปิด */ }
+    focusHandled.current = true;
+    const target = focusId && menu.find(item => item.id === focusId);
+    if (target) requestAnimationFrame(() => editMenu(target));
+  }, [menu]);
   const confirmWaste = async () => {
     if (wasteLock.current || !wasteMenu || !validWasteQuantity || !waste.costed) return;
     wasteLock.current = true;
@@ -1031,7 +1048,7 @@ ${withDescription
           <div className="px-6 py-3 space-y-2 border-b border-[var(--border-color)]">
             <p className="text-sm text-[var(--text-muted)]">ผูกแล้ว {stockCounts.linked} · ยังไม่ผูก {stockCounts.unlinked}</p>
             <div className="flex flex-wrap gap-2" role="group" aria-label="กรองสถานะการผูกสต็อก">
-              {[['all', 'ทั้งหมด'], ['linked', 'ผูกแล้ว'], ['unlinked', 'ยังไม่ผูก']].map(([value, label]) => <Button key={value} type="button" className="min-h-11" variant={stockFilter === value ? 'primary' : 'secondary'} aria-pressed={stockFilter === value} onClick={() => setStockFilter(value)}>{label}</Button>)}
+              {[['all', 'ทั้งหมด'], ['linked', 'ผูกแล้ว'], ['unlinked', 'ยังไม่ผูก'], ...(brokenCount ? [['broken', `ลิงก์เสีย ${brokenCount}`]] : [])].map(([value, label]) => <Button key={value} type="button" className="min-h-11" variant={stockFilter === value ? 'primary' : 'secondary'} aria-pressed={stockFilter === value} onClick={() => setStockFilter(value)}>{label}</Button>)}
             </div>
           </div>
           <div className="px-6 py-3 flex flex-wrap gap-2" role="group" aria-label="กรองเมนูไฮไลต์">
@@ -1077,6 +1094,7 @@ ${withDescription
                           const status = menuCostStatus.get(i.id);
                           return <>
                             <Badge variant={status.linked ? 'success' : 'warning'}>{status.linked ? 'ผูกสต็อกแล้ว' + (status.count ? ' · ' + status.count + ' รายการ' : ' · ต้นทุนเพิ่มเติม') : 'ยังไม่ผูกสต็อก'}</Badge>
+                            {status.deadCount > 0 && <Badge variant="danger" title="สูตรชี้ไปสต็อกที่ถูกลบแล้ว ขายแล้วส่วนนี้ไม่ถูกตัด">ลิงก์เสีย {status.deadCount}</Badge>}
                             {status.suspicious && <Badge variant="warning">ต้นทุนน่าสงสัย</Badge>}
                             {status.linked && <div className="flex items-center gap-2">
                               <Badge variant={status.marginPercent < 30 ? 'danger' : 'info'}>กำไร {status.marginPercent}%</Badge>

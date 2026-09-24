@@ -25,7 +25,8 @@ export async function runDeleteOrderTransaction(db, appId, order, stockList, mem
     }
 
     if (order?.stockDeducted) {
-      const usageByStock = computeOrderStockUsage(order);
+      // คืนตามที่ตัดไปจริง (บันทึกไว้ในบิลตอนกดเสร็จ) · บิลเก่าไม่มีบันทึกค่อยคำนวณจากสูตร
+      const usageByStock = order.stockDeduction?.applied || computeOrderStockUsage(order);
       Object.entries(usageByStock).forEach(([stockId, used]) => {
         if (used <= 0) return;
         const stockItem = stockList.find(s => s.id === stockId);
