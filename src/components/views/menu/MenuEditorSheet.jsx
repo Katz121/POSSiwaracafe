@@ -148,27 +148,54 @@ export default function MenuEditorSheet({
     if (!aiReady) { toast.warning('ยังไม่ได้เชื่อม AI'); return; }
     setIsSuggestingStock(true);
     try {
-      const stockList = stock.map((s) => `- id:"${s.id}" name:"${s.name}" unit:"${s.unit}"`).join('\n');
-      const prompt = `You are a Thai cafe recipe expert. Given menu item "${newItem.name}" (category: ${newItem.category || 'ไม่ระบุ'}), suggest which ingredients from the available stock are needed and how much of each.
+      // ส่งเฉพาะสต็อกที่ใช้งานอยู่ (ไม่รวมรายการที่ถูกรวมไปแล้ว) ให้ AI เลือก
+      const liveStock = stock.filter((s) => !s.mergedInto && !s.archived);
+      const stockList = liveStock.map((s) => `${s.id}|${s.name}|${s.unit}`).join('\n');
+      const perHint = newItem.recipeMode === 'whole' ? '(ปริมาณต่อ 1 ชิ้น)' : '(ปริมาณต่อ 1 แก้ว/ที่)';
+      const prompt = `คุณคือหัวหน้าบาริสต้าและเชฟขนมของคาเฟ่ไทย
+เมนู: "${newItem.name}" หมวด: ${newItem.category || 'ไม่ระบุ'}${newItem.description ? ` คำอธิบาย: ${newItem.description}` : ''}
 
-Available stock:
+ขั้นที่ 1: นึกสูตรมาตรฐานของเมนูนี้แบบร้านคาเฟ่ไทย (วัตถุดิบหลัก ไซรัป นม น้ำแข็ง ท็อปปิ้ง และบรรจุภัณฑ์ เช่น แก้ว ฝา หลอด ถ้าเป็นเครื่องดื่มเย็น)
+ขั้นที่ 2: จับคู่แต่ละอย่างกับสต็อกของร้านด้านล่างที่ใกล้ที่สุด ใช้ id ตรงตามรายการเท่านั้น ปริมาณใช้หน่วยของสต็อกนั้น
+ขั้นที่ 3: อะไรในสูตรที่ร้านไม่มีในสต็อก ใส่ใน missing ห้ามเดา id
+
+สต็อกของร้าน (id|ชื่อ|หน่วย):
 ${stockList}
 
-Return ONLY a JSON array. Each element: { "stockId": "exact id from list", "usage": number (amount per 1 serving) }
-Only include ingredients that are relevant. Be realistic with quantities (e.g. milk 30ml, ice 100g, coffee 18g).
-Return [] if no stock items match.`;
-      const result = await callGeminiAPI(prompt, true);
-      if (result.success && Array.isArray(result.data)) {
-        const validLinks = result.data.filter((l) => stock.some((s) => s.id === l.stockId));
-        if (validLinks.length > 0) {
-          setNewItem((prev) => ({ ...prev, stockLinks: validLinks.map((l) => ({ stockId: l.stockId, usage: Number(l.usage) || 1 })) }));
-          toast.success(`AI แนะนำวัตถุดิบ ${validLinks.length} รายการ`);
-        } else {
-          toast.warning('AI ไม่พบวัตถุดิบที่เหมาะสมในระบบ');
-        }
-      } else {
-        toast.error('AI ไม่สามารถแนะนำได้: ' + (result.error || ''));
+ตอบเป็น JSON เท่านั้น รูปแบบ:
+{"links":[{"stockId":"id จากรายการ","usage":ตัวเลข ${perHint},"ingredient":"ชื่อในสูตร"}],"missing":["ชื่อวัตถุดิบที่ร้านไม่มี"]}`;
+      const result = await callGeminiAPI(prompt, true, { useCache: false });
+      const data = result.success ? result.data : null;
+      const suggested = Array.isArray(data) ? data : (Array.isArray(data?.links) ? data.links : null);
+      if (!suggested) {
+        toast.error('AI ไม่สามารถแนะนำได้: ' + (result.error || 'รูปแบบคำตอบไม่ถูกต้อง'));
+        return;
       }
+      const byId = new Map(liveStock.map((s) => [s.id, s]));
+      const valid = suggested.filter((l) => byId.has(l?.stockId) && Number(l.usage) > 0);
+      const missing = Array.isArray(data?.missing) ? data.missing.filter(Boolean) : [];
+      // เพิ่มเข้าสูตรเดิม ไม่เขียนทับ · ตัวที่มีอยู่แล้วคงปริมาณที่ร้านตั้งไว้ · ของใหม่ขึ้นบนสุด
+      const have = new Set((newItem.stockLinks || []).map((l) => l.stockId).filter(Boolean));
+      const add = valid.filter((l, i) => !have.has(l.stockId) && valid.findIndex((x) => x.stockId === l.stockId) === i);
+      if (add.length) {
+        const whole = newItem.recipeMode === 'whole';
+        const pieces = Number(newItem.recipePieces) || 0;
+        setNewItem((prev) => ({
+          ...prev,
+          stockLinks: [
+            ...add.map((l) => (whole
+              ? { stockId: l.stockId, usage: Number(l.usage), perWhole: pieces > 0 ? String(Math.round(Number(l.usage) * pieces * 1000) / 1000) : '' }
+              : { stockId: l.stockId, usage: Number(l.usage) })),
+            ...(prev.stockLinks || []).filter((l) => l.stockId || Number(l.usage)),
+          ],
+        }));
+        toast.success(`AI เพิ่ม ${add.length} รายการ: ${add.map((l) => byId.get(l.stockId)?.name).join(', ')} · ตรวจปริมาณก่อนบันทึก`);
+      } else if (valid.length) {
+        toast.success('วัตถุดิบที่ AI แนะนำมีในสูตรครบแล้ว');
+      } else {
+        toast.warning('AI ไม่พบวัตถุดิบที่ตรงในสต็อกของร้าน');
+      }
+      if (missing.length) toast.warning(`สูตรนี้มีแต่ร้านยังไม่มีในสต็อก: ${missing.slice(0, 6).join(', ')}`);
     } catch (e) {
       toast.error('เกิดข้อผิดพลาด: ' + e.message);
     } finally {

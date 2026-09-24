@@ -319,7 +319,7 @@ export const callGeminiAPISecure = async (apiKey, prompt, options = {}) => {
         const response = await fetch(proxyUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: enhancedPrompt, parseAsJson })
+          body: JSON.stringify({ prompt: enhancedPrompt, parseAsJson, json: parseAsJson, maxOutputTokens: parseAsJson ? 8192 : 4096 })
         });
         if (!response.ok) {
           // A 5xx from the proxy returns an HTML error page — response.json()

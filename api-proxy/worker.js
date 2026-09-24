@@ -1073,7 +1073,9 @@ export default {
     }
 
     // Note: parseAsJson is sent by the client but parsing happens client-side
-    const { prompt, temperature = 0.7, maxOutputTokens = 2048 } = body;
+    // json: true → บังคับให้ตอบเป็น JSON ล้วน (ไม่งั้นโมเดลรุ่นคิดได้เขียนความคิดปนมากับคำตอบ)
+    const { prompt, temperature = 0.7, json = false } = body;
+    const maxOutputTokens = Math.min(Math.max(Number(body.maxOutputTokens) || 4096, 256), 8192);
 
     if (!prompt) {
       return Response.json(
@@ -1094,7 +1096,7 @@ export default {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature, maxOutputTokens }
+              generationConfig: { temperature, maxOutputTokens, ...(json ? { responseMimeType: 'application/json' } : {}) }
             })
           }
         );
@@ -1109,7 +1111,9 @@ export default {
           throw new Error(data.error.message);
         }
 
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        // รวมทุก part ที่ไม่ใช่ความคิดของโมเดล · เดิมอ่านแค่ parts[0] คำตอบยาวจึงขาดกลางทาง
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        const text = parts.filter((part) => !part.thought && typeof part.text === 'string').map((part) => part.text).join('');
 
         if (text) {
           return Response.json(
