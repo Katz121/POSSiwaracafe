@@ -383,6 +383,7 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap, b
           quantity: qty,
           state: lineFix.state,
           missing: lineFix.missing,
+          covered: lineFix.covered || null,
           requireMenuLinks: status === LINK_STATUS.UNLINKED || status === LINK_STATUS.MODIFIER_ONLY,
         });
         if (lineFix.state === 'open' && !agg.fix) agg.fix = fixTarget(lineFix.recipe, currentMenu?.id || item?.id || null);

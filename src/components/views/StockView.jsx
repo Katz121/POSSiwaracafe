@@ -66,6 +66,16 @@ export default function StockView() {
 
   const today = getISODate(); // stock count: "ตรวจแล้ววันนี้"
   const [countId, setCountId] = useState(null);
+  // `#/stock?count=<stockId>` (ปุ่ม "ไปตรวจนับ" หน้าสรุปขาย & สต็อก) เปิดหน้าตรวจนับของตัวนั้นทันที
+  const [seenCountParam, setSeenCountParam] = useState(null);
+  if (params.count && params.count !== seenCountParam && stock.some((s) => s.id === params.count)) {
+    setSeenCountParam(params.count);
+    setCountId(params.count);
+  }
+  const closeCount = () => {
+    setCountId(null);
+    if (params.count) navigate('stock', filter === 'all' ? {} : { filter }, { replace: true });
+  };
   const [countMode, setCountMode] = useState(false);
   const sorted = useMemo(() => sortStockForReview(filter === 'merged' ? allStock : stock), [filter, allStock, stock]);
   const counts = useMemo(() => ({
@@ -445,7 +455,7 @@ export default function StockView() {
         busy={mergeBusy}
         onMerge={doMerge}
       />
-      <CountSheet itemId={countId} stock={stock} today={today} onClose={() => setCountId(null)} />
+      <CountSheet itemId={countId} stock={stock} today={today} onClose={closeCount} />
       <CountModeSheet open={countMode} stock={stock} today={today} onClose={() => setCountMode(false)} />
 
       <TopConfirm

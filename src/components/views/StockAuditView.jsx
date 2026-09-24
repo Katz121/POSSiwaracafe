@@ -4,8 +4,12 @@ import { useConfigContext, useDataContext, useUIContext } from '../../context/Ap
 import { useNavigate, useRouteParams } from '../../navigation';
 import { getISODate } from '../../utils/calculations';
 import { addDaysISO, formatNumber, formatThaiDate } from '../../utils/format';
-import { Banner, Button, DateStepper, Money, PageHeader, StatCard, Tabs } from '../ui';
-import { auditDay, auditDays, auditMenuLinks, negativeStock, STATUS_LABEL } from '../../utils/stockAudit';
+import { Banner, Button, DateStepper, Money, PageHeader, StatCard, Tabs, useToast } from '../ui';
+import { auditDay, auditDays, auditMenuLinks, negativeStock, planOrderDeduction, STATUS_LABEL } from '../../utils/stockAudit';
+import { buildFixContext, planBackfill } from '../../utils/stockAuditFix';
+import { runBackfillTransaction, runDeductBillTransaction } from '../../utils/stockAuditActions';
+import { auth, db, appId } from '../../services/firebase';
+import { BackfillSheet, DeductBillSheet } from './inventory/IssueFixSheets';
 import { AuditEmpty, IssueList, MenuHealth, SoldList, StockUsedList } from './inventory/AuditSections';
 import { pct, qtyText } from './inventory/auditFormat';
 import { auditDateFromParam, auditParams, auditTabFromParam } from './inventory/stockStatus';
@@ -51,7 +55,8 @@ const STRIP = {
 
 export default function StockAuditView() {
   const { orders = [], stock = [], menu = [], beanModifiers = [] } = useDataContext();
-  const { handleViewChange } = useUIContext();
+  const { handleViewChange, runDbAction } = useUIContext();
+  const toast = useToast();
   const { milkSwap } = useConfigContext();
   const params = useRouteParams();
   const navigate = useNavigate();
@@ -89,12 +94,17 @@ export default function StockAuditView() {
     box.scrollTo({ left: Math.max(0, left) });
   }, [tab]);
 
-  const audit = useMemo(() => auditDay({ orders, stock, menu, date, milkSwap }), [orders, stock, menu, date, milkSwap]);
+  // "ตรวจใหม่" bumps this so the audit is recomputed from the latest live snapshots
+  const [recheck, setRecheck] = useState(0);
+  const audit = useMemo(
+    () => auditDay({ orders, stock, menu, date, milkSwap, beanModifiers, recheck }),
+    [orders, stock, menu, date, milkSwap, beanModifiers, recheck],
+  );
   const week = useMemo(() => {
     const end = date > today ? today : date;
     const dates = Array.from({ length: 7 }, (_, i) => addDaysISO(end, i - 6));
-    return auditDays({ orders, stock, menu, dates, milkSwap });
-  }, [orders, stock, menu, date, today, milkSwap]);
+    return auditDays({ orders, stock, menu, dates, milkSwap, beanModifiers });
+  }, [orders, stock, menu, date, today, milkSwap, beanModifiers]);
   const links = useMemo(() => auditMenuLinks({ menu, stock, beanModifiers }), [menu, stock, beanModifiers]);
   const negatives = useMemo(() => negativeStock(stock), [stock]);
   const { batches: prodBatches, loading: prodLoading } = useProductionBatches(date);
@@ -111,13 +121,75 @@ export default function StockAuditView() {
     ? stockUsed.filter((s) => `${s.name} ${s.items.map((i) => i.name).join(' ')}`.toLowerCase().includes(q))
     : stockUsed;
 
-  const actionable = issues.filter((i) => i.severity !== 'info').length;
+  const actionable = summary.openCount ?? issues.filter((i) => i.severity !== 'info').length;
   const goFix = (view, menuId) => {
     if (menuId) {
       try { sessionStorage.setItem('menuManage:focus', menuId); } catch { /* storage ปิด ก็แค่ไม่เปิดฟอร์มให้ */ }
     }
     if (view === 'stock') handleViewChange?.('stock', { filter: 'out' });
     else handleViewChange?.(view);
+  };
+
+  // ── ต้องแก้: ตรวจใหม่ / ตัดย้อนหลัง / ตัดบิลที่ค้าง ──
+  const stockById = useMemo(() => new Map(stock.map((s) => [s.id, s])), [stock]);
+  const ordersById = useMemo(() => new Map(orders.map((o) => [o.id, o])), [orders]);
+  const [busy, setBusy] = useState(false);
+  const [backfillOpen, setBackfillOpen] = useState(false);
+  const [deductId, setDeductId] = useState(null);
+  const backfillRefs = useMemo(() => issues
+    .filter((i) => i.state === 'fixed_pending_backfill')
+    .flatMap((i) => i.lines.filter((l) => l.state === 'needs_backfill')
+      .map((l) => ({ orderId: l.orderId, index: l.index, requireMenuLinks: l.requireMenuLinks }))), [issues]);
+  const backfillPlan = useMemo(
+    () => (backfillOpen ? planBackfill(backfillRefs, ordersById, buildFixContext({ stock, menu, beanModifiers, milkSwap })) : null),
+    [backfillOpen, backfillRefs, ordersById, stock, menu, beanModifiers, milkSwap],
+  );
+  const deductOrder = deductId ? ordersById.get(deductId) || null : null;
+  const deductPlan = useMemo(
+    () => (deductOrder ? planOrderDeduction(deductOrder, stockById, { milkSwap }) : null),
+    [deductOrder, stockById, milkSwap],
+  );
+
+  const recheckNow = () => {
+    setRecheck((n) => n + 1);
+    const fresh = auditDay({ orders, stock, menu, date, milkSwap, beanModifiers });
+    toast.info(`เหลือ ${fresh.summary.openCount} จุดที่ต้องแก้ · แก้แล้ว ${fresh.summary.resolvedCount}`);
+  };
+
+  const onIssueAction = (issue) => {
+    const fix = issue.fix || {};
+    if (fix.kind === 'modifier') handleViewChange?.('admin', { tab: 'modifiers' });
+    else if (fix.kind === 'deduct_bill') setDeductId(fix.orderId);
+    else if (fix.kind === 'count') handleViewChange?.('stock', fix.stockId ? { count: fix.stockId } : { filter: 'uncounted' });
+    else goFix('menu_manage', fix.menuId || issue.menuId);
+  };
+
+  const confirmBackfill = async () => {
+    if (busy) return;
+    setBusy(true);
+    let result = null;
+    const ok = await runDbAction(async () => {
+      result = await runBackfillTransaction(db, appId, backfillRefs, { stock, menu, beanModifiers, milkSwap }, auth.currentUser?.email || '');
+    }, 'ตัดสต็อกย้อนหลังไม่สำเร็จ');
+    setBusy(false);
+    if (!ok) return;
+    setBackfillOpen(false);
+    if (result?.orders) toast.success(`ตัดสต็อกย้อนหลังแล้ว ${result.orders} บิล · ${Object.keys(result.totals).length} รายการ`);
+    else toast.info('ไม่มีอะไรต้องตัดย้อนหลังแล้ว');
+  };
+
+  const confirmDeduct = async () => {
+    if (busy || !deductId) return;
+    setBusy(true);
+    let plan = null;
+    const ok = await runDbAction(async () => {
+      plan = await runDeductBillTransaction(db, appId, deductId, stock, milkSwap, auth.currentUser?.email || '');
+    }, 'ตัดสต็อกบิลนี้ไม่สำเร็จ');
+    setBusy(false);
+    if (!ok) return;
+    setDeductId(null);
+    if (plan) toast.success('ตัดสต็อกบิลนี้แล้ว');
+    else toast.info('บิลนี้ถูกตัดสต็อกไปแล้ว หรือยังไม่เสร็จ');
   };
 
   const exportCsv = () => {
@@ -199,6 +271,11 @@ export default function StockAuditView() {
                     ตัดสต็อกตามสูตรได้ <b className="num text-[var(--text-primary)]">{pct(summary.accuracy)}</b> ของที่ขาย
                     {detail.length > 0 && ` · ${detail.join(' · ')}`}
                   </span>
+                  {summary.accuracyBefore !== undefined && pct(summary.accuracyBefore) !== pct(summary.accuracy) && (
+                    <span className="mt-1 block text-xs text-[var(--text-muted)]">
+                      ก่อนแก้ {pct(summary.accuracyBefore)} → หลังแก้สูตร/ตัดย้อนหลัง {pct(summary.accuracy)}
+                    </span>
+                  )}
                   <span className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-[var(--bg-surface)]" aria-hidden="true">
                     <span className="bg-[var(--state-ok)]" style={{ width: pct((summary.unitsOk + summary.unitsModifierOnly) / summary.units) }} />
                     <span className="bg-[var(--state-warn)]" style={{ width: pct((summary.unitsUnlinked + summary.unitsPartial) / summary.units) }} />
@@ -250,7 +327,15 @@ export default function StockAuditView() {
           <div className="mt-2">
             {tab === 'sold' && (summary.verdict === 'empty' ? <AuditEmpty text="วันนี้ยังไม่มีบิล" /> : <SoldList sold={soldFiltered} />)}
             {tab === 'stock' && <StockUsedList rows={stockFiltered} />}
-            {tab === 'issues' && <IssueList issues={issues} onFix={goFix} />}
+            {tab === 'issues' && (
+              <IssueList
+                issues={issues}
+                stockById={stockById}
+                onAction={onIssueAction}
+                onRecheck={recheckNow}
+                onBackfill={() => setBackfillOpen(true)}
+              />
+            )}
             {tab === 'menu' && <MenuHealth links={links} negatives={negatives} onFix={goFix} />}
             {tab === 'production' && (
               <ProductionAuditList
@@ -270,6 +355,23 @@ export default function StockAuditView() {
           </div>
         </div>
       </div>
+      <BackfillSheet
+        open={backfillOpen}
+        onClose={() => !busy && setBackfillOpen(false)}
+        plan={backfillPlan}
+        stockById={stockById}
+        busy={busy}
+        onConfirm={confirmBackfill}
+      />
+      <DeductBillSheet
+        open={Boolean(deductId)}
+        onClose={() => !busy && setDeductId(null)}
+        order={deductOrder}
+        plan={deductPlan}
+        stockById={stockById}
+        busy={busy}
+        onConfirm={confirmDeduct}
+      />
     </div>
   );
 }

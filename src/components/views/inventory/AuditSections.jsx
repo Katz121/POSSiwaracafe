@@ -1,7 +1,7 @@
 // Tab bodies of StockAuditView (moved out of the view, restyled with v2
 // tokens/components). Data shapes come straight from utils/stockAudit.js.
 import { useState } from 'react';
-import { AlertOctagon, AlertTriangle, CheckCircle2, ChevronDown, Info, Link2, Link2Off, Package } from 'lucide-react';
+import { AlertOctagon, AlertTriangle, CheckCircle2, ChevronDown, History, Info, Link2, Link2Off, Package, RefreshCw } from 'lucide-react';
 import { Badge, Banner, Button, DataTable, EmptyState, FilterChips, Money, StatCard } from '../../ui';
 import { formatNumber } from '../../../utils/format';
 import { STATUS_LABEL } from '../../../utils/stockAudit';
@@ -139,46 +139,187 @@ export function StockUsedList({ rows }) {
 const SEVERITY_TONE = { error: 'danger', warn: 'warn', info: 'info' };
 const ISSUE_ICON = { error: AlertOctagon, warn: AlertTriangle, info: Info };
 
-export function IssueList({ issues, onFix }) {
-  if (!issues.length) return <AuditEmpty icon={CheckCircle2} tone="ok" text="ไม่มีจุดที่ต้องแก้ในวันนี้" />;
+/** ปุ่มแก้ + คำอธิบายสั้นๆ ของข้อที่ยังเปิดอยู่ · ทุกข้อต้องมีทางแก้ */
+function fixFor(issue) {
+  const fix = issue.fix || {};
+  switch (fix.kind) {
+    case 'modifier':
+      return { label: `ไปแก้ตัวเลือก #${fix.modifierName || ''}`.trim(), hint: `สต็อกที่ถูกลบอยู่ในสูตรของตัวเลือก #${fix.modifierName || ''} · แก้ที่ ตั้งค่าร้าน → ตัวเลือกเมนู` };
+    case 'deduct_bill':
+      return { label: 'ตัดสต็อกบิลนี้', hint: 'กดแล้วดูก่อนว่าจะตัดอะไร · ตัดตามสูตรในบิลเหมือนตอนกด "เสร็จ"' };
+    case 'count':
+      if (issue.type === 'stock_negative') return { label: 'ไปตรวจนับ', hint: 'นับของจริงแล้วใส่ยอด ระบบจะตั้งคงเหลือให้ตรง' };
+      if (issue.type === 'bill_mismatch') return { label: 'ไปตรวจนับ', hint: 'นับของจริงของวัตถุดิบที่คลาด · นับแล้วข้อนี้จะหายไป' };
+      return { label: 'ไปตรวจนับ', hint: 'เมนูนี้ถูกลบไปแล้ว ตัดย้อนหลังไม่ได้ · นับของจริงเพื่อให้ยอดตรง' };
+    case 'menu':
+    default:
+      if (issue.type === 'item_unlinked' || issue.type === 'item_modifier_only') {
+        return { label: 'ไปผูกสต็อก', hint: 'ผูกสต็อกให้เมนูนี้ แล้วกด "ตรวจใหม่" · ตัดของที่ขาดย้อนหลังได้' };
+      }
+      return { label: 'ไปผูกสต็อก', hint: 'เปลี่ยนวัตถุดิบที่ถูกลบในสูตรเป็นตัวที่มีอยู่ แล้วกด "ตรวจใหม่"' };
+  }
+}
+
+const issueMeta = (issue) => [
+  issue.queueNumber != null ? `คิว ${issue.queueNumber}` : null,
+  issue.time ? `${issue.time} น.` : null,
+  issue.bills?.length > 1 ? `และอีก ${issue.bills.length - 1} บิล` : null,
+].filter(Boolean).join(' · ');
+
+const issueKey = (issue, idx) => `${issue.type}-${issue.orderId || issue.stockId || ''}-${issue.item || ''}-${idx}`;
+
+function Diffs({ diffs }) {
+  if (!diffs?.length) return null;
   return (
-    <ul className="grid grid-cols-1 gap-2">
-      {issues.map((issue, idx) => {
-        const canFix = (issue.type?.startsWith('item_') && !issue.fixedNow) || issue.type === 'stock_negative';
-        const meta = [
-          issue.queueNumber != null ? `คิว ${issue.queueNumber}` : null,
-          issue.time ? `${issue.time} น.` : null,
-          issue.bills?.length > 1 ? `และอีก ${issue.bills.length - 1} บิล` : null,
-        ].filter(Boolean).join(' · ');
-        return (
-          <li key={`${issue.type}-${issue.orderId || issue.stockId || ''}-${idx}`}>
-            <Banner
-              compact
-              tone={SEVERITY_TONE[issue.severity] || 'info'}
-              icon={ISSUE_ICON[issue.severity] || Info}
-              title={issue.message}
-              action={canFix ? {
-                label: issue.type === 'stock_negative' ? 'ไปสต็อก' : 'ไปผูกสต็อก',
-                onClick: () => (issue.type === 'stock_negative' ? onFix('stock') : onFix('menu_manage', issue.menuId)),
-              } : undefined}
-            >
-              {(meta || issue.diffs?.length > 0) && (
-                <>
-                  {meta && <span className="block">{meta}</span>}
-                  {issue.diffs?.length > 0 && (
-                    <ul className="mt-1 grid gap-0.5">
-                      {issue.diffs.map((d) => (
-                        <li key={d.stockId} className="num">{d.name}: ควรตัด {qtyText(d.expected)} · ตัดจริง {qtyText(d.applied)}</li>
-                      ))}
-                    </ul>
-                  )}
-                </>
-              )}
-            </Banner>
-          </li>
-        );
-      })}
+    <ul className="mt-1 grid gap-0.5">
+      {diffs.map((d) => (
+        <li key={d.stockId} className="num">{d.name}: ควรตัด {qtyText(d.expected)} · ตัดจริง {qtyText(d.applied)}</li>
+      ))}
     </ul>
+  );
+}
+
+function OpenIssue({ issue, onAction }) {
+  const fix = fixFor(issue);
+  const meta = issueMeta(issue);
+  return (
+    <Banner compact tone={SEVERITY_TONE[issue.severity] || 'info'} icon={ISSUE_ICON[issue.severity] || Info} title={issue.message}>
+      {meta && <span className="block">{meta}</span>}
+      <Diffs diffs={issue.diffs} />
+      <span className="mt-1 block text-xs text-[var(--text-muted)]">{fix.hint}</span>
+      <span className="mt-2 flex">
+        <Button variant="secondary" className="max-w-full whitespace-normal text-left" onClick={() => onAction(issue)}>
+          {fix.label}
+        </Button>
+      </span>
+    </Banner>
+  );
+}
+
+function missingText(issue, stockById) {
+  const sum = {};
+  (issue.lines || []).filter((l) => l.state === 'needs_backfill').forEach((l) => {
+    Object.entries(l.missing || {}).forEach(([id, q]) => { sum[id] = (sum[id] || 0) + q; });
+  });
+  return Object.entries(sum).map(([id, q]) => {
+    const s = stockById?.get(id);
+    return `${s?.name || id} ${qtyText(q)} ${s?.unit || ''}`.trim();
+  }).join(' · ');
+}
+
+const RESOLVED_WHY = (issue) => {
+  if (issue.type === 'bill_mismatch') return 'นับสต็อกของจริงแล้วหลังบิลนี้';
+  const lines = issue.lines || [];
+  if (lines.some((l) => l.covered === 'backfill')) return 'แก้สูตรแล้ว · ตัดสต็อกที่ขาดย้อนหลังแล้ว';
+  if (lines.every((l) => l.state === 'not_deducted')) return 'แก้สูตรแล้ว · บิลยังไม่ถูกตัด จะตัดตอนกดเสร็จ';
+  return 'แก้สูตรแล้ว · ตอนขายตัดครบอยู่แล้ว';
+};
+
+function Section({ title, count, tone = 'neutral', children, action }) {
+  return (
+    <section className="flex min-w-0 flex-col gap-2" aria-label={title}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
+          {title} <Badge tone={tone} className="num">{formatNumber(count)}</Badge>
+        </h3>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * @param {object} props
+ * @param {Array} props.issues auditDay().issues (มี state)
+ * @param {(issue) => void} props.onAction ปุ่มแก้ของข้อที่ยังเปิด
+ * @param {() => void} props.onRecheck ปุ่ม "ตรวจใหม่"
+ * @param {() => void} props.onBackfill เปิดหน้าตัดย้อนหลัง
+ * @param {Map} [props.stockById] ชื่อ/หน่วยสต็อก ใช้แสดงของที่ขาด
+ */
+export function IssueList({ issues, onAction, onRecheck, onBackfill, stockById }) {
+  const [showResolved, setShowResolved] = useState(false);
+  const open = issues.filter((i) => (i.state || 'open') === 'open');
+  const pending = issues.filter((i) => i.state === 'fixed_pending_backfill');
+  const resolved = issues.filter((i) => i.state === 'resolved');
+  const openCount = open.filter((i) => i.severity !== 'info').length + pending.length;
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className={`${PANEL} flex flex-wrap items-center justify-between gap-3 px-4 py-3`}>
+        <p className="min-w-0 text-sm text-[var(--text-secondary)]">
+          เหลือ <b className="num text-[var(--text-primary)]">{formatNumber(openCount)}</b> จุดที่ต้องแก้
+          {resolved.length > 0 && <> · แก้แล้ว <b className="num text-[var(--state-ok)]">{formatNumber(resolved.length)}</b></>}
+          <span className="block text-xs text-[var(--text-muted)]">แก้สูตรเสร็จแล้ว กด "ตรวจใหม่" เพื่อดูผลล่าสุด</span>
+        </p>
+        <Button variant="secondary" leftIcon={<RefreshCw size={16} />} onClick={onRecheck} className="min-h-11 shrink-0">ตรวจใหม่</Button>
+      </div>
+
+      {open.length === 0 && pending.length === 0 && (
+        <AuditEmpty icon={CheckCircle2} tone="ok" text="ไม่มีจุดที่ต้องแก้ในวันนี้" />
+      )}
+
+      {open.length > 0 && (
+        <Section title="ต้องแก้" count={open.length} tone="danger">
+          <ul className="grid grid-cols-1 gap-2">
+            {open.map((issue, idx) => (
+              <li key={issueKey(issue, idx)}><OpenIssue issue={issue} onAction={onAction} /></li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {pending.length > 0 && (
+        <Section title="แก้สูตรแล้ว · รอตัดย้อนหลัง" count={pending.length} tone="warn">
+          <Banner
+            tone="warn"
+            icon={History}
+            title="สูตรถูกแล้ว แต่บิลที่ขายไปก่อนแก้ยังตัดสต็อกไม่ครบ"
+          >
+            <span className="block">กดปุ่มด้านล่าง ดูรายการที่จะตัดก่อน แล้วค่อยยืนยัน · ตัดได้ครั้งเดียวต่อบิล</span>
+            <span className="mt-2 flex">
+              <Button leftIcon={<History size={16} />} className="min-h-11" onClick={onBackfill}>ตัดสต็อกที่ขาดย้อนหลัง</Button>
+            </span>
+          </Banner>
+          <ul className={`${PANEL} divide-y divide-[var(--border-light)]`}>
+            {pending.map((issue, idx) => (
+              <li key={issueKey(issue, idx)} className="flex min-h-14 flex-col gap-0.5 px-4 py-2.5">
+                <span className="break-words text-sm font-medium text-[var(--text-primary)]">{issue.item} ×{formatNumber(issue.missingUnits || issue.quantity)}</span>
+                <span className="break-words text-xs text-[var(--text-muted)]">ขาด {missingText(issue, stockById)}{issueMeta(issue) ? ` · ${issueMeta(issue)}` : ''}</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {resolved.length > 0 && (
+        <Section
+          title="เรียบร้อยแล้ว"
+          count={resolved.length}
+          tone="ok"
+          action={(
+            <Button variant="ghost" aria-expanded={showResolved} onClick={() => setShowResolved((v) => !v)}
+              rightIcon={<ChevronDown size={16} className={`transition-transform ${showResolved ? 'rotate-180' : ''}`} />}>
+              {showResolved ? 'ซ่อน' : 'ดู'}
+            </Button>
+          )}
+        >
+          {showResolved && (
+            <ul className={`${PANEL} divide-y divide-[var(--border-light)]`}>
+              {resolved.map((issue, idx) => (
+                <li key={issueKey(issue, idx)} className="flex min-h-14 items-start gap-3 px-4 py-2.5">
+                  <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-[var(--state-ok)]" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words text-sm text-[var(--text-secondary)] line-through decoration-[var(--text-muted)]">{issue.message}</span>
+                    <span className="block text-xs text-[var(--state-ok)]">{RESOLVED_WHY(issue)}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      )}
+    </div>
   );
 }
 
