@@ -64,7 +64,7 @@ export default function usePosData(user, appId) {
   const [pointsRewards, setPointsRewards] = useState([]);
   const [redeemDiscountValue, setRedeemDiscountValue] = useState(DEFAULT_REDEEM_DISCOUNT_VALUE);
   const [ownGlassDiscount, setOwnGlassDiscount] = useState(DEFAULT_OWN_GLASS_DISCOUNT);
-  const [geminiApiKey, setGeminiApiKey] = useState(import.meta.env.VITE_GEMINI_API_KEY || '');
+  const [geminiApiKey, setGeminiApiKey] = useState(''); // เลิกใช้แล้ว (AI ย้ายไป Muse) · อ่านไว้เฉยๆ ไม่ลบฟิลด์ใน Firestore
   const [startingCash, setStartingCash] = useState(DEFAULT_STARTING_CASH);
   const [quickExpenses, setQuickExpenses] = useState([]);
   const [reviewUrl, setReviewUrl] = useState('');

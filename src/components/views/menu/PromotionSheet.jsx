@@ -1,3 +1,4 @@
+import AiButton from '../../AiButton';
 import { Sparkles, RefreshCcw, CheckCircle2, Trash2, Edit } from 'lucide-react';
 import { Banner, Button, Input, Textarea, SegmentedControl, Sheet, Spinner } from '../../ui';
 
@@ -45,7 +46,7 @@ export default function PromotionSheet({
             <div className="py-12 flex flex-col items-center gap-4 text-center">
               <Sparkles size={40} className="text-[var(--accent-ai)]" aria-hidden="true" />
               <p className="text-[var(--text-secondary)]">AI ดูยอดขายและรายจ่ายเดือนนี้ แล้วเสนอ 3 โปรที่รักษากำไร</p>
-              <Button variant="ai" size="lg" leftIcon={<Sparkles size={18} />} onClick={onGenerate}>เริ่มคิดโปรโมชั่น</Button>
+              <AiButton size="lg" leftIcon={<Sparkles size={18} />} onClick={onGenerate}>เริ่มคิดโปรโมชั่น</AiButton>
             </div>
           ) : (
             <div className="flex flex-col gap-3">
@@ -66,7 +67,7 @@ export default function PromotionSheet({
                   </div>
                 </article>
               ))}
-              <Button variant="ghost" leftIcon={<RefreshCcw size={18} />} onClick={onGenerate} className="self-center">ลองคิดใหม่</Button>
+              <AiButton variant="ghost" leftIcon={<RefreshCcw size={18} />} onClick={onGenerate} className="self-center">ลองคิดใหม่</AiButton>
             </div>
           )
         )}

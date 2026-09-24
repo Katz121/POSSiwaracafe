@@ -23,7 +23,8 @@ describe('settings tabs', () => {
 });
 
 describe('settings model', () => {
-  it('builds exactly the old config/settings payload from a draft', () => {
+  // geminiApiKey เลิกใช้แล้ว (AI ย้ายไป Muse) · ยังอยู่ใน Firestore ได้ แต่ payload ห้ามเขียนทับ/ล้างมัน
+  it('builds exactly the old config/settings payload from a draft (minus the retired Gemini key)', () => {
     const draft = draftFromConfig({
       adminPin: '9999', redeemPointsThreshold: '60', pointsExpiryMonths: 3, redeemDiscountValue: 40, ownGlassDiscount: 5,
       geminiApiKey: 'k', startingCash: 500, reviewUrl: 'https://x', shopName: 'S', receiptPaperWidth: 58,
@@ -32,8 +33,9 @@ describe('settings model', () => {
       pointsRewardsEnabled: true, pointsRewards: [{ id: 'a', name: ' วิป ', cost: '2.7', enabled: true }, { id: 'b', name: '  ', cost: 3 }],
     });
     const payload = buildSettingsPayload(draft, { serverTimestamp: () => 'TS' });
+    expect(payload).not.toHaveProperty('geminiApiKey');
     expect(payload).toEqual({
-      geminiApiKey: 'k', adminPin: '9999', redeemPointsThreshold: 60, pointsExpiryMonths: 3, redeemDiscountValue: 40,
+      adminPin: '9999', redeemPointsThreshold: 60, pointsExpiryMonths: 3, redeemDiscountValue: 40,
       ownGlassDiscount: 5, startingCash: 500, reviewUrl: 'https://x', shopName: 'S', shopAddress: '', shopPhone: '', taxId: '',
       receiptFooter: '', receiptPaperWidth: 58, cakeSaleEnabled: true, cakeSaleCategories: ['Cake'], cakeSalePercent: 20,
       cakeSaleStart: '13:00', cakeSaleEnd: '17:00', comboEnabled: true, comboPercent: 10, spendThreshold: 300, spendDiscount: 5,

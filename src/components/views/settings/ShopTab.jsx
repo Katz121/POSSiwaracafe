@@ -1,5 +1,6 @@
-import { Bot, Download, RotateCcw, Trash2 } from 'lucide-react';
+import { Download, RotateCcw, Trash2 } from 'lucide-react';
 import { Button, Input } from '../../ui';
+import { AI_OFFLINE_HINT } from '../../../utils/museJobs';
 import { formatBaht, formatNumber } from '../../../utils/format';
 import { NativeSelect, SaveBar, Section, Toggle } from './controls';
 import { getUpsellStats } from '../../../services/upsellTracker';
@@ -20,11 +21,11 @@ function Stat({ label, value }) {
   );
 }
 
-/** "ร้าน & ใบเสร็จ" · shop info, receipt, VAT, Gemini key + AI usage. */
+/** "ร้าน & ใบเสร็จ" · shop info, receipt, VAT, AI (Muse) status + usage. */
 export default function ShopTab({
   draft, patch, dirty, onSave,
   vatEnabled, onToggleVat,
-  aiUtils, onTestAI, onClearAICache, onExportUpsell, onResetUpsell,
+  aiUtils, aiStatus, onClearAICache, onExportUpsell, onResetUpsell,
 }) {
   const aiStats = aiUtils?.getApiStats ? aiUtils.getApiStats() : null;
   const upsell = getUpsellStats();
@@ -71,20 +72,19 @@ export default function ShopTab({
 
       <Section
         title="ผู้ช่วย AI"
-        description={<>Gemini API Key สำหรับฟีเจอร์ AI · รับฟรีที่ <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline text-[var(--accent)]">aistudio.google.com</a></>}
+        description="AI ทำงานผ่าน Meta Muse บนคอมที่ร้าน · ใช้ได้เฉพาะตอนเปิดคอมและรัน muse-bridge อยู่"
       >
-        <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
-          <Input
-            label="Gemini API Key"
-            type="password"
-            autoComplete="off"
-            value={draft.geminiApiKey}
-            onChange={(e) => patch({ geminiApiKey: e.target.value })}
-            placeholder="AIzaSy..."
-            className="flex-1"
-          />
-          <Button variant="ai" leftIcon={<Bot size={18} />} onClick={onTestAI} className="min-h-12">ทดสอบการเชื่อมต่อ</Button>
-        </div>
+        <p data-ai-status className="flex flex-wrap items-center gap-2 text-sm text-[var(--text-primary)]">
+          <span aria-hidden="true" className={`w-2.5 h-2.5 rounded-full ${aiStatus?.ready ? 'bg-[var(--state-ok)]' : 'bg-[var(--text-muted)]'}`} />
+          <span className="font-semibold">สถานะ AI (Muse):</span>
+          <span>{aiStatus?.ready ? 'ออนไลน์' : 'ออฟไลน์'}</span>
+          <span className="text-[var(--text-muted)]">
+            {aiStatus?.lastSeen
+              ? `· ติดต่อล่าสุด ${new Date(aiStatus.lastSeen).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+              : '· ยังไม่เคยเชื่อมต่อ'}
+          </span>
+        </p>
+        {!aiStatus?.ready && <p className="mt-1 text-sm text-[var(--text-muted)]">{AI_OFFLINE_HINT}</p>}
 
         {aiStats && (
           <div className="mt-5">

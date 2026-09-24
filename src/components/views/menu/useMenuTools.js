@@ -30,7 +30,7 @@ export default function useMenuTools({
   // AI Promotion Generator
   const handleGeneratePromotions = async () => {
     if (!aiReady) {
-      toast.warning('กรุณาใส่ Gemini API Key ในการตั้งค่าก่อน');
+      toast.warning('AI ออฟไลน์ · เปิดคอมที่ร้านเพื่อใช้ AI');
       return;
     }
 
@@ -69,6 +69,7 @@ export default function useMenuTools({
         - If profit is healthy, more aggressive acquisition deals are fine.
         - Avoid any deal that could cause a direct loss for the shop.
 
+        Base every idea on the numbers above. If the data is not enough to judge, say so in the description instead of guessing.
         Format: Return a JSON array of objects with "title", "description", and "code" keys.
         Language: Thai.
       `;
@@ -77,7 +78,7 @@ export default function useMenuTools({
       if (result.success) {
         setPromotionIdeas(result.data);
       } else {
-        throw new Error("AI Busy");
+        throw new Error(result.error || 'AI ไม่ว่าง');
       }
 
     } catch (e) {
@@ -218,7 +219,7 @@ export default function useMenuTools({
 
   // AI Batch English Translation — fills nameEn/descriptionEn only for items that
   // don't already have one, so manually-entered EN text is never overwritten.
-  // Runs in batches of ~30 items per call to keep the Gemini prompt short.
+  // Runs in batches of ~30 items per call to keep the AI prompt short.
   const translateItemsBatch = async (items, collectionName, withDescription) => {
     if (!items.length) return 0;
     const batchSize = 30;
@@ -265,7 +266,7 @@ ${withDescription
 
   const handleTranslateToEnglish = async () => {
     if (!aiReady) {
-      toast.warning('กรุณาตั้งค่า Gemini API Key ก่อน');
+      toast.warning('AI ออฟไลน์ · เปิดคอมที่ร้านเพื่อใช้ AI');
       return;
     }
 

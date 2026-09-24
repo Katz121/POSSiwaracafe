@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Bot, Send, History, Download, RotateCcw, Package, Tag, Banknote, Users, Settings } from 'lucide-react';
 import { Sheet, Button, Spinner } from '../../ui';
 import { formatNumber } from '../../../utils/format';
+import { AI_OFFLINE_HINT, AI_THINKING_TEXT } from '../../../utils/museJobs';
 
 /**
  * AI ที่ปรึกษาธุรกิจ as a Sheet (was a hand-rolled violet modal). Logic stays in
@@ -15,6 +16,7 @@ export default function AiConsultantSheet({
   response,
   onNewQuestion,
   isConsulting,
+  aiReady = true,
   onSubmit,
   suggestions = [],
   chatHistory = [],
@@ -38,11 +40,11 @@ export default function AiConsultantSheet({
         type="text"
         value={query}
         onChange={(e) => onQueryChange?.(e.target.value)}
-        placeholder="ถามเรื่องยอดขาย กำไร หรือขอคำแนะนำ"
-        disabled={isConsulting}
+        placeholder={aiReady ? 'ถามเรื่องยอดขาย กำไร หรือขอคำแนะนำ' : AI_OFFLINE_HINT}
+        disabled={isConsulting || !aiReady}
         className="flex-1 min-w-0 min-h-12 px-4 rounded-[var(--radius-sm)] bg-[var(--bg-sunken)] border border-[var(--border-strong)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus-visible:shadow-[var(--focus-ring)]"
       />
-      <Button type="submit" size="lg" disabled={!query.trim() || isConsulting} aria-label="ส่งคำถาม" className="shrink-0">
+      <Button type="submit" size="lg" disabled={!query.trim() || isConsulting || !aiReady} aria-label="ส่งคำถาม" className="shrink-0">
         {isConsulting ? <Spinner size="sm" color="current" /> : <Send size={18} />}
       </Button>
     </form>
@@ -97,7 +99,7 @@ export default function AiConsultantSheet({
           <div className="flex flex-col gap-4">
             <div className="rounded-[var(--radius)] bg-[var(--bg-surface)] border border-[var(--border-color)] p-4">
               <p className="flex items-center gap-2 text-sm font-semibold text-[var(--text-secondary)] mb-2"><Bot size={16} className="text-[var(--accent-ai)]" />AI วิเคราะห์</p>
-              <div className="text-[var(--text-primary)] leading-relaxed whitespace-pre-line">{response}</div>
+              <div data-ai-consult-answer className="text-[var(--text-primary)] leading-relaxed whitespace-pre-line">{response}</div>
             </div>
             <div>
               <p className="text-sm font-medium text-[var(--text-secondary)] mb-2">ไปจัดการต่อ</p>
@@ -117,8 +119,14 @@ export default function AiConsultantSheet({
           <div className="flex flex-col gap-3">
             <div className="flex flex-col items-center text-center py-6 text-[var(--text-secondary)]">
               <Bot size={40} className="mb-2 text-[var(--text-muted)]" />
-              <p className="font-medium">พร้อมวิเคราะห์ข้อมูลร้านของคุณ</p>
-              <p className="text-sm text-[var(--text-muted)]">พิมพ์คำถามด้านล่าง หรือเลือกคำถามตัวอย่าง</p>
+              {isConsulting ? (
+                <div className="font-medium flex items-center gap-2" data-ai-consult-thinking><Spinner size="sm" /> {AI_THINKING_TEXT}</div>
+              ) : (
+                <>
+                  <p className="font-medium">{aiReady ? 'พร้อมวิเคราะห์ข้อมูลร้านของคุณ' : AI_OFFLINE_HINT}</p>
+                  <p className="text-sm text-[var(--text-muted)]">พิมพ์คำถามด้านล่าง หรือเลือกคำถามตัวอย่าง</p>
+                </>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {suggestions.map((s) => (

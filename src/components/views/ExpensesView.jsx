@@ -10,6 +10,7 @@ import {
   Badge, Banner, Button, DataTable, DateStepper, FilterChips, IconButton, Money, PageHeader, SectionCard, SegmentedControl, Sheet,
   StatCard, useToast,
 } from '../ui';
+import AiButton from '../AiButton';
 import ExpenseForm from './inventory/ExpenseForm';
 import TopConfirm from './inventory/TopConfirm';
 import { buildTitleSuggestions, emptyExpense, intakeFormFor, validateExpense } from './inventory/expenseModel';
@@ -157,10 +158,11 @@ export default function ExpensesView() {
         3. Provide 1-2 actionable recommendations to improve profitability.
         ${expenseViewMode === 'daily' ? '4. Compare if this day seems normal or unusual.' : ''}
         ${expenseViewMode === 'monthly' ? '4. Suggest monthly budget targets.' : ''}
-        Language: Thai. Be concise but insightful.
+        Language: Thai. Be concise but insightful. Use only the numbers above; if they are not enough to judge, say what data is missing instead of guessing.
       `;
       const result = await callGeminiAPI(prompt, false);
       if (result.success) setFinancialInsight(result.data);
+      else toast.error(result.error || 'AI วิเคราะห์ไม่สำเร็จ');
     } catch (e) {
       toast.error('วิเคราะห์ไม่สำเร็จ: ' + e.message);
     } finally {
@@ -390,7 +392,7 @@ export default function ExpensesView() {
             <section aria-labelledby="expense-list-title" className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 id="expense-list-title" className="text-[length:var(--fs-lg)] leading-[var(--lh-lg)] font-semibold">รายการค่าใช้จ่าย</h2>
-                <Button variant="ai" leftIcon={<Bot size={18} />} loading={isAnalyzingFinances} onClick={handleAnalyzeFinances}>วิเคราะห์ด้วย AI</Button>
+                <AiButton leftIcon={<Bot size={18} />} loading={isAnalyzingFinances} onClick={handleAnalyzeFinances}>วิเคราะห์ด้วย AI</AiButton>
               </div>
 
               {filteredExpenseStats.byCategory.length > 1 && (

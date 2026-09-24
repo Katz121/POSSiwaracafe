@@ -5,6 +5,7 @@ import { collection, addDoc, getDocs, query, orderBy, limit, deleteDoc, doc } fr
 import { db, appId } from '../../services/firebase';
 import { getOrderDate, getISODate } from '../../utils/calculations';
 import { formatPercent, formatThaiDate } from '../../utils/format';
+import AiButton from '../AiButton';
 import { Badge, Button, ConfirmModal, DateStepper, EmptyState, Input, Money, PageHeader, SectionCard, StatCard, useToast } from '../ui';
 
 const ALLOCATION_LABELS = {
@@ -254,9 +255,9 @@ const FinancialView = () => {
                                             <dd><Money value={estimatedNet} size="lg" tone={estimatedNet < 0 ? 'danger' : undefined} /></dd>
                                         </div>
                                     </dl>
-                                    <Button variant="ai" size="lg" fullWidth loading={isAnalyzing} leftIcon={<Sparkles size={18} />} onClick={generatePlan}>
+                                    <AiButton size="lg" fullWidth block loading={isAnalyzing} leftIcon={<Sparkles size={18} />} onClick={generatePlan}>
                                         วิเคราะห์แผนการเงินด้วย AI
-                                    </Button>
+                                    </AiButton>
                                 </div>
                             </SectionCard>
 

@@ -22,7 +22,6 @@ export function draftFromConfig(c = {}) {
     pointsExpiryMonths: c.pointsExpiryMonths || 0,
     redeemDiscountValue: Number(c.redeemDiscountValue) || DEFAULT_REDEEM_DISCOUNT_VALUE,
     ownGlassDiscount: Number(c.ownGlassDiscount) || DEFAULT_OWN_GLASS_DISCOUNT,
-    geminiApiKey: c.geminiApiKey || '',
     startingCash: Number(c.startingCash) || DEFAULT_STARTING_CASH,
     reviewUrl: c.reviewUrl || '',
     shopName: c.shopName || '',
@@ -48,7 +47,6 @@ export function draftFromConfig(c = {}) {
 /** Draft → the `setDoc(config/settings, payload, { merge: true })` body. Unchanged. */
 export function buildSettingsPayload(settingsDraft, { serverTimestamp }) {
   return {
-    geminiApiKey: settingsDraft.geminiApiKey,
     adminPin: settingsDraft.adminPin,
     redeemPointsThreshold: Number(settingsDraft.redeemPointsThreshold),
     pointsExpiryMonths: Number(settingsDraft.pointsExpiryMonths || 0),

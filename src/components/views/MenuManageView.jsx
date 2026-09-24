@@ -57,7 +57,7 @@ function useHeight(ref) {
  */
 export default function MenuManageView() {
   const { menu, stock, dynamicCategories, beanModifiers, orders, expenses, isSyncing } = useDataContext();
-  const { geminiApiKey, aiReady, cakeSaleCategories, packagingPresetsSetting } = useConfigContext();
+  const { aiReady, cakeSaleCategories, packagingPresetsSetting } = useConfigContext();
   const { runDbAction, callGeminiAPI, activePromotion, setActivePromotion } = useUIContext();
   const params = useRouteParams();
   const navigate = useNavigate();
@@ -99,7 +99,7 @@ export default function MenuManageView() {
     handleTranslateToEnglish,
   } = useMenuTools({
     menu, dynamicCategories, beanModifiers, orders, expenses,
-    geminiApiKey, aiReady, runDbAction, callGeminiAPI, setActivePromotion, toast,
+    aiReady, runDbAction, callGeminiAPI, setActivePromotion, toast,
   });
 
   // ── Delete ─────────────────────────────────────────────────────────────
@@ -426,7 +426,7 @@ export default function MenuManageView() {
   const toolItems = [
     { key: 'categories', label: 'จัดการหมวดหมู่', icon: FolderCog, onSelect: () => setShowCategoryModal(true) },
     { key: 'promo', label: 'โปรโมชั่น', hint: activePromotion ? `ใช้อยู่: ${activePromotion.title}` : undefined, icon: Zap, onSelect: () => setShowPromoModal(true) },
-    { key: 'translate', label: isTranslating ? 'กำลังแปล...' : 'แปลเมนูเป็นอังกฤษ (AI)', icon: Languages, disabled: isTranslating, onSelect: handleTranslateToEnglish },
+    { key: 'translate', label: isTranslating ? 'กำลังแปล...' : aiReady ? 'แปลเมนูเป็นอังกฤษ (AI)' : 'แปลเมนูเป็นอังกฤษ (AI ออฟไลน์ · เปิดคอมที่ร้าน)', icon: Languages, disabled: isTranslating || !aiReady, onSelect: handleTranslateToEnglish },
     { key: 'featured', label: 'จัดลำดับแนะนำ', icon: ListOrdered, onSelect: openFeaturedOrder },
     pendingImageMigration > 0 && {
       key: 'migrate',
@@ -573,7 +573,6 @@ export default function MenuManageView() {
         dynamicCategories={dynamicCategories}
         beanModifiers={beanModifiers}
         cakeSaleCategories={cakeSaleCategories}
-        geminiApiKey={geminiApiKey}
         aiReady={aiReady}
         packagingPresets={packagingPresets}
         callGeminiAPI={callGeminiAPI}

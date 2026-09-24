@@ -9,6 +9,8 @@ import { countUnits } from '../../utils/salesHistory';
 import { computeProfitability } from '../../utils/profitability';
 import { formatThaiDate } from '../../utils/format';
 import { INVENTORY_CATEGORIES } from '../../config/constants';
+import AiButton from '../AiButton';
+import { AI_OFFLINE_HINT } from '../../utils/museJobs';
 import { Button, ConfirmModal, DateStepper, IconButton, ListRow, PageHeader, Sheet, useMediaQuery, useToast } from '../ui';
 import { compareMonths, WASTE_CATEGORY } from './overview/monthCompare';
 import { computeTodayStats } from './overview/todayStats';
@@ -38,6 +40,7 @@ const DashboardView = ({ onNavigate }) => {
         callGeminiAPI,
         startingCash,
         aiUtils,
+        aiReady,
         handleViewChange,
         runDbAction
     } = useAppContext();
@@ -384,8 +387,9 @@ const DashboardView = ({ onNavigate }) => {
                 ${historicalContext}
 
                 หน้าที่: ตอบคำถามเจ้าของร้านด้วยข้อมูลจริงของเดือน ${monthNameThai}
-                ให้คำแนะนำเชิงกลยุทธ์ เน้นเพิ่มกำไรและลดต้นทุน
-                สไตล์ตอบ: เป็นกันเอง มืออาชีพ กระชับ สั้นได้ใจความ ใช้ Emoji ประกอบ
+                ให้คำแนะนำเชิงกลยุทธ์ เน้นเพิ่มกำไรและลดต้นทุน อ้างตัวเลขจากข้อมูลด้านบนทุกครั้งที่สรุป
+                ถ้าข้อมูลด้านบนไม่พอจะตอบคำถาม ให้บอกตรงๆ ว่าขาดข้อมูลอะไร ห้ามเดาตัวเลข
+                สไตล์ตอบ: เป็นกันเอง มืออาชีพ กระชับ ไม่เกิน 8 บรรทัด
             `;
 
             const userPrompt = `คำถาม: "${consultantQuery}"`;
@@ -405,7 +409,7 @@ const DashboardView = ({ onNavigate }) => {
             } else {
                 const errorMsg = result.rateLimited
                     ? `กรุณารอสักครู่ (${Math.ceil((result.waitTime || 3000) / 1000)} วินาที)`
-                    : 'ขออภัย AI ไม่พร้อมใช้งานชั่วคราว';
+                    : (result.error || 'ขออภัย AI ไม่พร้อมใช้งานชั่วคราว');
                 setConsultantResponse(errorMsg);
             }
         } catch {
@@ -477,7 +481,7 @@ const DashboardView = ({ onNavigate }) => {
                 ) : (
                     <>
                         {monthPicker}
-                        <Button variant="ai" leftIcon={<Bot size={18} />} onClick={() => setShowConsultantModal(true)}>ถาม AI</Button>
+                        <AiButton leftIcon={<Bot size={18} />} onClick={() => setShowConsultantModal(true)}>ถาม AI</AiButton>
                         <Button variant="secondary" leftIcon={<FileText size={18} />} onClick={printReport}>พิมพ์รายงาน</Button>
                     </>
                 )}
@@ -524,8 +528,8 @@ const DashboardView = ({ onNavigate }) => {
                     <ListRow
                         leading={<Bot size={20} className="text-[var(--accent-ai)]" />}
                         title="ถาม AI ที่ปรึกษา"
-                        subtitle={`วิเคราะห์ข้อมูล${isCurrentMonth ? 'เดือนนี้' : monthLabel}`}
-                        onClick={() => { setShowMoreMenu(false); setShowConsultantModal(true); }}
+                        subtitle={aiReady ? `วิเคราะห์ข้อมูล${isCurrentMonth ? 'เดือนนี้' : monthLabel}` : AI_OFFLINE_HINT}
+                        onClick={() => { if (!aiReady) return; setShowMoreMenu(false); setShowConsultantModal(true); }}
                     />
                     <ListRow
                         leading={<FileText size={20} className="text-[var(--text-secondary)]" />}
@@ -543,6 +547,7 @@ const DashboardView = ({ onNavigate }) => {
                 response={consultantResponse}
                 onNewQuestion={() => setConsultantResponse('')}
                 isConsulting={isConsulting}
+                aiReady={aiReady}
                 onSubmit={handleConsultantQuery}
                 suggestions={suggestions}
                 chatHistory={chatHistory}

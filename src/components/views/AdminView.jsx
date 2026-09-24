@@ -36,7 +36,7 @@ const EMPTY_QUICK = { label: '', title: '', amount: '', unit: '', category: DEFA
 // (saving still writes the whole config/settings payload, as before).
 const TAB_FIELDS = {
   close: ['startingCash'],
-  shop: ['shopName', 'shopAddress', 'shopPhone', 'taxId', 'receiptFooter', 'receiptPaperWidth', 'geminiApiKey'],
+  shop: ['shopName', 'shopAddress', 'shopPhone', 'taxId', 'receiptFooter', 'receiptPaperWidth'],
   promotions: ['cakeSaleEnabled', 'cakeSaleCategories', 'cakeSalePercent', 'cakeSaleStart', 'cakeSaleEnd', 'comboEnabled', 'comboPercent', 'spendThreshold', 'spendDiscount', 'ownGlassDiscount', 'reviewUrl'],
   points: ['redeemPointsThreshold', 'redeemDiscountValue', 'pointsExpiryMonths', 'pointsRewardsEnabled', 'pointsRewards'],
   security: ['adminPin'],
@@ -61,7 +61,7 @@ export default function AdminView() {
   const { orders, expenses, stock, members, menu, dynamicCategories, beanModifiers, quickExpenses } = useDataContext();
   const {
     vatEnabled, pinEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount,
-    geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
+    aiStatus, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
     cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent,
     spendThreshold, spendDiscount, pointsRewardsEnabled, pointsRewards, milkSwapSetting, packagingPresetsSetting,
   } = useConfigContext();
@@ -94,11 +94,11 @@ export default function AdminView() {
 
   // ── Settings draft ───────────────────────────────────────────────────────
   const baseline = useMemo(() => draftFromConfig({
-    adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
+    adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories,
     cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount,
     pointsRewardsEnabled, pointsRewards,
-  }), [adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash,
+  }), [adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories,
     cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount,
     pointsRewardsEnabled, pointsRewards]);
@@ -442,28 +442,6 @@ export default function AdminView() {
     toast.success('บันทึกชุดแก้ว/หลอดแล้ว');
   }, 'บันทึกชุดแก้ว/หลอดไม่สำเร็จ');
 
-  const handleTestAI = async () => {
-    const key = settingsDraft.geminiApiKey;
-    if (!key) {
-      toast.warning('กรุณากรอก API Key ก่อนทดสอบ');
-      return;
-    }
-    // Test the key typed in the input (not the saved one)
-    try {
-      const model = 'gemini-2.5-flash-lite';
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: 'Hello' }] }] })
-      });
-      const data = await response.json();
-      if (data.error) throw new Error(data.error.message);
-      toast.success('การเชื่อมต่อ AI สำเร็จ!');
-    } catch (err) {
-      toast.error('การเชื่อมต่อล้มเหลว: ' + err.message);
-    }
-  };
-
   // ── Render ───────────────────────────────────────────────────────────────
   const draftProps = (tab) => ({ draft: settingsDraft, patch, dirty: dirtyFor(tab), onSave: saveSettings });
 
@@ -494,7 +472,7 @@ export default function AdminView() {
             vatEnabled={!!vatEnabled}
             onToggleVat={toggleVatSystem}
             aiUtils={aiUtils}
-            onTestAI={handleTestAI}
+            aiStatus={aiStatus}
             onClearAICache={() => { aiUtils?.clearAICache?.(); toast.success('ล้าง Cache สำเร็จ'); }}
             onExportUpsell={exportUpsellStats}
             onResetUpsell={() => setShowClearUpsellConfirm(true)}

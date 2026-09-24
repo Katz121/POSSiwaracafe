@@ -1,8 +1,8 @@
 /**
- * AI Service - Secure, Rate-Limited, and Cached Gemini API Integration
+ * AI Service - Rate-Limited, Cached AI calls through Meta Muse (Firestore job queue)
  *
  * Features:
- * 1. Secure API proxy (ready for backend migration)
+ * 1. Queue to the shop PC's muse-bridge (no API key in the app)
  * 2. Rate limiting (cooldown between requests)
  * 3. Response caching (reduce API costs)
  * 4. Chat history storage
@@ -15,16 +15,15 @@ import {
   AI_RATE_LIMIT_DELAY,
   AI_CACHE_TTL,
   AI_CACHE_MAX_SIZE,
-  AI_MAX_RETRIES,
   AI_CHAT_HISTORY_MAX
 } from '../config/constants';
+import { enqueueAiJob } from './aiQueue';
+import { extractJson } from '../utils/museJobs';
 
 // --- Configuration ---
-const AI_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 const RATE_LIMIT_COOLDOWN_MS = AI_RATE_LIMIT_DELAY;
 const CACHE_TTL_MS = AI_CACHE_TTL;
 const MAX_CHAT_HISTORY = AI_CHAT_HISTORY_MAX;
-const MAX_RETRIES = AI_MAX_RETRIES;
 
 // --- State ---
 let lastRequestTime = 0;
@@ -250,25 +249,22 @@ export const buildHistoricalContext = (orders, expenses, selectedMonth) => {
 };
 
 // --- Main API Call Function ---
-export const callGeminiAPISecure = async (apiKey, prompt, options = {}) => {
+// คำขอ AI ทุกตัววิ่งผ่านคิว Firestore ไปที่ Muse บนคอมที่ร้าน (ดู services/aiQueue.js)
+// jobType: 'stockSuggest' (Muse คิดนานขึ้น) · อื่นๆ ใช้ 'json' / 'text' ตาม parseAsJson
+export const callAiSecure = async (prompt, options = {}) => {
   const {
     parseAsJson = false,
     useCache = true,
     skipRateLimit = false,
     saveToChatHistory = false,
-    historyContext = null
+    historyContext = null,
+    jobType = null,
   } = options;
 
-  // Validate API key
-  if (!apiKey || !apiKey.trim()) {
-    return {
-      success: false,
-      data: null,
-      error: 'API Key ไม่ถูกต้อง กรุณาตั้งค่าใน Admin'
-    };
+  if (!String(prompt || '').trim()) {
+    return { success: false, data: null, error: 'ไม่มีคำถามส่งให้ AI' };
   }
 
-  // Check rate limit
   if (!skipRateLimit) {
     const rateCheck = checkRateLimit();
     if (!rateCheck.allowed) {
@@ -282,194 +278,37 @@ export const callGeminiAPISecure = async (apiKey, prompt, options = {}) => {
     }
   }
 
-  // Check cache
-  const cacheKey = getCacheKey(prompt, parseAsJson);
+  const enhancedPrompt = historyContext ? `${historyContext}
+
+${prompt}` : prompt;
+  const cacheKey = getCacheKey(enhancedPrompt, parseAsJson);
   if (useCache) {
     const cached = getFromCache(cacheKey);
-    if (cached) {
-      return { success: true, data: cached, fromCache: true };
-    }
+    if (cached) return { success: true, data: cached, fromCache: true };
   }
 
-  // Build enhanced prompt with history context
-  let enhancedPrompt = prompt;
-  if (historyContext) {
-    enhancedPrompt = historyContext + '\n\n' + prompt;
-  }
-
-  // Save user query to history
-  if (saveToChatHistory) {
-    addToChatHistory('user', prompt);
-  }
-
-  // Update rate limit
+  if (saveToChatHistory) addToChatHistory('user', prompt);
   updateRateLimit();
 
-  // Try API call with retries
-  let lastError = null;
-  const key = apiKey.trim();
-  const proxyUrl = import.meta.env.VITE_GEMINI_PROXY_URL;
+  const type = jobType || (parseAsJson ? 'json' : 'text');
+  const res = await enqueueAiJob({ type, prompt: enhancedPrompt });
+  if (!res.ok) {
+    return { success: false, data: null, error: `AI ไม่สามารถตอบได้ในขณะนี้: ${res.error}` };
+  }
 
-  for (let retry = 0; retry <= MAX_RETRIES; retry++) {
-    try {
-      let text;
-
-      if (proxyUrl) {
-        // Use Cloudflare Worker proxy (production - API key hidden server-side)
-        const response = await fetch(proxyUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: enhancedPrompt, parseAsJson, json: parseAsJson, maxOutputTokens: parseAsJson ? 8192 : 4096 })
-        });
-        if (!response.ok) {
-          // A 5xx from the proxy returns an HTML error page — response.json()
-          // would throw an unhelpful parse error. Fail with the status instead.
-          throw new Error(`Proxy error: HTTP ${response.status} ${response.statusText}`);
-        }
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
-        text = data.text;
-      } else {
-        // Direct call fallback (development only)
-        let fetchedText = null;
-        for (const model of AI_MODELS) {
-          try {
-            const response = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  contents: [{ parts: [{ text: enhancedPrompt }] }],
-                  generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
-                })
-              }
-            );
-            const data = await response.json();
-            if (data.error) {
-              if (data.error.message?.includes('quota') || data.error.message?.includes('rate')) continue;
-              throw new Error(data.error.message);
-            }
-            fetchedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (fetchedText) break;
-          } catch (modelErr) {
-            lastError = modelErr.message;
-            continue;
-          }
-        }
-        text = fetchedText;
-      }
-
-      if (text) {
-        let result;
-
-        if (parseAsJson) {
-          const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-          result = JSON.parse(cleanText);
-        } else {
-          result = text;
-        }
-
-        // Cache the result
-        if (useCache) {
-          setCache(cacheKey, result);
-        }
-
-        // Save assistant response to history
-        if (saveToChatHistory) {
-          addToChatHistory('assistant', typeof result === 'string' ? result : JSON.stringify(result));
-        }
-
-        return {
-          success: true,
-          data: result,
-          raw: text,
-          fromCache: false
-        };
-      }
-    } catch (e) {
-      console.warn(`[AI Service] Error (retry ${retry}):`, e.message);
-      lastError = e.message;
-
-      // For errors, try retry
-      if (retry < MAX_RETRIES) {
-        await new Promise(r => setTimeout(r, 1000 * (retry + 1)));
-      }
+  let result = res.result;
+  if (parseAsJson && typeof result === 'string') {
+    try { result = extractJson(result); } catch (e) {
+      return { success: false, data: null, error: `AI ตอบผิดรูปแบบ: ${e.message}` };
     }
   }
+  if (!parseAsJson && typeof result !== 'string') result = JSON.stringify(result);
 
-  return {
-    success: false,
-    data: null,
-    error: `AI ไม่สามารถตอบได้ในขณะนี้: ${lastError}`
-  };
-};
-
-// --- Gemini Image Generation (Nano Banana Pro) ---
-const IMAGE_MODELS = ['gemini-3-pro-image-preview', 'gemini-3.1-flash-image-preview', 'gemini-2.0-flash-exp'];
-
-export const generateMenuImage = async (apiKey, menuName, category = '') => {
-  if (!apiKey || !apiKey.trim()) {
-    return { success: false, imageBase64: null, error: 'API Key ไม่ถูกต้อง' };
+  if (useCache) setCache(cacheKey, result);
+  if (saveToChatHistory) {
+    addToChatHistory('assistant', typeof result === 'string' ? result : JSON.stringify(result));
   }
-
-  const key = apiKey.trim();
-  let lastError = null;
-  const prompt = `Professional food photography of "${menuName}" (${category || 'Thai cafe menu item'}).
-Top-down view on a clean wooden table, soft natural lighting, appetizing presentation,
-Thai cafe style, high quality, no text or watermarks.`;
-
-  for (const model of IMAGE_MODELS) {
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              responseModalities: ['TEXT', 'IMAGE']
-            }
-          })
-        }
-      );
-
-      const data = await response.json();
-      console.log(`[AI Image] ${model} response:`, JSON.stringify(data).substring(0, 300));
-
-      if (data.error) {
-        lastError = data.error.message;
-        console.warn(`[AI Image] ${model} error:`, data.error.message);
-        continue;
-      }
-
-      const parts = data?.candidates?.[0]?.content?.parts || [];
-      const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
-
-      if (imagePart) {
-        const base64 = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
-        return { success: true, imageBase64: base64, error: null };
-      }
-
-      // Model responded but no image in parts
-      lastError = `${model}: ไม่มีรูปภาพใน response (${parts.length} parts)`;
-      console.warn(`[AI Image] ${lastError}`);
-    } catch (e) {
-      lastError = e.message;
-      console.warn(`[AI Image] ${model} failed:`, e.message);
-      continue;
-    }
-  }
-
-  return { success: false, imageBase64: null, error: lastError || 'ไม่สามารถสร้างรูปภาพได้ ลองอีกครั้ง' };
-};
-
-// --- Wrapper for existing code compatibility ---
-export const createGeminiCaller = (apiKey) => {
-  return async (prompt, parseAsJson = false) => {
-    return callGeminiAPISecure(apiKey, prompt, { parseAsJson });
-  };
+  return { success: true, data: result, raw: res.raw, fromCache: false, durationMs: res.durationMs };
 };
 
 // Initialize - load chat history on module load

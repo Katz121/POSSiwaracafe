@@ -9,11 +9,11 @@ import { isPieceUnit, isPrep, usagePerPiece } from '../../../utils/production';
 import { formatNumber } from '../../../utils/format';
 import { getModifierGroups } from '../../../config/constants';
 import { supportsSweetnessChoice } from '../../../utils/promotions';
-import { compressImage } from '../../../utils/calculations';
-import { generateMenuImage } from '../../../services/aiService';
-import { uploadImageToR2 } from '../../../services/imageUpload';
 import { SheetSection, ToggleRow } from './parts';
 import { applyPackagingPreset } from '../../../utils/packagingPresets';
+import { buildStockSuggestPrompt, normalizeStockSuggestions, applyStockSuggestions, relatedRecipes } from '../../../utils/stockSuggest';
+import AiButton from '../../AiButton';
+import StockSuggestReview from './StockSuggestReview';
 
 const EDITOR_FORM_ID = 'menu-editor-form';
 
@@ -34,13 +34,18 @@ export default function MenuEditorSheet({
   open, onClose, focusSection,
   editingItem, newItem, setNewItem, onSubmit, onDelete, onCakeStock,
   menu, stock, stockById, stockLinkGroups, dynamicCategories, beanModifiers, cakeSaleCategories,
-  geminiApiKey, aiReady, callGeminiAPI, toast, packagingPresets = [],
+  aiReady, callGeminiAPI, toast, packagingPresets = [],
   isUploading, isUploadingPoster, onImageUpload, onPosterUpload,
 }) {
   const [isSuggestingStock, setIsSuggestingStock] = useState(false);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [suggestion, setSuggestion] = useState(null); // { loading } | { lines, missing, recipe, notes }
   const [isMagicWriting, setIsMagicWriting] = useState(false);
   const stockSectionRef = useRef(null);
+
+  // เปิดเมนูอื่น/ปิดแผ่น = คำแนะนำ AI ของเมนูก่อนหน้าไม่เกี่ยวแล้ว
+  const suggestFor = open ? (editingItem?.id || 'new') : null;
+  const [suggestKey, setSuggestKey] = useState(suggestFor);
+  if (suggestKey !== suggestFor) { setSuggestKey(suggestFor); setSuggestion(null); }
 
   // Arriving from "ไปผูกสต็อก" · show the stock-link section first.
   useEffect(() => {
@@ -128,12 +133,14 @@ export default function MenuEditorSheet({
 
   const magicWrite = async () => {
     if (!newItem.name || !newItem.category) { toast.warning('กรุณาระบุชื่อและหมวดหมู่ก่อนใช้ Magic Write'); return; }
-    if (!aiReady) { toast.warning('ยังไม่ได้เชื่อม AI'); return; }
+    if (!aiReady) { toast.warning('AI ออฟไลน์ · เปิดคอมที่ร้านเพื่อใช้ AI'); return; }
     setIsMagicWriting(true);
     try {
-      const prompt = `Write a short, appetizing, and premium description for a menu item named '${newItem.name}' in the category '${newItem.category}' for a modern cafe. Keep it under 150 characters. Thai language.`;
+      const prompt = `เขียนคำบรรยายเมนูสั้นๆ ภาษาไทย ให้น่าทาน ดูพรีเมียม สำหรับคาเฟ่ ไม่เกิน 150 ตัวอักษร
+เมนู: "${newItem.name}" หมวด: ${newItem.category}
+ตอบเฉพาะคำบรรยาย 1 ประโยค ไม่ต้องมีเครื่องหมายคำพูด ไม่ต้องอธิบายเพิ่ม ห้ามแต่งส่วนผสมที่ไม่ได้อยู่ในชื่อเมนู`;
       const result = await callGeminiAPI(prompt, false);
-      if (result.success) setNewItem((prev) => ({ ...prev, description: result.data }));
+      if (result.success) setNewItem((prev) => ({ ...prev, description: String(result.data).trim().replace(/^["“]|["”]$/g, '') }));
       else throw new Error(result.error || 'AI ไม่สามารถเขียนคำบรรยายได้');
     } catch (error) {
       toast.error('เกิดข้อผิดพลาด: ' + error.message);
@@ -142,91 +149,50 @@ export default function MenuEditorSheet({
     }
   };
 
+  // AI แนะนำผูกสต็อก (Muse) · คิดสูตรมาตรฐาน → จับคู่สต็อกร้าน → เหตุผล+ความมั่นใจรายบรรทัด
+  // ผลขึ้นเป็นแผงให้ติ๊กเลือก ไม่ใส่สูตรเองจนกว่าจะกด "ใส่ที่เลือก"
   const suggestStock = async () => {
     if (!newItem.name) { toast.warning('กรุณาระบุชื่อเมนูก่อน'); return; }
     if (!stock.length) { toast.warning('ยังไม่มีวัตถุดิบในระบบ'); return; }
-    if (!aiReady) { toast.warning('ยังไม่ได้เชื่อม AI'); return; }
+    if (!aiReady) { toast.warning('AI ออฟไลน์ · เปิดคอมที่ร้านเพื่อใช้ AI'); return; }
     setIsSuggestingStock(true);
+    setSuggestion({ loading: true });
     try {
-      // ส่งเฉพาะสต็อกที่ใช้งานอยู่ (ไม่รวมรายการที่ถูกรวมไปแล้ว) ให้ AI เลือก
-      const liveStock = stock.filter((s) => !s.mergedInto && !s.archived);
-      const stockList = liveStock.map((s) => `${s.id}|${s.name}|${s.unit}`).join('\n');
-      const perHint = newItem.recipeMode === 'whole' ? '(ปริมาณต่อ 1 ชิ้น)' : '(ปริมาณต่อ 1 แก้ว/ที่)';
-      const prompt = `คุณคือหัวหน้าบาริสต้าและเชฟขนมของคาเฟ่ไทย
-เมนู: "${newItem.name}" หมวด: ${newItem.category || 'ไม่ระบุ'}${newItem.description ? ` คำอธิบาย: ${newItem.description}` : ''}
-
-ขั้นที่ 1: นึกสูตรมาตรฐานของเมนูนี้แบบร้านคาเฟ่ไทย (วัตถุดิบหลัก ไซรัป นม น้ำแข็ง ท็อปปิ้ง และบรรจุภัณฑ์ เช่น แก้ว ฝา หลอด ถ้าเป็นเครื่องดื่มเย็น)
-ขั้นที่ 2: จับคู่แต่ละอย่างกับสต็อกของร้านด้านล่างที่ใกล้ที่สุด ใช้ id ตรงตามรายการเท่านั้น ปริมาณใช้หน่วยของสต็อกนั้น
-ขั้นที่ 3: อะไรในสูตรที่ร้านไม่มีในสต็อก ใส่ใน missing ห้ามเดา id
-
-สต็อกของร้าน (id|ชื่อ|หน่วย):
-${stockList}
-
-ตอบเป็น JSON เท่านั้น รูปแบบ:
-{"links":[{"stockId":"id จากรายการ","usage":ตัวเลข ${perHint},"ingredient":"ชื่อในสูตร"}],"missing":["ชื่อวัตถุดิบที่ร้านไม่มี"]}`;
-      const result = await callGeminiAPI(prompt, true, { useCache: false });
-      const data = result.success ? result.data : null;
-      const suggested = Array.isArray(data) ? data : (Array.isArray(data?.links) ? data.links : null);
-      if (!suggested) {
+      const existingLinks = (newItem.stockLinks || []).filter((l) => l?.stockId);
+      const prompt = buildStockSuggestPrompt({
+        menuItem: { ...newItem, id: editingItem?.id },
+        stock,
+        existingLinks,
+        packagingPresets,
+        related: relatedRecipes({ ...newItem, id: editingItem?.id }, menu, stockById),
+        perPiece: newItem.recipeMode === 'whole',
+      });
+      const result = await callGeminiAPI(prompt, true, { useCache: false, jobType: 'stockSuggest' });
+      const normalized = result.success ? normalizeStockSuggestions(result.data, { stock, existingLinks }) : null;
+      if (!normalized) {
+        setSuggestion(null);
         toast.error('AI ไม่สามารถแนะนำได้: ' + (result.error || 'รูปแบบคำตอบไม่ถูกต้อง'));
         return;
       }
-      const byId = new Map(liveStock.map((s) => [s.id, s]));
-      const valid = suggested.filter((l) => byId.has(l?.stockId) && Number(l.usage) > 0);
-      const missing = Array.isArray(data?.missing) ? data.missing.filter(Boolean) : [];
-      // เพิ่มเข้าสูตรเดิม ไม่เขียนทับ · ตัวที่มีอยู่แล้วคงปริมาณที่ร้านตั้งไว้ · ของใหม่ขึ้นบนสุด
-      const have = new Set((newItem.stockLinks || []).map((l) => l.stockId).filter(Boolean));
-      const add = valid.filter((l, i) => !have.has(l.stockId) && valid.findIndex((x) => x.stockId === l.stockId) === i);
-      if (add.length) {
-        const whole = newItem.recipeMode === 'whole';
-        const pieces = Number(newItem.recipePieces) || 0;
-        setNewItem((prev) => ({
-          ...prev,
-          stockLinks: [
-            ...add.map((l) => (whole
-              ? { stockId: l.stockId, usage: Number(l.usage), perWhole: pieces > 0 ? String(Math.round(Number(l.usage) * pieces * 1000) / 1000) : '' }
-              : { stockId: l.stockId, usage: Number(l.usage) })),
-            ...(prev.stockLinks || []).filter((l) => l.stockId || Number(l.usage)),
-          ],
-        }));
-        toast.success(`AI เพิ่ม ${add.length} รายการ: ${add.map((l) => byId.get(l.stockId)?.name).join(', ')} · ตรวจปริมาณก่อนบันทึก`);
-      } else if (valid.length) {
-        toast.success('วัตถุดิบที่ AI แนะนำมีในสูตรครบแล้ว');
-      } else {
-        toast.warning('AI ไม่พบวัตถุดิบที่ตรงในสต็อกของร้าน');
-      }
-      if (missing.length) toast.warning(`สูตรนี้มีแต่ร้านยังไม่มีในสต็อก: ${missing.slice(0, 6).join(', ')}`);
+      setSuggestion(normalized);
     } catch (e) {
+      setSuggestion(null);
       toast.error('เกิดข้อผิดพลาด: ' + e.message);
     } finally {
       setIsSuggestingStock(false);
     }
   };
-
-  const generateImage = async () => {
-    if (!newItem.name) { toast.warning('กรุณาระบุชื่อเมนูก่อน'); return; }
-    if (!geminiApiKey) { toast.warning('กรุณาตั้งค่า Gemini API Key ก่อน'); return; }
-    setIsGeneratingImage(true);
-    try {
-      const result = await generateMenuImage(geminiApiKey, newItem.name, newItem.category);
-      if (result.success && result.imageBase64) {
-        const compressed = await compressImage(result.imageBase64);
-        let image;
-        try {
-          image = await uploadImageToR2(compressed); // CDN URL (small)
-        } catch {
-          image = compressed; // image host not configured yet → keep base64
-        }
-        setNewItem((prev) => ({ ...prev, image }));
-        toast.success('AI สร้างรูปภาพสำเร็จ!');
-      } else {
-        toast.error(result.error || 'ไม่สามารถสร้างรูปภาพได้');
-      }
-    } catch (e) {
-      toast.error('เกิดข้อผิดพลาด: ' + e.message);
-    } finally {
-      setIsGeneratingImage(false);
-    }
+  const toggleSuggestion = (stockId) => setSuggestion((prev) => (prev?.lines
+    ? { ...prev, lines: prev.lines.map((l) => (l.stockId === stockId && !l.alreadyLinked ? { ...l, checked: !l.checked } : l)) }
+    : prev));
+  const applySuggestion = () => {
+    if (!suggestion?.lines) return;
+    const whole = newItem.recipeMode === 'whole';
+    const { links: next, added } = applyStockSuggestions(newItem.stockLinks || [], suggestion.lines, { whole, pieces: Number(newItem.recipePieces) || 0 });
+    setNewItem((p) => ({ ...p, stockLinks: next }));
+    setSuggestion(null);
+    if (added) toast.success(`ใส่ ${added} รายการไว้บนสุดของสูตรแล้ว · ตรวจปริมาณก่อนบันทึก`);
+    else toast.info?.('รายการที่เลือกมีในสูตรครบแล้ว');
   };
 
   // Profit estimate (same formula as v1)
@@ -357,11 +323,12 @@ ${stockList}
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" leftIcon={<Plus size={18} />} onClick={addStockLink}>เพิ่มวัตถุดิบ</Button>
               <Button variant="secondary" leftIcon={<CookingPot size={18} />} onClick={() => setPickSlice((v) => !v)} aria-expanded={pickSlice}>ผูกกับเค้กชิ้นที่ผลิต</Button>
-              <Button variant="ai" leftIcon={<Sparkles size={18} />} loading={isSuggestingStock} onClick={suggestStock}>AI แนะนำ</Button>
+              <AiButton leftIcon={<Sparkles size={18} />} loading={isSuggestingStock} onClick={suggestStock}>AI แนะนำ</AiButton>
               {editingItem && !links.length && onCakeStock && (
                 <Button variant="secondary" leftIcon={<PackagePlus size={18} />} onClick={() => onCakeStock(editingItem)}>สร้างสต็อกก้อน</Button>
               )}
             </div>
+            <StockSuggestReview state={suggestion} onToggle={toggleSuggestion} onApply={applySuggestion} onClose={() => setSuggestion(null)} />
             {pickSlice && (
               <div className="rounded-[var(--radius)] border border-[var(--border-color)] bg-[var(--bg-canvas)] p-3 flex flex-col gap-2">
                 {producedSlices.length ? (
@@ -609,7 +576,7 @@ ${stockList}
         <SheetSection
           title="คำบรรยาย"
           icon={FileText}
-          actions={<Button variant="ai" leftIcon={<Sparkles size={18} />} loading={isMagicWriting} onClick={magicWrite}>Magic Write</Button>}
+          actions={<AiButton leftIcon={<Sparkles size={18} />} loading={isMagicWriting} onClick={magicWrite}>Magic Write</AiButton>}
         >
           <Textarea label="คำบรรยาย (ไทย)" rows={3} value={newItem.description || ''} placeholder="ใส่คำบรรยายสินค้า..." onChange={(e) => setNewItem({ ...newItem, description: e.target.value })} />
           <Textarea label="คำอธิบาย (EN)" rows={3} value={newItem.descriptionEn || ''} placeholder="English description..." onChange={(e) => setNewItem({ ...newItem, descriptionEn: e.target.value })} />
@@ -628,7 +595,6 @@ ${stockList}
                 <Upload size={18} aria-hidden="true" /> เลือกรูปภาพสินค้า
                 <input type="file" accept="image/*" className="sr-only" onChange={onImageUpload} disabled={isUploading} />
               </label>
-              <Button variant="ai" leftIcon={<Sparkles size={18} />} loading={isGeneratingImage} onClick={generateImage}>AI เจนรูปเมนู</Button>
             </div>
           </div>
 

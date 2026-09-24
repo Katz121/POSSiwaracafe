@@ -17,12 +17,14 @@ import {
 import { signOut } from 'firebase/auth';
 import { auth, db, appId } from './services/firebase';
 import useStaffAuth from './hooks/useStaffAuth';
+import useAiRunner from './hooks/useAiRunner';
+import { AI_OFFLINE_HINT, AI_THINKING_TEXT } from './utils/museJobs';
 import usePosData from './hooks/usePosData';
 import StaffLogin from './components/StaffLogin';
 
 // AI Service (Rate-Limited, Cached, with History)
 import {
-  callGeminiAPISecure,
+  callAiSecure,
   buildHistoricalContext,
   getChatHistory,
   addToChatHistory,
@@ -118,7 +120,7 @@ export default function App() {
   // Data States from hook
   const {
     isSyncing, settingsLoaded, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes,
-    pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, geminiApiKey, startingCash,
+    pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
     comboEnabled, comboPercent, spendThreshold, spendDiscount, milkSwapSetting, packagingPresetsSetting
   } = usePosData(user, appId);
@@ -351,22 +353,25 @@ export default function App() {
     currentView: view
   });
 
-  // Get the active API key (prioritize stored key, fallback to env)
-  const activeApiKey = useMemo(() => {
-    // มี Worker proxy (key เก็บเป็น secret ฝั่ง server) = ใช้ AI ได้โดยไม่ต้องมี key ในเครื่อง
-    return geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY || (import.meta.env.VITE_GEMINI_PROXY_URL ? 'server-proxy' : '');
-  }, [geminiApiKey]);
-  const aiReady = Boolean(activeApiKey);
+  // AI = Meta Muse บนคอมที่ร้าน (คิวงานใน Firestore) · พร้อมเมื่อเห็น heartbeat ภายใน 90 วิ
+  const aiStatus = useAiRunner(user);
+  const aiReady = aiStatus.ready;
 
-  // 🔧 Enhanced Gemini API Caller with Rate Limiting, Caching, and History
+  // callGeminiAPI(prompt, parseAsJson, options) · ชื่อเดิมคงไว้ให้หน้าจอเดิมเรียกได้เหมือนเดิม
+  // options.jobType = 'stockSuggest' ให้ Muse คิดละเอียดขึ้น
   const callGeminiAPI = useCallback(async (prompt, parseAsJson = false, options = {}) => {
     const {
       useCache = true,
       skipRateLimit = false,
       saveToChatHistory = false,
       includeHistoricalContext = false,
-      selectedMonth = null
+      selectedMonth = null,
+      jobType = null
     } = options;
+
+    if (!aiReady) {
+      return { success: false, data: null, offline: true, error: AI_OFFLINE_HINT };
+    }
 
     // Build historical context if requested
     let historyContext = null;
@@ -374,7 +379,8 @@ export default function App() {
       historyContext = buildHistoricalContext(orders, expenses, selectedMonth);
     }
 
-    const result = await callGeminiAPISecure(activeApiKey, prompt, {
+    const result = await callAiSecure(prompt, {
+      jobType,
       parseAsJson,
       useCache,
       skipRateLimit,
@@ -392,7 +398,7 @@ export default function App() {
     }
 
     return result;
-  }, [activeApiKey, orders, expenses]);
+  }, [aiReady, orders, expenses]);
 
   // AI Service utilities exposed to context
   const aiUtils = useMemo(() => ({
@@ -474,8 +480,8 @@ export default function App() {
   const configValue = useMemo(() => ({
     pinEnabled, vatEnabled, adminPin,
     redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount,
-    geminiApiKey,
     aiReady,
+    aiStatus,
     startingCash,
     reviewUrl,
     shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
@@ -483,7 +489,7 @@ export default function App() {
     comboEnabled, comboPercent, spendThreshold, spendDiscount,
     milkSwap, milkSwapSetting, packagingPresetsSetting,
   }), [pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths,
-    redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, geminiApiKey, aiReady, startingCash,
+    redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, aiReady, aiStatus, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
     comboEnabled, comboPercent, spendThreshold, spendDiscount, milkSwap, milkSwapSetting, packagingPresetsSetting]);
 
@@ -759,6 +765,15 @@ export default function App() {
 
           {/* แจ้งเตือนออเดอร์ QR ในเครื่อง · ไม่กินโควตาข้อความของ LINE (ดู line/README.md) */}
           <NewOrderAlert alerts={qrAlert.alerts} dismiss={qrAlert.dismiss} dismissAll={qrAlert.dismissAll} />
+          {aiStatus.pending > 0 && (
+            <div
+              role="status"
+              data-ai-thinking
+              className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-[var(--z-toast)] inline-flex items-center gap-2 rounded-full bg-[var(--bg-surface)] border border-[var(--border-strong)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] shadow-[var(--elev-2)]"
+            >
+              <Spinner size="sm" /> {AI_THINKING_TEXT}
+            </div>
+          )}
 
           {/* PIN Modal */}
           <Modal
