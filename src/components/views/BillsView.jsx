@@ -1,93 +1,121 @@
-import React, { useState, useMemo } from 'react';
-import { ChevronLeft, Calendar, Search, Clock, Receipt, Wallet, CreditCard, Coffee, UserCheck, X, ChevronRight, QrCode, CheckSquare, Square, Users, Printer, FileText } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Receipt, SearchX, Users, X } from 'lucide-react';
 import { doc, updateDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
-import { useAppContext } from '../../context/AppContext';
-import { getISODate, getOrderDate, groupItemsByCategory } from '../../utils/calculations';
+import { useConfigContext, useDataContext, useUIContext } from '../../context/AppContext';
+import { useNavigate, useRouteParams } from '../../navigation';
+import { getISODate, getOrderDate } from '../../utils/calculations';
+import { validDate } from '../../utils/salesHistory';
+import { formatBaht } from '../../utils/format';
 import usePrintReceipt from '../../hooks/usePrintReceipt';
 import useReceiptPdf from '../../hooks/useReceiptPdf';
 import useDebounce from '../../hooks/useDebounce';
-import { Button, Badge, EmptyState, Spinner, Skeleton, ConfirmModal, useToast } from '../ui';
-import { DEFAULT_OWN_GLASS_DISCOUNT, VAT_PERCENTAGE } from '../../config/constants';
+import {
+  Banner, Button, ConfirmModal, DateStepper, EmptyState, FilterChips, Money, PageHeader, Sheet, Skeleton, Toolbar,
+  useMediaQuery, useToast,
+} from '../ui';
+import { DEFAULT_OWN_GLASS_DISCOUNT } from '../../config/constants';
 import { summarizeMergedBills, validateMergedBills } from '../../utils/billMerge';
+import { buildMenuImageLookup } from './overview/menuImage';
+import {
+  billCode, billCustomerName, countBillFilters, matchesBillFilter, matchesBillQuery, normalizeBillFilter, rankBills,
+  summarizeStockDeduction,
+} from './records/billSearch';
+import BillList from './records/BillList';
+import BillDetail, { PaidBadge } from './records/BillDetail';
+import BillActions from './records/BillActions';
 
+/**
+ * BillsView · บิล (UX v2 · WP2)
+ * `#/bills?date=YYYY-MM-DD&filter=unpaid|paid|qr&id=<orderId>` · the URL holds
+ * the date, the status chip and the open bill so refresh/back/deep links work.
+ * iPad/desktop (≥1024): list + detail pane, newest bill selected by default.
+ * Narrower: list only, the bill opens in a Sheet.
+ */
 export default function BillsView() {
+  const { orders, menu, members, stock, isSyncing } = useDataContext();
   const {
-    orders,
-    menu,
-    members,
-    reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
-    isSyncing,
-    ownGlassDiscount,
-    runDbAction,
-    handleViewChange,
-    setEditingOrderId,
-    setOrderToCancel
-  } = useAppContext();
-
+    reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, ownGlassDiscount,
+  } = useConfigContext();
+  const { runDbAction, handleViewChange, setEditingOrderId, setOrderToCancel } = useUIContext();
+  const params = useRouteParams();
+  const navigate = useNavigate();
   const toast = useToast();
-  const { printBill, receiptPortal: printReceiptPortal, printUnavailable } = usePrintReceipt({
-    menu, settings: { reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth },
-  });
-  const handlePrintBill = () => {
-    // ร้านอาจเปิดจากหน้าจอหลัก และยังไม่ยืนยันข้อจำกัดของ iOS จึงลองพิมพ์ก่อนแนะนำทางเลือก
-    printBill(selectedBill);
-    if (printUnavailable) {
-      toast.info('ถ้าหน้าต่างพิมพ์ไม่ขึ้น ให้เปิดระบบผ่าน Safari แล้วกดพิมพ์อีกครั้ง');
-    }
-  };
-  const { openReceiptPdf, receiptPortal: pdfReceiptPortal, generating, fallbackUrl, clearFallback } = useReceiptPdf({
-    menu, settings: { reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth },
-  });
-  const handleOpenReceiptPdf = () => {
-    openReceiptPdf(selectedBill).catch(() => {
-      toast.error('สร้างใบเสร็จไม่สำเร็จ ลองใหม่อีกครั้ง');
-    });
-  };
+  const wide = useMediaQuery('(min-width: 1024px)');
 
+  const receiptSettings = { reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth };
+  const { printBill, receiptPortal: printReceiptPortal, printUnavailable } = usePrintReceipt({ menu, settings: receiptSettings });
+  const { openReceiptPdf, receiptPortal: pdfReceiptPortal, generating, fallbackUrl, clearFallback } = useReceiptPdf({ menu, settings: receiptSettings });
   const OWN_GLASS_DISCOUNT = Number(ownGlassDiscount) || DEFAULT_OWN_GLASS_DISCOUNT;
 
-  // Local states
-  const [selectedHistoryDate, setSelectedHistoryDate] = useState(getISODate());
-  const [billSearchTerm, setBillSearchTerm] = useState('');
-  const [selectedBill, setSelectedBill] = useState(null);
-  const [showMobileBillDetail, setShowMobileBillDetail] = useState(false);
+  // ── route state ───────────────────────────────────────────────────────────
+  const today = getISODate();
+  const idParam = params.id || null;
+  const idOrder = useMemo(() => (idParam ? orders.find((o) => o.id === idParam) || null : null), [orders, idParam]);
+  const date = validDate(params.date) ? params.date : (idOrder && validDate(getOrderDate(idOrder)) ? getOrderDate(idOrder) : today);
+  const filter = normalizeBillFilter(params.filter);
+  const setRoute = (patch) => {
+    const next = { date: date !== today ? date : undefined, filter: filter !== 'all' ? filter : undefined, id: idParam || undefined, ...patch };
+    if (next.date === today) next.date = undefined;
+    if (next.filter === 'all') next.filter = undefined;
+    navigate('bills', next, { replace: true });
+  };
+
+  const [search, setSearch] = useState('');
+  const query = useDebounce(search, 200);
+
+  // ── data ──────────────────────────────────────────────────────────────────
+  const memberByPhone = useMemo(() => new Map(members.map((m) => [m.phone, m])), [members]);
+  const stockById = useMemo(() => new Map(stock.map((s) => [s.id, s])), [stock]);
+  const imageFor = useMemo(() => buildMenuImageLookup(menu), [menu]);
+  const nameFor = (bill) => billCustomerName(bill, memberByPhone);
+
+  const dayBills = useMemo(() => orders
+    .filter((o) => o.status === 'completed' && getOrderDate(o) === date)
+    .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)), [orders, date]);
+  const counts = useMemo(() => countBillFilters(dayBills), [dayBills]);
+  const dayTotal = useMemo(() => dayBills.reduce((s, b) => s + (Number(b.total) || 0), 0), [dayBills]);
+  const unpaidTotal = useMemo(() => dayBills.filter((b) => !b.isPaid).reduce((s, b) => s + (Number(b.total) || 0), 0), [dayBills]);
+  const rows = useMemo(() => rankBills(
+    dayBills.filter((b) => matchesBillFilter(b, filter) && matchesBillQuery(b, query, billCustomerName(b, memberByPhone))),
+    query,
+  ), [dayBills, filter, query, memberByPhone]);
+
+  // A bill named in the URL wins (deep link / tap); otherwise iPad shows the
+  // newest match so the detail pane is never empty.
+  const selected = wide
+    ? ((idOrder && dayBills.includes(idOrder) ? idOrder : null) || rows[0] || null)
+    : idOrder;
+  const onSearch = (text) => {
+    setSearch(text);
+    if (idParam && wide) setRoute({ id: undefined }); // let the pane follow the new matches
+  };
+
+  // ── merge (pay several unpaid bills together) · unchanged write ───────────
   const [mergeMode, setMergeMode] = useState(false);
-  const [selectedBillIds, setSelectedBillIds] = useState(() => new Set());
+  const [mergeIds, setMergeIds] = useState(() => new Set());
   const [showMergeConfirm, setShowMergeConfirm] = useState(false);
   const [isMergingBills, setIsMergingBills] = useState(false);
-
-  const debouncedBillSearchTerm = useDebounce(billSearchTerm, 200);
-
-  // Memos
-  const billsForSelectedDate = useMemo(() => {
-    return orders
-      .filter(o => o.status === 'completed' && getOrderDate(o) === selectedHistoryDate)
-      .filter(o => debouncedBillSearchTerm === '' || String(o.queueNumber).includes(debouncedBillSearchTerm))
-      .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-  }, [orders, selectedHistoryDate, debouncedBillSearchTerm]);
-
-  const mergedSummary = useMemo(
-    () => summarizeMergedBills(billsForSelectedDate, selectedBillIds),
-    [billsForSelectedDate, selectedBillIds],
-  );
+  const mergedSummary = useMemo(() => summarizeMergedBills(dayBills, mergeIds), [dayBills, mergeIds]);
 
   const stopMergeMode = () => {
     setMergeMode(false);
-    setSelectedBillIds(new Set());
+    setMergeIds(new Set());
     setShowMergeConfirm(false);
   };
-
+  const startMergeMode = () => {
+    setMergeMode(true);
+    if (filter !== 'unpaid') setRoute({ filter: 'unpaid', id: undefined });
+  };
   const toggleBillForMerge = (bill) => {
     if (bill.isPaid) return;
-    setSelectedBillIds((current) => {
+    setMergeIds((current) => {
       const next = new Set(current);
       if (next.has(bill.id)) next.delete(bill.id);
       else next.add(bill.id);
       return next;
     });
   };
-
   const confirmMergedPayment = async () => {
     try {
       validateMergedBills(mergedSummary.bills);
@@ -95,7 +123,6 @@ export default function BillsView() {
       setShowMergeConfirm(false);
       return;
     }
-
     setIsMergingBills(true);
     const completed = await runDbAction(async () => {
       const batch = writeBatch(db);
@@ -117,412 +144,223 @@ export default function BillsView() {
     if (completed !== false) stopMergeMode();
   };
 
-  // Mobile bill selection handler
-  const handleBillSelect = (bill) => {
-    if (mergeMode) {
-      toggleBillForMerge(bill);
-      return;
-    }
-    setSelectedBill(bill);
-    setShowMobileBillDetail(true);
+  // ── bill actions · same writes / handlers as before ───────────────────────
+  const [payBusy, setPayBusy] = useState(false);
+  const togglePaid = async (bill) => {
+    const newPaidStatus = !bill.isPaid;
+    setPayBusy(true);
+    const ok = await runDbAction(async () => {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', bill.id), { isPaid: newPaidStatus });
+    }, 'อัปเดตสถานะการชำระเงินไม่สำเร็จ');
+    setPayBusy(false);
+    if (ok) toast.success(newPaidStatus ? `คิว ${bill.queueNumber} รับเงินแล้ว` : `คิว ${bill.queueNumber} กลับเป็นค้างชำระ`);
+  };
+  const handlePrintBill = (bill) => {
+    // ร้านอาจเปิดจากหน้าจอหลัก และยังไม่ยืนยันข้อจำกัดของ iOS จึงลองพิมพ์ก่อนแนะนำทางเลือก
+    printBill(bill);
+    if (printUnavailable) toast.info('ถ้าหน้าต่างพิมพ์ไม่ขึ้น ให้เปิดระบบผ่าน Safari แล้วกดพิมพ์อีกครั้ง');
+  };
+  const handleOpenReceiptPdf = (bill) => {
+    openReceiptPdf(bill).catch(() => toast.error('สร้างใบเสร็จไม่สำเร็จ ลองใหม่อีกครั้ง'));
+  };
+  const editBill = (bill) => { setEditingOrderId(bill.id); handleViewChange('pos'); };
+  const deleteBill = (bill) => setOrderToCancel(bill.id);
+
+  const handleSelect = (bill) => {
+    if (mergeMode) { toggleBillForMerge(bill); return; }
+    setRoute({ id: bill.id });
   };
 
+  // ── rendering ─────────────────────────────────────────────────────────────
+  const actionsFor = (bill) => (
+    <BillActions
+      bill={bill}
+      onTogglePaid={() => togglePaid(bill)}
+      onPrint={() => handlePrintBill(bill)}
+      onPdf={() => handleOpenReceiptPdf(bill)}
+      onEdit={() => editBill(bill)}
+      onDelete={() => deleteBill(bill)}
+      pdfBusy={generating}
+      payBusy={payBusy}
+    />
+  );
+  const pdfBanner = fallbackUrl ? (
+    <Banner
+      tone="info"
+      title="ใบเสร็จ PDF พร้อมแล้ว"
+      action={<a href={fallbackUrl} target="_blank" rel="noopener" className="inline-flex items-center min-h-11 px-3 rounded-[var(--radius-sm)] font-semibold text-[var(--state-info)] underline underline-offset-2">เปิดใบเสร็จ</a>}
+      onDismiss={clearFallback}
+    />
+  ) : null;
+  const detailFor = (bill, showHeader) => (
+    <BillDetail
+      bill={bill}
+      menu={menu}
+      customerName={nameFor(bill)}
+      ownGlassDiscount={OWN_GLASS_DISCOUNT}
+      imageFor={imageFor}
+      deduction={bill.status === 'completed' ? summarizeStockDeduction(bill, stockById) : null}
+      showHeader={showHeader}
+    >
+      {pdfBanner}
+    </BillDetail>
+  );
+
+  const filtering = filter !== 'all' || query.trim() !== '';
+  const emptyNode = dayBills.length === 0 ? (
+    <EmptyState
+      icon={Receipt}
+      size="sm"
+      title="ยังไม่มีบิลในวันนี้"
+      description={date === today ? 'บิลที่ปิดแล้วจะขึ้นที่นี่' : 'ลองเลือกวันอื่นด้วยปุ่ม ‹ ›'}
+    />
+  ) : (
+    <EmptyState
+      icon={SearchX}
+      size="sm"
+      title={filter === 'unpaid' && !query ? 'ไม่มีบิลค้างชำระ' : 'ไม่พบบิลที่ตรงกับการค้นหา'}
+      actionLabel="ดูทั้งหมด"
+      onAction={() => { setSearch(''); setRoute({ filter: 'all' }); }}
+      className="break-words [overflow-wrap:anywhere]"
+    />
+  );
+
+  const subtitle = dayBills.length
+    ? `${dayBills.length} บิล · รวม ${formatBaht(dayTotal)}${counts.unpaid ? ` · ค้างชำระ ${counts.unpaid} บิล (${formatBaht(unpaidTotal)})` : ''}`
+    : 'ยังไม่มีบิลที่ปิดแล้ว';
+
+  const list = isSyncing ? (
+    <div className="flex flex-col gap-2 p-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height="4rem" rounded="lg" />)}</div>
+  ) : rows.length === 0 ? emptyNode : (
+    <BillList
+      bills={rows}
+      nameFor={nameFor}
+      selectedId={selected?.id}
+      mergeMode={mergeMode}
+      mergeIds={mergeIds}
+      onSelect={handleSelect}
+      showChevron={!wide}
+    />
+  );
+
+  const mergeBar = mergeMode && (
+    <div className="shrink-0 border-t border-[var(--border-color)] bg-[var(--bg-surface)] px-4 py-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2"><Users size={16} aria-hidden="true" /> เลือกแล้ว {mergedSummary.count} บิล</p>
+          <p className="text-xs text-[var(--text-muted)]">เลือกอย่างน้อย 2 บิลที่ยังไม่ชำระ</p>
+        </div>
+        <Money value={mergedSummary.total} className="text-[length:var(--fs-2xl)] leading-[var(--lh-2xl)] font-semibold text-[var(--text-primary)]" />
+      </div>
+      <Button fullWidth disabled={mergedSummary.count < 2} onClick={() => setShowMergeConfirm(true)}>
+        รวมยอดและชำระพร้อมกัน
+      </Button>
+    </div>
+  );
+
   return (
-    <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-[var(--text-primary)]">
+    <div className="h-full bg-[var(--bg-canvas)] flex flex-col overflow-hidden text-[var(--text-primary)]">
       {printReceiptPortal}
       {pdfReceiptPortal}
-      {fallbackUrl && (
-        <div role="status" className="fixed bottom-4 right-4 left-4 sm:left-auto z-[100] flex items-center gap-3 rounded-2xl border border-blue-200 bg-white p-4 shadow-xl text-sm">
-          <div>
-            <p className="font-semibold">ใบเสร็จพร้อมแล้ว</p>
-            <a href={fallbackUrl} target="_blank" rel="noopener" className="text-blue-600 underline">เปิดใบเสร็จ PDF</a>
-          </div>
-          <button type="button" onClick={clearFallback} aria-label="ปิดแจ้งเตือนใบเสร็จ" className="p-2 rounded-lg hover:bg-gray-100"><X size={18} /></button>
-        </div>
-      )}
-      {/* Responsive Header */}
-      <header className="h-16 md:h-20 lg:h-24 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-3 md:px-6 lg:px-12 flex items-center justify-between shadow-sm z-[var(--z-nav)] gap-2">
-        <div className="flex items-center gap-2 md:gap-4 text-emerald-600 cursor-pointer font-semibold min-w-0" onClick={() => handleViewChange('pos')}>
-          <ChevronLeft size={24} className="shrink-0 md:w-8 md:h-8" />
-          <h1 className="text-base md:text-xl lg:text-2xl font-semibold tracking-tight text-[var(--text-primary)] truncate">ประวัติบิล</h1>
-        </div>
-        <div className="flex items-center gap-2 md:gap-4 shrink-0">
-          <button onClick={() => handleViewChange('category_summary')} className="hidden sm:flex bg-emerald-600 text-white px-3 md:px-6 py-2 md:py-3 rounded-xl md:rounded-2xl text-xs md:text-xs font-semibold tracking-wider md:tracking-widest shadow-[var(--elev-2)] hover:bg-emerald-700 transition-all">
-            สรุปหมวดหมู่
-          </button>
-          <div className="relative flex items-center bg-emerald-50 border border-emerald-100 rounded-xl md:rounded-3xl p-1 md:p-1.5 shadow-sm">
-            <Calendar className="text-emerald-500 ml-2 md:ml-4 w-4 h-4 md:w-5 md:h-5" />
-            <input type="date" value={selectedHistoryDate} onChange={(e) => setSelectedHistoryDate(e.target.value)} className="bg-transparent border-none py-2 md:py-3 pl-2 md:pl-3 pr-2 md:pr-6 text-xs md:text-base font-semibold text-emerald-700 outline-none cursor-pointer w-28 md:w-auto" />
-          </div>
-        </div>
-      </header>
 
-      {/* Mobile: Category Summary Button */}
-      <div className="sm:hidden px-3 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border-color)]">
-        <button onClick={() => handleViewChange('category_summary')} className="w-full bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-semibold tracking-wider shadow-[var(--elev-2)]">
-          สรุปตามหมวดหมู่
-        </button>
-      </div>
+      <PageHeader
+        title="บิล"
+        subtitle={subtitle}
+        icon={Receipt}
+        sticky={false}
+        actions={<DateStepper value={date} onChange={(d) => setRoute({ date: d, id: undefined })} />}
+      />
 
-      <div className="flex-1 flex flex-col lg:flex-row gap-3 md:gap-6 lg:gap-6 p-3 md:p-6 lg:p-6 overflow-hidden">
-        {/* Bills List */}
-        <div className={`w-full lg:w-[400px] xl:w-[450px] bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[var(--radius)] shadow-sm border border-[var(--border-color)] flex flex-col animate-in slide-in-from-left ${showMobileBillDetail ? 'hidden lg:flex' : 'flex'}`}>
-          <div className="p-4 md:p-6 lg:p-6 border-b border-gray-50 flex flex-col gap-3 md:gap-4">
-            <div className="relative">
-              <Search className="absolute left-4 md:left-6 top-1/2 -translate-y-1/2 text-[var(--text-muted)] w-5 h-5 md:w-[22px] md:h-[22px]" />
-              <input type="text" placeholder="ค้นหาเลขคิว..." value={billSearchTerm} onChange={(e) => setBillSearchTerm(e.target.value)} className="w-full bg-[var(--bg-tertiary)] border-none rounded-xl md:rounded-2xl py-3 md:py-4 pl-12 md:pl-16 pr-4 md:pr-6 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500/10 text-[var(--text-primary)]" />
-            </div>
-            <div className="flex items-center justify-between gap-3 px-2">
-              <span className="text-xs md:text-xs font-semibold text-[var(--text-muted)] tracking-wider md:tracking-widest">บิลในระบบ ({billsForSelectedDate.length})</span>
-              <button
-                type="button"
-                onClick={() => (mergeMode ? stopMergeMode() : setMergeMode(true))}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${mergeMode ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}
-              >
-                {mergeMode ? 'ยกเลิก' : 'รวมบิล'}
-              </button>
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto divide-y divide-gray-50 scrollbar-hide text-[var(--text-primary)] px-1 md:px-2">
-            {isSyncing && (
-              <div className="py-4 px-2 space-y-3">
-                {[...Array(5)].map((_, i) => <Skeleton.OrderCard key={i} />)}
-              </div>
-            )}
-            {!isSyncing && billsForSelectedDate.length === 0 && (
-              <EmptyState icon="receipt" title="ไม่มีบิลในช่วงวันที่นี้" description="ลองเลือกวันที่อื่นหรือสร้างออเดอร์ใหม่" size="sm" />
-            )}
-            {billsForSelectedDate.map(bill => (
-              <button key={bill.id} onClick={() => handleBillSelect(bill)} disabled={mergeMode && bill.isPaid} className={`w-full p-4 md:p-6 lg:p-6 text-left transition-all flex items-center justify-between rounded-xl md:rounded-2xl lg:rounded-[var(--radius)] my-0.5 md:my-1 ${selectedBillIds.has(bill.id) ? 'bg-emerald-100 ring-2 ring-emerald-400' : selectedBill?.id === bill.id && !mergeMode ? 'bg-emerald-50 shadow-inner' : 'hover:bg-[var(--bg-tertiary)] active:bg-[var(--bg-tertiary)]'} ${mergeMode && bill.isPaid ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                <div className="flex items-center gap-3 md:gap-4 min-w-0">
-                  {mergeMode && (
-                    <span className="text-emerald-600 shrink-0">
-                      {selectedBillIds.has(bill.id) ? <CheckSquare size={22} /> : <Square size={22} />}
-                    </span>
-                  )}
-                  <div className={`w-10 h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 rounded-xl md:rounded-2xl flex items-center justify-center font-semibold text-base md:text-lg lg:text-xl shrink-0 ${selectedBill?.id === bill.id ? 'bg-emerald-500 text-white shadow-[var(--elev-2)] shadow-emerald-500/20' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] shadow-sm'}`}>{Number(bill.queueNumber)}</div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-[var(--text-primary)] text-sm md:text-base mb-1 md:mb-2 tracking-tighter truncate">#{String(bill.id).slice(-6).toUpperCase()}</p>
-                    {(bill.memberNickname || bill.customerName) && (
-                      <p className="text-xs md:text-sm font-semibold text-emerald-700 truncate -mt-0.5 mb-1">{bill.memberNickname || bill.customerName}</p>
-                    )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-xs md:text-xs font-bold text-[var(--text-muted)] flex items-center gap-1 md:gap-2"><Clock size={10} className="md:w-3 md:h-3" /> {String(bill.time)} น.</p>
-                      {bill.source === 'qr' && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 text-[9px] md:text-[10px] font-semibold tracking-wider border border-emerald-200">
-                          <QrCode size={9} /> QR
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right flex flex-col items-end gap-1 md:gap-2 shrink-0 whitespace-nowrap pl-2">
-                  <p className="num text-right font-semibold text-emerald-600 text-base md:text-lg lg:text-xl">฿{Number(bill.total || 0).toLocaleString()}</p>
-                  <span className={`text-[8px] md:text-xs font-semibold px-2 md:px-3 py-0.5 md:py-1 rounded-full border ${bill.isPaid ? 'bg-[var(--state-ok)]/10 text-[var(--state-ok)] border-[var(--state-ok)]/20' : 'bg-[var(--state-warn)]/10 text-[var(--state-warn)] border-[var(--state-warn)]/20'}`}>{bill.isPaid ? 'จ่ายแล้ว' : 'ค้างชำระ'}</span>
-                </div>
-                <ChevronRight size={16} className="text-[var(--text-muted)] lg:hidden shrink-0 ml-2" />
-              </button>
-            ))}
-          </div>
-          {mergeMode && (
-            <div className="p-4 md:p-4 border-t border-emerald-100 bg-emerald-50 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold text-emerald-700 flex items-center gap-2"><Users size={16} /> เลือกแล้ว {mergedSummary.count} บิล</p>
-                  <p className="text-xs text-emerald-600 mt-1">เลือกอย่างน้อย 2 บิลที่ยังไม่ชำระ</p>
-                </div>
-                <p className="num text-right text-2xl font-semibold text-emerald-700">฿{mergedSummary.total.toLocaleString()}</p>
-              </div>
-              <Button className="w-full" disabled={mergedSummary.count < 2} onClick={() => setShowMergeConfirm(true)}>
-                รวมยอดและชำระพร้อมกัน
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Bill Detail - Desktop */}
-        <div className={`flex-1 bg-[var(--bg-secondary)] rounded-2xl md:rounded-[var(--radius)] lg:rounded-[var(--radius)] shadow-[var(--elev-3)] border border-[var(--border-color)] overflow-hidden flex-col shadow-emerald-500/5 hidden lg:flex`}>
-          {selectedBill ? (
-            <div className="flex flex-col h-full animate-in fade-in">
-              <div className="p-6 lg:p-6 border-b border-gray-50 flex flex-col 2xl:flex-row justify-between items-start gap-4">
-                <div className="min-w-0">
-                  <h2 className="text-xl lg:text-2xl xl:text-3xl font-semibold text-[var(--text-primary)] tracking-tighter flex items-center gap-3 lg:gap-4">
-                    <Receipt className="text-emerald-500 shrink-0" size={28} /> <span className="truncate">บิล #{String(selectedBill.id).slice(-8).toUpperCase()}</span>
-                    {selectedBill.source === 'qr' && (
-                      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 text-emerald-600 text-xs font-semibold tracking-wider border border-emerald-200 shrink-0">
-                        <QrCode size={12} /> สั่งผ่าน QR
-                      </span>
-                    )}
-                  </h2>
-                  <p className="text-xs lg:text-sm font-bold text-[var(--text-muted)] mt-2 lg:mt-3 tracking-wider lg:tracking-widest">วันที่ {new Date(selectedHistoryDate).toLocaleDateString('th-TH', { dateStyle: 'long' })} • {String(selectedBill.time)} น.</p>
-
-                </div>
-                <div className="flex flex-wrap gap-2 lg:gap-4 shrink-0">
-                  <button
-                    onClick={async () => {
-                      const newPaidStatus = !selectedBill.isPaid;
-                      await runDbAction(async () => {
-                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', selectedBill.id), { isPaid: newPaidStatus });
-                        setSelectedBill({ ...selectedBill, isPaid: newPaidStatus });
-                      }, 'อัปเดตสถานะการชำระเงินไม่สำเร็จ');
-                    }}
-                    className={`px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold transition-all border active:scale-95 shadow-sm flex items-center gap-2 ${selectedBill.isPaid ? 'bg-orange-50 text-orange-600 border-orange-100 hover:bg-orange-600 hover:text-white' : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-600 hover:text-white'}`}
-                  >
-                    {selectedBill.isPaid ? <><Wallet size={16} /> <span>ยกเลิกชำระ</span></> : <><CreditCard size={16} /> <span>ชำระแล้ว</span></>}
-                  </button>
-                  <button onClick={handlePrintBill} className="bg-blue-50 text-blue-600 px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-blue-600 hover:text-white transition-all border border-blue-100 active:scale-95 shadow-sm flex items-center gap-2"><Printer size={16} /> พิมพ์บิล</button>
-                  <button onClick={handleOpenReceiptPdf} disabled={generating} className="disabled:opacity-50 disabled:cursor-not-allowed bg-blue-50 text-blue-600 px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-blue-600 hover:text-white transition-all border border-blue-100 active:scale-95 shadow-sm flex items-center gap-2"><FileText size={16} /> {generating ? 'กำลังสร้าง...' : 'PDF'}</button>
-                  <button onClick={() => { setEditingOrderId(selectedBill.id); handleViewChange('pos'); }} className="bg-blue-50 text-blue-600 px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-blue-600 hover:text-white transition-all border border-blue-100 active:scale-95 shadow-sm">แก้ไข</button>
-                  <button onClick={() => setOrderToCancel(selectedBill.id)} className="bg-red-50 text-[var(--state-danger)] px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-red-600 hover:text-white transition-all border border-red-100 active:scale-95 shadow-sm">ลบ</button>
-                  <button onClick={() => setSelectedBill(null)} className="bg-[var(--bg-tertiary)] text-[var(--text-muted)] px-4 lg:px-8 py-3 lg:py-4 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-semibold hover:bg-[var(--bg-tertiary)] border border-[var(--border-color)]">ปิด</button>
-                </div>
-              </div>
-              {/* Customer info gets its own full-width row: next to the 6 action
-                  buttons (xl+, e.g. iPad Pro landscape) it was squeezed until the
-                  name was cut off. */}
-              {(selectedBill.memberPhone || selectedBill.memberNickname || selectedBill.bringOwnGlass) && (
-                <div className="px-6 pt-4 flex flex-wrap items-stretch gap-3">
-                  {(selectedBill.memberPhone || selectedBill.memberNickname) && (
-                    <div className="flex-1 min-w-[16rem] p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center gap-4 animate-in slide-in-from-top duration-300">
-                      <div className="w-12 h-12 bg-[var(--bg-secondary)] rounded-2xl flex items-center justify-center text-emerald-500 shadow-sm border border-emerald-100/50 shrink-0">
-                        <UserCheck size={22} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-emerald-600 mb-0.5">ข้อมูลลูกค้าสมาชิก</p>
-                        <p className="text-lg font-semibold text-[var(--text-primary)] leading-snug break-words">
-                          {selectedBill.memberNickname || members.find(m => m.phone === selectedBill.memberPhone)?.name || 'ลูกค้าทั่วไป'}
-                        </p>
-                        {selectedBill.memberPhone && <p className="num text-sm font-semibold text-emerald-700">{selectedBill.memberPhone}</p>}
-                      </div>
-                    </div>
-                  )}
-                  {selectedBill.bringOwnGlass && (
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 text-xs font-semibold flex items-center gap-2 self-center">
-                      <Coffee size={14} /> ส่วนลดนำแก้วมาเอง (-฿{OWN_GLASS_DISCOUNT})
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="flex-1 overflow-y-auto p-6 lg:p-12 scrollbar-hide">
-                <div className="max-w-3xl mx-auto space-y-8 lg:space-y-12">
-                  <div>
-                    <h3 className="text-xs lg:text-xs font-semibold text-[var(--text-muted)] tracking-wider lg:tracking-[0.3em] mb-4 lg:mb-6 border-b pb-2 lg:pb-3 px-2 lg:px-4">รายการสินค้าแยกตามหมวดหมู่</h3>
-                    <div className="space-y-6 lg:space-y-8 px-1 lg:px-2">
-                      {Object.entries(groupItemsByCategory(selectedBill.items, menu)).map(([category, data]) => (
-                        <div key={category} className="space-y-2 lg:space-y-3">
-                          <div className="flex items-center justify-between px-2 lg:px-4">
-                            <div className="flex items-center gap-2 lg:gap-3">
-                              <div className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-emerald-500"></div>
-                              <h4 className="text-xs lg:text-sm font-semibold text-[var(--text-primary)] tracking-wide lg:tracking-wider">{category}</h4>
-                            </div>
-                            <span className="text-xs lg:text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg lg:rounded-xl border border-emerald-100">
-                              <span className="num text-right">{data.quantity} ชิ้น • ฿{data.total.toLocaleString()}</span>
-                            </span>
-                          </div>
-                          <div className="space-y-2">
-                            {data.items.map((item, idx) => (
-                              <div key={idx} className="flex items-center justify-between p-3 lg:p-4 bg-[var(--bg-tertiary)] rounded-xl lg:rounded-[var(--radius)] border border-[var(--border-color)]/50 shadow-sm group hover:bg-[var(--bg-secondary)] transition-all">
-                                <div className="flex items-center gap-3 lg:gap-4 min-w-0">
-                                  <div className="num text-right w-10 h-10 lg:w-12 lg:h-12 bg-[var(--bg-secondary)] rounded-lg lg:rounded-xl flex items-center justify-center font-semibold text-xs lg:text-sm text-emerald-500 shadow-sm border border-[var(--border-color)] shrink-0">x{Number(item.quantity)}</div>
-                                  <div className="min-w-0">
-                                    <p className="font-semibold text-[var(--text-primary)] text-sm lg:text-lg mb-0.5 lg:mb-1 truncate">{String(item.name)}</p>
-                                    <p className="num text-right text-xs lg:text-xs font-bold text-[var(--text-muted)] tracking-tighter">฿{Number(item.price).toLocaleString()} / ชิ้น</p>
-                                    {item.note && <p className="text-xs lg:text-xs text-orange-500 font-bold mt-1 lg:mt-1.5 truncate">✨ {item.note}</p>}
-                                  </div>
-                                </div>
-                                <p className="num text-right font-semibold text-[var(--text-primary)] text-base lg:text-xl shrink-0 ml-2">฿{(Number(item.price) * Number(item.quantity)).toLocaleString()}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="bg-[var(--surface-inverse)] rounded-2xl lg:rounded-[var(--radius)] p-6 lg:p-12 text-white shadow-[var(--elev-3)] relative overflow-hidden border-b-4 lg:border-b-8 border-emerald-500/20">
-                    <div className="relative space-y-4 lg:space-y-5">
-                      <div className="flex justify-between text-xs lg:text-base opacity-50 font-bold tracking-wider lg:tracking-widest">
-                        <span>ยอดรวมก่อนส่วนลด</span>
-                        <span className="num text-right">฿{Number(selectedBill.subtotal || 0).toLocaleString()}</span>
-                      </div>
-                      {Number(selectedBill.discount || 0) > 0 && (
-                        <div className="flex justify-between items-start text-xs lg:text-base text-orange-400 font-semibold tracking-wider lg:tracking-widest">
-                          <div className="flex flex-col">
-                            <span>ส่วนลดทั้งหมด</span>
-                            {selectedBill.promotionTitle && (
-                              <span className="text-xs lg:text-xs text-orange-200 opacity-60 normal-case mb-1 flex items-center gap-1">✨ {selectedBill.promotionTitle} {selectedBill.promotionDiscountPercent > 0 && `(${selectedBill.promotionDiscountPercent}%)`}</span>
-                            )}
-                          </div>
-                          <span className="num text-right">-฿{Number(selectedBill.discount).toLocaleString()}</span>
-                        </div>
-                      )}
-                      {selectedBill.vatIncluded && (
-                        <div className="flex justify-between text-xs lg:text-base text-emerald-400 font-bold tracking-wider lg:tracking-widest border-t border-white/5 pt-4 lg:pt-8">
-                          <span>VAT {VAT_PERCENTAGE}%</span>
-                          <span className="num text-right">฿{Number(selectedBill.vat || 0).toLocaleString()}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between items-end border-t border-white/10 pt-6 lg:pt-10">
-                        <div className="flex flex-col">
-                          <span className="text-xs lg:text-xs font-semibold tracking-wider lg:tracking-[0.4em] opacity-40 mb-1.5 lg:mb-2">ยอดรวมสุทธิ</span>
-                          <span className={`text-xs lg:text-xs font-semibold px-3 lg:px-4 py-1 lg:py-1.5 rounded-lg lg:rounded-xl w-fit ${selectedBill.isPaid ? 'bg-[var(--state-ok)]/20 text-[var(--state-ok)] border border-[var(--state-ok)]/20' : 'bg-[var(--state-warn)]/20 text-[var(--state-warn)] border border-[var(--state-warn)]/20'}`}>{selectedBill.isPaid ? 'จ่ายเรียบร้อย' : 'ค้างชำระ'}</span>
-                        </div>
-                        <span className="num text-right text-3xl lg:text-6xl font-semibold tracking-tighter text-white drop-shadow-[var(--elev-2)]">฿{Number(selectedBill.total || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center opacity-20 tracking-wider lg:tracking-[0.4em] text-[var(--text-primary)] p-6">
-              <Receipt size={100} className="text-emerald-500 mb-6 lg:mb-8 lg:w-[140px] lg:h-[140px]" />
-              <h3 className="text-lg lg:text-2xl font-semibold text-[var(--text-primary)] text-center">เลือกบิลด้านซ้ายเพื่อดูรายละเอียด</h3>
-            </div>
-          )}
-        </div>
-
-        {/* Mobile Bill Detail Drawer */}
-        {showMobileBillDetail && selectedBill && (
-          <div className="lg:hidden fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm animate-in fade-in">
-            <div className="absolute inset-0 bg-[var(--bg-secondary)] flex flex-col animate-in slide-in-from-right overflow-hidden">
-              {/* Mobile Header */}
-              <div className="p-4 border-b border-[var(--border-color)] flex items-center justify-between bg-[var(--bg-secondary)] shrink-0">
-                <div className="flex items-center gap-3 min-w-0">
-                  <button onClick={() => setShowMobileBillDetail(false)} aria-label="ย้อนกลับ" className="p-2 rounded-xl hover:bg-[var(--bg-tertiary)]">
-                    <ChevronLeft size={24} />
-                  </button>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-base font-semibold text-[var(--text-primary)] truncate">บิล #{String(selectedBill.id).slice(-6).toUpperCase()}</h2>
-                      {selectedBill.source === 'qr' && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 text-[10px] font-semibold tracking-wider border border-emerald-200 shrink-0">
-                          <QrCode size={10} /> QR
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-[var(--text-muted)] font-bold">{String(selectedBill.time)} น.</p>
-                  </div>
-                </div>
-                <button onClick={() => { setShowMobileBillDetail(false); setSelectedBill(null); }} aria-label="ปิดรายละเอียดบิล" className="p-2 rounded-xl hover:bg-[var(--bg-tertiary)]">
-                  <X size={20} />
-                </button>
-              </div>
-
-              {/* Mobile Content */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {/* Member Info */}
-                {(selectedBill.memberPhone || selectedBill.memberNickname) && (
-                  <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center gap-3">
-                    <div className="w-10 h-10 bg-[var(--bg-secondary)] rounded-xl flex items-center justify-center text-emerald-500 shadow-sm shrink-0">
-                      <UserCheck size={20} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-emerald-600">สมาชิก</p>
-                      <p className="text-base font-semibold text-[var(--text-primary)] leading-snug break-words">
-                        {selectedBill.memberNickname || members.find(m => m.phone === selectedBill.memberPhone)?.name || 'ลูกค้าทั่วไป'}
-                      </p>
-                      {selectedBill.memberPhone && <p className="num text-sm font-semibold text-emerald-700">{selectedBill.memberPhone}</p>}
-                    </div>
-                  </div>
-                )}
-
-                {selectedBill.bringOwnGlass && (
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 text-xs font-semibold flex items-center gap-2">
-                    <Coffee size={14} /> นำแก้วมาเอง (-฿{OWN_GLASS_DISCOUNT})
-                  </div>
-                )}
-
-                {/* Items */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-semibold text-[var(--text-muted)] tracking-wider">รายการสินค้า</h3>
-                  {Object.entries(groupItemsByCategory(selectedBill.items, menu)).map(([category, data]) => (
-                    <div key={category} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-[var(--text-secondary)] flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                          {category}
-                        </span>
-                    <span className="num text-right text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">{data.quantity} ชิ้น</span>
-                      </div>
-                      {data.items.map((item, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 bg-[var(--bg-tertiary)] rounded-xl">
-                          <div className="flex items-center gap-3 min-w-0">
-                    <div className="num text-right w-8 h-8 bg-[var(--bg-secondary)] rounded-lg flex items-center justify-center font-semibold text-xs text-emerald-500 shrink-0">x{Number(item.quantity)}</div>
-                            <div className="min-w-0">
-                              <p className="font-semibold text-[var(--text-primary)] text-sm truncate">{String(item.name)}</p>
-                              {item.note && <p className="text-xs text-orange-500 font-bold truncate">✨ {item.note}</p>}
-                            </div>
-                          </div>
-                          <p className="num text-right font-semibold text-[var(--text-primary)] text-sm shrink-0 ml-2">฿{(Number(item.price) * Number(item.quantity)).toLocaleString()}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Summary */}
-                <div className="bg-[var(--surface-inverse)] rounded-2xl p-4 text-white space-y-3">
-                  <div className="flex justify-between text-xs opacity-50 font-bold">
-                    <span>ยอดรวม</span>
-                      <span className="num text-right">฿{Number(selectedBill.subtotal || 0).toLocaleString()}</span>
-                  </div>
-                  {Number(selectedBill.discount || 0) > 0 && (
-                    <div className="flex justify-between text-xs text-orange-400 font-semibold">
-                      <span>ส่วนลด</span>
-                        <span className="num text-right">-฿{Number(selectedBill.discount).toLocaleString()}</span>
-                    </div>
-                  )}
-                  {selectedBill.vatIncluded && (
-                    <div className="flex justify-between text-xs text-emerald-400 font-bold border-t border-white/10 pt-3">
-                      <span>VAT {VAT_PERCENTAGE}%</span>
-                        <span className="num text-right">฿{Number(selectedBill.vat || 0).toLocaleString()}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-end border-t border-white/10 pt-4">
-                    <div>
-                      <span className="text-xs font-semibold tracking-wider opacity-40 block mb-1">ยอดสุทธิ</span>
-                    <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${selectedBill.isPaid ? 'bg-[var(--state-ok)]/20 text-[var(--state-ok)]' : 'bg-[var(--state-warn)]/20 text-[var(--state-warn)] border border-[var(--state-warn)]/20'}`}>{selectedBill.isPaid ? 'จ่ายแล้ว' : 'ค้างชำระ'}</span>
-                    </div>
-                      <span className="num text-right text-3xl font-semibold">฿{Number(selectedBill.total || 0).toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Mobile Actions */}
-              <div className="p-4 bg-[var(--bg-tertiary)] border-t border-[var(--border-color)] space-y-3 shrink-0">
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={async () => {
-                      const newPaidStatus = !selectedBill.isPaid;
-                      await runDbAction(async () => {
-                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', selectedBill.id), { isPaid: newPaidStatus });
-                        setSelectedBill({ ...selectedBill, isPaid: newPaidStatus });
-                      }, 'อัปเดตไม่สำเร็จ');
-                    }}
-                    className={`py-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 active:scale-95 transition-all ${selectedBill.isPaid ? 'bg-orange-100 text-orange-600' : 'bg-emerald-500 text-white'}`}
-                  >
-                    {selectedBill.isPaid ? <><Wallet size={16} /> ยกเลิกชำระ</> : <><CreditCard size={16} /> ชำระแล้ว</>}
-                  </button>
-                  <button onClick={handlePrintBill} className="py-3 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 active:scale-95 transition-all flex items-center justify-center gap-2"><Printer size={16} /> พิมพ์บิล</button>
-                  <button onClick={handleOpenReceiptPdf} disabled={generating} className="disabled:opacity-50 disabled:cursor-not-allowed py-3 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 active:scale-95 transition-all flex items-center justify-center gap-2"><FileText size={16} /> {generating ? 'กำลังสร้าง...' : 'PDF'}</button>
-                  <button onClick={() => { setEditingOrderId(selectedBill.id); handleViewChange('pos'); }} className="py-3 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 active:scale-95 transition-all">
-                    แก้ไขข้อมูล
-                  </button>
-                </div>
-                <button onClick={() => setOrderToCancel(selectedBill.id)} className="w-full py-3 rounded-xl text-xs font-semibold bg-red-100 text-[var(--state-danger)] active:scale-95 transition-all">
-                  ลบบิลนี้
-                </button>
-              </div>
-            </div>
-          </div>
+      <Toolbar
+        search={{ value: search, onChange: onSearch, placeholder: 'ค้นหาคิว ชื่อ หรือเมนู' }}
+        actions={(
+          <Button
+            variant={mergeMode ? 'ghost' : 'secondary'}
+            leftIcon={mergeMode ? <X size={18} /> : <Users size={18} />}
+            onClick={() => (mergeMode ? stopMergeMode() : startMergeMode())}
+            disabled={!mergeMode && counts.unpaid < 2}
+            title={!mergeMode && counts.unpaid < 2 ? 'ต้องมีบิลค้างชำระอย่างน้อย 2 บิล' : undefined}
+          >
+            {mergeMode ? 'ยกเลิกรวมบิล' : 'รวมบิล'}
+          </Button>
         )}
-      </div>
+        filters={(
+          <FilterChips
+            ariaLabel="สถานะบิล"
+            value={filter}
+            onChange={(v) => setRoute({ filter: v, id: undefined })}
+            chips={[
+              { value: 'all', label: 'ทั้งหมด', count: counts.all },
+              { value: 'unpaid', label: 'ค้างชำระ', count: counts.unpaid, tone: 'warn' },
+              { value: 'paid', label: 'จ่ายแล้ว', count: counts.paid, tone: 'ok' },
+              { value: 'qr', label: 'QR', count: counts.qr, tone: 'info' },
+            ]}
+          />
+        )}
+      >
+        {filtering && !isSyncing && dayBills.length > 0 && (
+          <p role="status" className="text-xs text-[var(--text-muted)]">แสดง {rows.length} จาก {dayBills.length} บิล</p>
+        )}
+      </Toolbar>
+
+      {wide ? (
+        <div className="flex-1 min-h-0 flex gap-4 px-[var(--page-pad)] pb-4">
+          <section aria-label="รายการบิล" className="w-[380px] xl:w-[420px] shrink-0 flex flex-col min-h-0 rounded-[var(--radius)] bg-[var(--bg-surface)] shadow-[var(--elev-1)] overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-y-auto">{list}</div>
+            {mergeBar}
+          </section>
+          <section aria-label="รายละเอียดบิล" className="flex-1 min-w-0 flex flex-col min-h-0 rounded-[var(--radius)] bg-[var(--bg-surface)] shadow-[var(--elev-1)] overflow-hidden">
+            {selected ? (
+              <>
+                <div className="flex-1 min-h-0 overflow-y-auto p-5 xl:p-6">
+                  <div className="max-w-2xl mx-auto">{detailFor(selected, true)}</div>
+                </div>
+                <div className="shrink-0 border-t border-[var(--border-color)] px-5 py-3">
+                  <div className="max-w-2xl mx-auto">{actionsFor(selected)}</div>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center p-6">
+                <EmptyState icon={Receipt} size="sm" title="ยังไม่มีบิลให้แสดง" description="เลือกวันอื่น หรือเปลี่ยนตัวกรอง" />
+              </div>
+            )}
+          </section>
+        </div>
+      ) : (
+        <>
+          <div className="flex-1 min-h-0 overflow-y-auto px-[var(--page-pad)] pb-6">
+            <div className="rounded-[var(--radius)] bg-[var(--bg-surface)] shadow-[var(--elev-1)] overflow-hidden">{list}</div>
+          </div>
+          {mergeBar}
+          <Sheet
+            open={!!selected && !mergeMode}
+            onClose={() => setRoute({ id: undefined })}
+            title={selected ? (
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="truncate">คิว <span className="num">{Number(selected.queueNumber) || '–'}</span> · <span className="num">#{billCode(selected)}</span></span>
+              </span>
+            ) : ''}
+            description={selected ? (
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <span className="num">{selected.time ? `${selected.time} น.` : ''}</span>
+                <PaidBadge paid={selected.isPaid} size="xs" />
+                {selected.source === 'qr' && <span>QR</span>}
+              </span>
+            ) : null}
+            footer={selected ? actionsFor(selected) : null}
+            width={520}
+          >
+            {selected && detailFor(selected, false)}
+          </Sheet>
+        </>
+      )}
+
       <ConfirmModal
         isOpen={showMergeConfirm}
         onClose={() => !isMergingBills && setShowMergeConfirm(false)}
         onConfirm={confirmMergedPayment}
         title="ยืนยันรวมบิล"
-        message={`ชำระ ${mergedSummary.count} บิลพร้อมกัน ยอดรวม ฿${mergedSummary.total.toLocaleString()} · ออเดอร์เดิมยังแยกอยู่สำหรับตรวจสอบย้อนหลัง`}
+        message={`ชำระ ${mergedSummary.count} บิลพร้อมกัน ยอดรวม ${formatBaht(mergedSummary.total)} · ออเดอร์เดิมยังแยกอยู่สำหรับตรวจสอบย้อนหลัง`}
         confirmText="ยืนยันชำระ"
         cancelText="กลับไปเลือก"
         variant="primary"

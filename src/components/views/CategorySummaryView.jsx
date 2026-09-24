@@ -1,260 +1,150 @@
-import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronUp, ChevronDown, Coffee, BarChart3 } from 'lucide-react';
-import { useAppContext } from '../../context/AppContext';
-import { EmptyState } from '../ui';
-import { getISODate, getOrderDate, isDateInRange } from '../../utils/calculations';
+import { useMemo, useState } from 'react';
+import { BarChart3, Download, PieChart } from 'lucide-react';
+import { useDataContext } from '../../context/AppContext';
+import { getISODate } from '../../utils/calculations';
+import { formatNumber, formatThaiDate } from '../../utils/format';
+import { Button, DataTable, Money, PageHeader, SegmentedControl, StatCard, Toolbar, useMediaQuery } from '../ui';
+import {
+  buildCategorySales, CATEGORY_PRESETS, categorySalesCsv, presetRange, rangeLabel,
+} from './records/categorySales';
+import { downloadText } from './records/csv';
+import { ShareBar } from './records/RecordsSection';
+import CategoryItemsSheet from './records/CategoryItemsSheet';
 
+const n = (v) => formatNumber(v, { maxDecimals: 0 });
+const pct = (part, total) => (total ? (part / total) * 100 : 0);
+
+function rangeText(preset, start, end) {
+  if (preset === 'all' || (!start && !end)) return 'ทุกช่วงเวลา';
+  if (start && end && start === end) return formatThaiDate(start, { weekday: true });
+  return `${start ? formatThaiDate(start) : 'เริ่มต้น'} – ${end ? formatThaiDate(end) : 'ล่าสุด'}`;
+}
+
+const dateInput = 'min-h-11 w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 text-sm text-[var(--text-primary)] outline-none focus-visible:shadow-[var(--focus-ring)] focus:border-[var(--accent)]';
+
+/**
+ * CategorySummaryView · ยอดขายตามหมวด (UX v2 · WP2)
+ * Same numbers as before (records/categorySales.js is the moved memo): completed
+ * bills only, line price × quantity, grouped by the line's category.
+ */
 export default function CategorySummaryView() {
-  const { orders, menu, handleViewChange } = useAppContext();
+  const { orders, menu } = useDataContext();
+  const phone = useMediaQuery('(max-width: 767px)');
 
-  // Local states
-  const [categoryRangeMode, setCategoryRangeMode] = useState('custom');
-  const [categoryRangeStart, setCategoryRangeStart] = useState(getISODate());
-  const [categoryRangeEnd, setCategoryRangeEnd] = useState(getISODate());
-  const [expandedCategory, setExpandedCategory] = useState(null);
+  const [preset, setPreset] = useState('today');
+  const [range, setRange] = useState(() => presetRange('today'));
+  const [open, setOpen] = useState(null);
 
-  // Memoized category sales calculation
-  const categorySales = useMemo(() => {
-    const map = new Map();
-    orders
-      .filter(o => o.status === 'completed' && isDateInRange(getOrderDate(o), categoryRangeStart, categoryRangeEnd))
-      .forEach(order => {
-        (order.items || []).forEach(item => {
-          const fallbackCategory = menu.find(m => m.id === item.id)?.category;
-          const category = String(item.category || fallbackCategory || 'ไม่ระบุหมวดหมู่');
-          const quantity = Number(item.quantity) || 0;
-          const revenue = (Number(item.price) || 0) * quantity;
-          const current = map.get(category) || { category, revenue: 0, quantity: 0 };
-          current.revenue += revenue;
-          current.quantity += quantity;
-          map.set(category, current);
-        });
-      });
-    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
-  }, [orders, menu, categoryRangeStart, categoryRangeEnd]);
-
-  const bestCategory = categorySales[0];
-
-  // Items breakdown per category for drill-down
-  const categoryItemsBreakdown = useMemo(() => {
-    const breakdown = {};
-    const beansBreakdown = {}; // Track bean modifiers per category
-    orders
-      .filter(o => o.status === 'completed' && isDateInRange(getOrderDate(o), categoryRangeStart, categoryRangeEnd))
-      .forEach(order => {
-        (order.items || []).forEach(item => {
-          const fallbackCategory = menu.find(m => m.id === item.id)?.category;
-          const category = String(item.category || fallbackCategory || 'ไม่ระบุหมวดหมู่');
-          const quantity = Number(item.quantity) || 0;
-          const revenue = (Number(item.price) || 0) * quantity;
-
-          if (!breakdown[category]) breakdown[category] = {};
-          const itemName = String(item.name);
-          if (!breakdown[category][itemName]) {
-            breakdown[category][itemName] = { name: itemName, quantity: 0, revenue: 0, price: Number(item.price) || 0 };
-          }
-          breakdown[category][itemName].quantity += quantity;
-          breakdown[category][itemName].revenue += revenue;
-
-          // Track bean modifier usage
-          if (item.beanModifier && String(item.beanModifier).startsWith('#')) {
-            const tag = String(item.beanModifier);
-            if (!beansBreakdown[category]) beansBreakdown[category] = {};
-            if (!beansBreakdown[category][tag]) {
-              beansBreakdown[category][tag] = { tag, quantity: 0, revenue: 0 };
-            }
-            beansBreakdown[category][tag].quantity += quantity;
-            beansBreakdown[category][tag].revenue += revenue;
-          }
-        });
-      });
-
-    // Convert to sorted arrays
-    const result = {};
-    Object.keys(breakdown).forEach(cat => {
-      result[cat] = {
-        items: Object.values(breakdown[cat]).sort((a, b) => b.quantity - a.quantity),
-        beans: beansBreakdown[cat] ? Object.values(beansBreakdown[cat]).sort((a, b) => b.quantity - a.quantity) : []
-      };
-    });
-    return result;
-  }, [orders, menu, categoryRangeStart, categoryRangeEnd]);
-
-  // Helper functions
-  const setCategoryRangePreset = (mode) => {
-    setCategoryRangeMode(mode);
-    if (mode === 'all') {
-      setCategoryRangeStart('');
-      setCategoryRangeEnd('');
-      return;
-    }
-    if (mode === 'week') {
-      const end = getISODate();
-      const start = getISODate(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000));
-      setCategoryRangeStart(start);
-      setCategoryRangeEnd(end);
-      return;
-    }
-    const today = getISODate();
-    setCategoryRangeStart(prev => prev || today);
-    setCategoryRangeEnd(prev => prev || today);
+  const choosePreset = (next) => {
+    setPreset(next);
+    setRange((cur) => presetRange(next, new Date(), cur));
   };
 
-  const getCategoryRangeLabel = () => {
-    if (categoryRangeMode === 'all') return 'all';
-    const start = categoryRangeStart || 'start';
-    const end = categoryRangeEnd || 'end';
-    return `${start}_to_${end}`;
-  };
-
-  const exportCategorySalesCsv = () => {
-    const headers = ['category', 'quantity', 'revenue'];
-    const rows = categorySales.map((cat) => ([
-      `"${String(cat.category).replace(/"/g, '""')}"`,
-      Number(cat.quantity) || 0,
-      Number(cat.revenue) || 0,
-    ].join(',')));
-    const rangeInfo = `# range: ${getCategoryRangeLabel()}`;
-    // UTF-8 BOM so Excel opens Thai text correctly
-    const csv = '﻿' + [rangeInfo, headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `category-sales-${getCategoryRangeLabel()}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const renderCategorySummary = (extraClassName = '') => (
-    <div className={`bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-[var(--radius)] p-6 space-y-5 ${extraClassName}`}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-xs font-semibold text-[var(--text-secondary)] tracking-[0.3em]">สรุปยอดขายตามหมวดหมู่</h3>
-          <p className="text-base font-semibold text-[var(--text-primary)] mt-2">ดูหมวดที่ขายดีที่สุด</p>
-        </div>
-        {bestCategory ? (
-          <div className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-2xl text-xs font-semibold tracking-widest">
-            ขายดีที่สุด: {String(bestCategory.category)}
-          </div>
-        ) : (
-          <div className="bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-4 py-2 rounded-2xl text-xs font-semibold tracking-widest">
-            ไม่มีข้อมูล
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => setCategoryRangePreset('all')} className={`px-4 py-2 rounded-2xl text-xs font-semibold border transition-all ${categoryRangeMode === 'all' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:bg-emerald-50'}`}>ทั้งหมด</button>
-        <button onClick={() => setCategoryRangePreset('week')} className={`px-4 py-2 rounded-2xl text-xs font-semibold border transition-all ${categoryRangeMode === 'week' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:bg-emerald-50'}`}>7 วันล่าสุด</button>
-        <button onClick={() => setCategoryRangePreset('custom')} className={`px-4 py-2 rounded-2xl text-xs font-semibold border transition-all ${categoryRangeMode === 'custom' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-color)] hover:bg-emerald-50'}`}>เลือกช่วงวันที่</button>
-      </div>
-
-      {categoryRangeMode === 'custom' && (
-        <div className="grid grid-cols-2 gap-3">
-          <input type="date" value={categoryRangeStart} onChange={(e) => setCategoryRangeStart(e.target.value)} className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl px-4 py-2 text-sm font-semibold text-[var(--text-primary)] outline-none" />
-          <input type="date" value={categoryRangeEnd} onChange={(e) => setCategoryRangeEnd(e.target.value)} className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl px-4 py-2 text-sm font-semibold text-[var(--text-primary)] outline-none" />
-        </div>
-      )}
-    </div>
+  const { categories, breakdown, totalRevenue, totalQuantity } = useMemo(
+    () => buildCategorySales(orders, menu, range.start, range.end),
+    [orders, menu, range.start, range.end],
   );
+  const best = categories[0];
+
+  const exportCsv = () => {
+    const label = rangeLabel(preset, range.start, range.end);
+    downloadText(categorySalesCsv(categories, label), `category-sales-${label}.csv`, 'text/csv;charset=utf-8;');
+  };
+
+  const columns = [
+    {
+      key: 'category', header: 'หมวด',
+      render: (v, r) => (
+        <span className="min-w-0">
+          <span className="block font-semibold text-[var(--text-primary)] truncate">{String(v)}</span>
+          <span className="block text-xs text-[var(--text-muted)]">{breakdown[r.category]?.items.length || 0} รายการ</span>
+        </span>
+      ),
+    },
+    { key: 'quantity', header: 'ชิ้น', numeric: true, width: 88, render: (v) => n(v) },
+    { key: 'revenue', header: 'ยอดขาย', numeric: true, width: 132, render: (v) => <Money value={v} className="font-semibold" /> },
+    { key: 'share', header: 'สัดส่วน', width: 200, render: (_, r) => <ShareBar percent={pct(r.revenue, totalRevenue)} /> },
+  ];
 
   return (
-    <div className="h-full bg-[#f8faf9] flex flex-col animate-in fade-in duration-500 overflow-hidden text-[var(--text-primary)]">
-      <header className="h-24 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-12 flex items-center justify-between shadow-sm z-[var(--z-nav)]">
-        <div className="flex items-center gap-4 text-emerald-600 cursor-pointer font-semibold" onClick={() => handleViewChange('bills')}>
-          <ChevronLeft size={32} />
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">สรุปยอดขายตามหมวดหมู่</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={exportCategorySalesCsv} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-xs font-semibold tracking-widest shadow-[var(--elev-2)] hover:bg-emerald-700 transition-all">
+    <div className="h-full bg-[var(--bg-canvas)] flex flex-col overflow-hidden text-[var(--text-primary)]">
+      <PageHeader
+        title="ยอดขายตามหมวด"
+        subtitle={rangeText(preset, range.start, range.end)}
+        icon={PieChart}
+        sticky={false}
+        actions={(
+          <Button variant="secondary" leftIcon={<Download size={18} />} onClick={exportCsv} disabled={categories.length === 0}>
             Export CSV
-          </button>
-        </div>
-      </header>
-      <div className="flex-1 p-6 overflow-y-auto">
-        <div className="max-w-4xl mx-auto space-y-8">
-          {renderCategorySummary('bg-[var(--bg-secondary)]')}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-sm border border-[var(--border-color)] p-6">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)] tracking-[0.2em] mb-8">รายละเอียดรายหมวด <span className="text-[var(--text-muted)] font-bold text-sm normal-case">(คลิกเพื่อดูรายการ)</span></h2>
-            <div className="space-y-4">
-              {categorySales.length > 0 ? (
-                categorySales.map((cat) => (
-                  <div key={cat.category} className="space-y-2">
-                    <button
-                      onClick={() => setExpandedCategory(expandedCategory === cat.category ? null : cat.category)}
-                      className={`w-full flex items-center justify-between bg-[var(--bg-tertiary)] rounded-[var(--radius)] px-6 py-5 border border-[var(--border-color)] hover:bg-emerald-50 hover:border-emerald-200 transition-all cursor-pointer ${expandedCategory === cat.category ? 'bg-emerald-50 border-emerald-200' : ''}`}
-                    >
-                      <div className="flex items-center gap-4 min-w-0">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${expandedCategory === cat.category ? 'bg-emerald-500 text-white' : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] border border-[var(--border-color)]'}`}>
-                          {expandedCategory === cat.category ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                        </div>
-                        <div className="text-left min-w-0">
-                          <p className="text-base font-semibold text-[var(--text-primary)] truncate">{String(cat.category)}</p>
-                          <p className="num text-right text-xs font-bold text-[var(--text-muted)] tracking-widest mt-1">{Number(cat.quantity).toLocaleString()} ชิ้น • {categoryItemsBreakdown[cat.category]?.items?.length || 0} รายการ</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="num text-right text-xl font-semibold text-emerald-600">฿{Number(cat.revenue).toLocaleString()}</p>
-                      </div>
-                    </button>
+          </Button>
+        )}
+      />
 
-                    {/* Expanded Items List */}
-                    {expandedCategory === cat.category && categoryItemsBreakdown[cat.category] && (
-                      <div className="ml-14 space-y-4 animate-in slide-in-from-top-2 duration-200">
-                        {/* Bean Modifiers Summary */}
-                        {categoryItemsBreakdown[cat.category].beans.length > 0 && (
-                          <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100 space-y-3">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-amber-600 tracking-wider">
-                              <Coffee size={14} /> สรุปยอดเมล็ดกาแฟที่ใช้
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                              {categoryItemsBreakdown[cat.category].beans.map((bean, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-xl border border-amber-100 shadow-sm">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="text-amber-700 font-semibold text-sm truncate">{bean.tag}</span>
-                                  </div>
-                                  <div className="text-right shrink-0">
-                                    <p className="num text-right text-xs font-semibold text-amber-600">x{bean.quantity}</p>
-                                    <p className="num text-right text-xs font-bold text-[var(--text-muted)]">฿{bean.revenue.toLocaleString()}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Regular Items */}
-                        <div className="space-y-2">
-                          {categoryItemsBreakdown[cat.category].items.map((item, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-4 bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border-color)] shadow-sm">
-                              <div className="flex items-center gap-4 min-w-0">
-                                <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 font-semibold text-sm shrink-0">
-                                  <span className="num text-right">x{item.quantity}</span>
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="font-semibold text-[var(--text-primary)] text-sm truncate">{item.name}</p>
-                                  <p className="num text-right text-xs font-bold text-[var(--text-muted)]">฿{item.price.toLocaleString()} / ชิ้น</p>
-                                </div>
-                              </div>
-                              <p className="num text-right font-semibold text-emerald-600 text-base">฿{item.revenue.toLocaleString()}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                  </div>
-                ))
-              ) : (
-                <EmptyState icon={BarChart3} title="ไม่มีข้อมูลในช่วงวันที่นี้" description="ลองเลือกช่วงวันที่อื่น" size="sm" />
-              )}
-            </div>
+      <Toolbar
+        filters={(
+          <div className="max-w-full overflow-x-auto scrollbar-hide">
+            <SegmentedControl ariaLabel="ช่วงเวลา" options={CATEGORY_PRESETS} value={preset} onChange={choosePreset} fullWidth={phone} className={phone ? '[&>button]:px-1.5' : ''} />
           </div>
+        )}
+      >
+        {preset === 'custom' && (
+          <div className="grid grid-cols-2 gap-2 max-w-md">
+            <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+              ตั้งแต่
+              <input type="date" value={range.start} max={range.end || getISODate()} onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))} className={dateInput} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+              ถึง
+              <input type="date" value={range.end} min={range.start || undefined} onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))} className={dateInput} />
+            </label>
+          </div>
+        )}
+      </Toolbar>
+
+      <div className="flex-1 min-h-0 overflow-y-auto px-[var(--page-pad)] pb-24 md:pb-10">
+        <div className="max-w-5xl mx-auto flex flex-col gap-4">
+          <section aria-label="สรุปช่วงที่เลือก" className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <StatCard label="ยอดขายรวม" value={<Money value={totalRevenue} />} hint="ราคาเมนู × จำนวน ก่อนหักส่วนลดท้ายบิล" />
+            <StatCard label="ชิ้นที่ขาย" value={n(totalQuantity)} unit="ชิ้น" hint={`${categories.length} หมวด`} />
+            <StatCard
+              label="หมวดขายดีที่สุด"
+              value={best ? String(best.category) : '–'}
+              hint={best ? `${formatNumber(pct(best.revenue, totalRevenue), { maxDecimals: 0 })}% ของยอดขาย` : 'ยังไม่มีข้อมูล'}
+              className="col-span-2 md:col-span-1"
+            />
+          </section>
+
+          <DataTable
+            caption="ยอดขายแยกตามหมวด"
+            columns={columns}
+            rows={categories}
+            rowKey="category"
+            onRowClick={(r) => setOpen(r.category)}
+            selectedKey={open}
+            renderCard={(r) => (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="block font-semibold truncate">{String(r.category)}</span>
+                    <span className="block text-sm text-[var(--text-muted)]"><span className="num">{n(r.quantity)}</span> ชิ้น · {breakdown[r.category]?.items.length || 0} รายการ</span>
+                  </span>
+                  <Money value={r.revenue} className="shrink-0 font-semibold" />
+                </div>
+                <ShareBar percent={pct(r.revenue, totalRevenue)} />
+              </div>
+            )}
+            emptyState={{ icon: BarChart3, title: 'ไม่มีข้อมูลในช่วงวันที่นี้', description: 'ลองเลือกช่วงวันที่อื่น' }}
+          />
+          {categories.length > 0 && <p className="text-xs text-[var(--text-muted)]">แตะหมวดเพื่อดูรายการที่ขายและเมล็ดกาแฟที่เลือก</p>}
         </div>
       </div>
+
+      <CategoryItemsSheet
+        category={open ? categories.find((c) => c.category === open) || null : null}
+        breakdown={breakdown}
+        share={open ? `${formatNumber(pct(categories.find((c) => c.category === open)?.revenue || 0, totalRevenue), { maxDecimals: 0 })}% ของยอดขาย` : ''}
+        onClose={() => setOpen(null)}
+      />
     </div>
   );
 }
