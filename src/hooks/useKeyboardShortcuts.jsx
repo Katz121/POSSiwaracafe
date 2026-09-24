@@ -6,20 +6,24 @@
 import { useEffect, useCallback } from 'react';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
+import { NAV_BY_KEY } from '../navigation/navConfig';
+
+// Labels come from the sidebar config so the help sheet matches the menu wording.
+const navLabel = (key) => NAV_BY_KEY[key]?.label || key;
 
 // Default shortcuts configuration
 export const DEFAULT_SHORTCUTS = {
   // Navigation (F1-F10)
-  F1: { action: 'navigate', target: 'pos', label: 'POS' },
-  F2: { action: 'navigate', target: 'merchant', label: 'ครัว' },
-  F3: { action: 'navigate', target: 'bills', label: 'บิล' },
-  F4: { action: 'navigate', target: 'stock', label: 'สต็อก' },
-  F5: { action: 'navigate', target: 'expenses', label: 'รายจ่าย' },
-  F6: { action: 'navigate', target: 'menu_manage', label: 'เมนู' },
-  F7: { action: 'navigate', target: 'members_manage', label: 'สมาชิก' },
-  F8: { action: 'navigate', target: 'dashboard', label: 'สรุป' },
-  F9: { action: 'navigate', target: 'financial', label: 'Plan' },
-  F10: { action: 'navigate', target: 'admin', label: 'แอดมิน' },
+  F1: { action: 'navigate', target: 'pos', label: navLabel('pos') },
+  F2: { action: 'navigate', target: 'merchant', label: navLabel('merchant') },
+  F3: { action: 'navigate', target: 'bills', label: navLabel('bills') },
+  F4: { action: 'navigate', target: 'stock', label: navLabel('stock') },
+  F5: { action: 'navigate', target: 'expenses', label: navLabel('expenses') },
+  F6: { action: 'navigate', target: 'menu_manage', label: navLabel('menu_manage') },
+  F7: { action: 'navigate', target: 'members_manage', label: navLabel('members_manage') },
+  F8: { action: 'navigate', target: 'dashboard', label: navLabel('dashboard') },
+  F9: { action: 'navigate', target: 'financial', label: navLabel('financial') },
+  F10: { action: 'navigate', target: 'admin', label: navLabel('admin') },
 
   // POS Actions
   Escape: { action: 'pos_action', target: 'clear', label: 'ยกเลิก', context: 'pos' },
