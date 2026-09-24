@@ -230,7 +230,7 @@ export default function ExpensesView() {
     }
     setIsSaving(true);
     try {
-      const result = await saveExpense({ form: editing.form, editingExpense: editing.expense, date: expenseFilterDate, stock, runDbAction });
+      const result = await saveExpense({ form: editing.form, editingExpense: editing.expense, date: editing.expense?.date || expenseFilterDate, stock, runDbAction });
       if (result.ok) {
         reportSave(result, toast);
         setEditing(null);
@@ -428,7 +428,7 @@ export default function ExpensesView() {
         open={!!editing}
         onClose={() => setEditing(null)}
         title="แก้ไขรายจ่าย"
-        description={editing ? `วันที่จะบันทึก ${formatThaiDate(expenseFilterDate)}` : undefined}
+        description={editing ? `วันที่ของรายการ ${formatThaiDate(editing.expense?.date || expenseFilterDate)}` : undefined}
         footer={(
           <>
             <Button variant="secondary" size="lg" onClick={() => setEditing(null)}>ยกเลิก</Button>
