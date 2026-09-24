@@ -1,75 +1,53 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
-import {
-  Search, Star, Receipt, Minus, Plus, Tag, Zap, X, PlusCircle,
-  Coffee, Gift, Wallet, CreditCard, ChevronLeft, ChevronRight,
-  ShoppingBag, CheckCircle, RefreshCcw, ArrowRight,
-  Trash2, Sparkles, Phone, User, UserX, Flame
-} from 'lucide-react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { ShoppingBag, ChevronRight } from 'lucide-react';
 import { collection, doc, writeBatch, increment, arrayUnion, arrayRemove, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { db, appId, auth } from '../../services/firebase';
-import { useAppContext } from '../../context/AppContext';
+import { useDataContext, useConfigContext, useUIContext } from '../../context/AppContext';
 import { getEligibleRewards, toggleRewardSelection } from '../../utils/rewards';
 import { getISODate, getNameKey } from '../../utils/calculations';
-import { mergeStockLinks } from '../../utils/stockLinks';
-import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, COMBO_PROMO_TITLE, isCakeCategory, isCakeSaleActive, supportsSweetnessChoice } from '../../utils/promotions';
+import { COMBO_PROMO_TITLE } from '../../utils/promotions';
 import { sortByFeaturedOrder } from '../../utils/featuredOrder';
 import { queueDayKey } from '../../utils/queueDay';
 import { bumpMenuSoldCount } from '../../utils/menuSales';
 import { withInFlightGuard, planBillEditPoints } from '../../utils/pointsActions';
+import { formatBaht } from '../../utils/format';
 import useDebounce from '../../hooks/useDebounce';
 import { trackRecommendationsShown, trackRecommendationAccepted } from '../../services/upsellTracker';
-import { Button, Modal, EmptyState, useToast, Skeleton } from '../ui';
+import { Sheet, useToast, useMediaQuery } from '../ui';
 import {
   DEFAULT_REDEEM_POINTS_THRESHOLD,
   DEFAULT_REDEEM_DISCOUNT_VALUE,
   DEFAULT_OWN_GLASS_DISCOUNT,
-  DEFAULT_ITEMS_PER_PAGE,
-  VAT_RATE,
-  MENU_PAGE_OPTIONS,
-  roundUpTo5,
-  getModifierGroups,
-  isBaseModifier,
-  computeModifierPrice,
-  supportsMilkChoice,
-  MILK_OPTIONS,
   MEMBER_MIN_PHONE_LENGTH,
   ALLOW_NAME_ONLY_MEMBERS
 } from '../../config/constants';
+import CategoryRail from './pos/CategoryRail';
+import MenuHeader from './pos/MenuHeader';
+import MenuGrid from './pos/MenuGrid';
+import OptionSheet from './pos/OptionSheet';
+import CartPanel from './pos/CartPanel';
+import CheckoutBar from './pos/CheckoutBar';
+import usePosTotals from './pos/usePosTotals';
+import DiscountMemberPanel from './pos/DiscountMemberPanel';
+import {
+  needsOptionSheet, buildPlainLine, buildOptionLine, addPlainLine, addOptionLine, toOrderItems, repeatLines,
+} from './pos/posCart';
+
+const DENSITY_KEY = 'pos-menu-density';
+const orderMillis = (o) => (o?.createdAt?.toMillis ? o.createdAt.toMillis() : Number(o?.createdAt?.seconds || 0) * 1000);
 
 export default function PosView() {
   const {
-    user,
-    menu,
-    members,
-    orders,
-    beanModifiers,
-    dynamicCategories,
-    queueCounter,
-    queueInfo,
-    isSyncing,
-    vatEnabled,
-    redeemPointsThreshold,
-    redeemDiscountValue,
-    ownGlassDiscount,
-    cakeSaleEnabled,
-    cakeSaleCategories,
-    cakeSalePercent,
-    cakeSaleStart,
-    cakeSaleEnd,
-    comboEnabled,
-    comboPercent,
-    spendThreshold,
-    spendDiscount,
-    pointsRewardsEnabled,
-    pointsRewards,
-    activePromotion,
-    setActivePromotion,
-    runDbAction,
-    callGeminiAPI,
-    isNavExpanded,
-    editingOrderId,
-    setEditingOrderId
-  } = useAppContext();
+    user, menu, members, orders, beanModifiers, dynamicCategories, queueCounter, queueInfo, isSyncing,
+  } = useDataContext();
+  const {
+    vatEnabled, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount,
+    cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
+    comboEnabled, comboPercent, spendThreshold, spendDiscount, pointsRewardsEnabled, pointsRewards,
+  } = useConfigContext();
+  const {
+    activePromotion, setActivePromotion, runDbAction, callGeminiAPI, editingOrderId, setEditingOrderId,
+  } = useUIContext();
 
   const REDEEM_POINTS_THRESHOLD = Number(redeemPointsThreshold) || DEFAULT_REDEEM_POINTS_THRESHOLD;
   const REDEEM_DISCOUNT_VALUE = Number(redeemDiscountValue) || DEFAULT_REDEEM_DISCOUNT_VALUE;
@@ -85,6 +63,8 @@ export default function PosView() {
   );
 
   const toast = useToast();
+  // Render either the iPad/desktop cart column or the phone cart bar + sheet, never both.
+  const isMdUp = useMediaQuery('(min-width: 768px)');
 
   const [cart, setCart] = useState([]);
   const [activeCategory, setActiveCategory] = useState('แนะนำ');
@@ -94,59 +74,24 @@ export default function PosView() {
   const [redeemRewardId, setRedeemRewardId] = useState(null);
   const [bringOwnGlass, setBringOwnGlass] = useState(false);
   const [reviewDiscount, setReviewDiscount] = useState(false); // staff applies 5% for a verified review
-  const [pendingBeanItem, setPendingBeanItem] = useState(null);
-  // ตัวเลือกที่เลือกไว้ต่อกลุ่มในป๊อปอัป (เช่น { 'ส้ม': mod, 'เมล็ดกาแฟ': mod })
-  const [pendingBeanSelections, setPendingBeanSelections] = useState({});
-  const [pendingSweetness, setPendingSweetness] = useState(100);
-  const [pendingMilkType, setPendingMilkType] = useState('cow');
+  const [pendingItem, setPendingItem] = useState(null); // menu item whose option sheet is open
   const [recommendations, setRecommendations] = useState([]);
   const [isRecommending, setIsRecommending] = useState(false);
-  const [menuPage, setMenuPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE);
   const [memberPhone, setMemberPhone] = useState('');
   const [memberNickname, setMemberNickname] = useState('');
   const [currentMember, setCurrentMember] = useState(null);
   const [isMemberNameFocused, setIsMemberNameFocused] = useState(false);
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [isRefreshingMembers, setIsRefreshingMembers] = useState(false);
+  const [density, setDensityState] = useState(() => {
+    try { return localStorage.getItem(DENSITY_KEY) === 'list' ? 'list' : 'grid'; } catch { return 'grid'; }
+  });
+  const setDensity = useCallback((next) => {
+    setDensityState(next);
+    try { localStorage.setItem(DENSITY_KEY, next); } catch { /* private mode */ }
+  }, []);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 200);
-
-  const subtotal = useMemo(() => cart.reduce((s, i) => s + (Number(i.price) * Number(i.quantity)), 0), [cart]);
-
-  const combo = useMemo(() => getComboDiscount(cart, comboSettings), [cart, comboSettings]);
-
-  // Spend-threshold promo ("โปร 199"): order ≥ X → get Y% off. Applies to the non-cake
-  // (drinks) portion only, so a Happy-Hour cake isn't discounted twice by it. Mirrors
-  // the customer QR page so staff and customer orders price identically.
-  const SPEND_THRESHOLD = Number(spendThreshold) || 0;
-  const SPEND_DISCOUNT_PERCENT = Number(spendDiscount) || 0;
-  const spendActive = SPEND_THRESHOLD > 0 && SPEND_DISCOUNT_PERCENT > 0;
-  const nonCakeSubtotal = useMemo(
-    () => cart.reduce(
-      (s, i) => (isCakeCategory(i.category, saleSettings) ? s : s + Number(i.price) * Number(i.quantity)),
-      0,
-    ),
-    [cart, saleSettings],
-  );
-  // Discount the WHOLE order (cake + drink) as one block — but while Happy Hour is
-  // running, cakes already carry a per-item discount in their cart price, so fall back
-  // to the non-cake portion to avoid discounting a cake twice.
-  const spendBase = isCakeSaleActive(saleSettings) ? nonCakeSubtotal : subtotal;
-  const rawSpendDiscount = (spendActive && subtotal >= SPEND_THRESHOLD)
-    ? Math.round(spendBase * SPEND_DISCOUNT_PERCENT / 100)
-    : 0;
-  // Combo and spend-threshold do NOT stack — keep only the bigger of the two so the
-  // order-level discount can't balloon (same rule as the customer page).
-  const rawComboDiscount = combo.applies ? combo.amount : 0;
-  const comboWins = rawComboDiscount >= rawSpendDiscount;
-  const effectiveComboDiscount = comboWins ? rawComboDiscount : 0;
-  const effectiveSpendDiscount = comboWins ? 0 : rawSpendDiscount;
-
-  const reviewDiscountAmount = useMemo(
-    () => (reviewDiscount ? Math.round(subtotal * 0.05) : 0),
-    [reviewDiscount, subtotal],
-  );
 
   // --- Loyalty points redemption: ONE source of truth -------------------------
   // The bill discount and the points deduction MUST share the same condition.
@@ -171,26 +116,18 @@ export default function PosView() {
     && !!redeemMemberId
     && (Number(currentMember?.points || 0) >= REDEEM_POINTS_THRESHOLD || wasRedeemed);
 
-  const discountAmount = useMemo(() => {
-    let d = 0;
-    if (pointsRedeemActive) d += REDEEM_DISCOUNT_VALUE;
-    if (bringOwnGlass) d += OWN_GLASS_DISCOUNT;
-    cart.forEach(item => {
-      if (item.promoApplied && activePromotion?.discountPercent > 0) {
-        d += (Number(item.price) * Number(item.quantity) * (activePromotion.discountPercent / 100));
-      }
-    });
-    d += effectiveComboDiscount;  // คอมโบ % (เลือกตัวที่มากกว่าระหว่างคอมโบ/โปรยอดซื้อ)
-    d += effectiveSpendDiscount;  // โปรยอดซื้อถึงเกณฑ์ % (เช่น สั่งครบ 199)
-    d += reviewDiscountAmount;    // รีวิว 5%
-    // Cap at the subtotal so combined discounts can never exceed 100% / go negative.
-    return Math.min(subtotal, d);
-  }, [pointsRedeemActive, bringOwnGlass, activePromotion, cart, REDEEM_DISCOUNT_VALUE, OWN_GLASS_DISCOUNT, effectiveComboDiscount, effectiveSpendDiscount, reviewDiscountAmount, subtotal]);
-
-  const vatAmount = useMemo(() => vatEnabled ? Math.round(Math.max(0, subtotal - discountAmount) * VAT_RATE) : 0, [subtotal, discountAmount, vatEnabled]);
-  const netTotal = useMemo(() => Math.max(0, (subtotal - discountAmount) + vatAmount), [subtotal, discountAmount, vatAmount]);
+  const {
+    subtotal, effectiveComboDiscount, effectiveSpendDiscount, reviewDiscountAmount,
+    discountAmount, vatAmount, netTotal, totalRows, totalHints,
+  } = usePosTotals({
+    cart, comboSettings, saleSettings, spendThreshold, spendDiscount, reviewDiscount, activePromotion,
+    pointsRedeemActive, redeemDiscountValue: REDEEM_DISCOUNT_VALUE, bringOwnGlass, ownGlassDiscount: OWN_GLASS_DISCOUNT, vatEnabled,
+  });
+  const SPEND_THRESHOLD = Number(spendThreshold) || 0;
+  const SPEND_DISCOUNT_PERCENT = Number(spendDiscount) || 0;
 
   const categories = useMemo(() => ['แนะนำ', ...[...new Set(dynamicCategories.map(c => c.name))]], [dynamicCategories]);
+  const menuById = useMemo(() => new Map(menu.map(m => [m.id, m])), [menu]);
 
   const filteredMenu = useMemo(() => {
     const search = debouncedSearchTerm.toLowerCase();
@@ -205,13 +142,12 @@ export default function PosView() {
     return activeCategory === 'แนะนำ' ? sortByFeaturedOrder(items) : items;
   }, [activeCategory, debouncedSearchTerm, menu]);
 
-  const totalPages = Math.ceil(filteredMenu.length / itemsPerPage);
-  const pagedMenu = useMemo(() => {
-    const start = (menuPage - 1) * itemsPerPage;
-    return filteredMenu.slice(start, start + itemsPerPage);
-  }, [filteredMenu, menuPage, itemsPerPage]);
-
   const cartCount = useMemo(() => cart.reduce((s, i) => s + Number(i.quantity || 0), 0), [cart]);
+  const qtyById = useMemo(() => {
+    const m = new Map();
+    for (const line of cart) m.set(line.id, (m.get(line.id) || 0) + Number(line.quantity || 0));
+    return m;
+  }, [cart]);
   const memberNameSuggestions = useMemo(() => {
     const query = getNameKey(memberNickname);
     if (!query || memberPhone) return [];
@@ -220,8 +156,6 @@ export default function PosView() {
       .slice(0, 6);
   }, [memberNickname, memberPhone, members]);
   const currentQueue = editingOrderId ? (orders.find(o => o.id === editingOrderId)?.queueNumber || queueCounter) : queueCounter;
-
-  useEffect(() => { setMenuPage(1); }, [activeCategory, debouncedSearchTerm, itemsPerPage]);
 
   useEffect(() => {
     if (memberPhone.length >= MEMBER_MIN_PHONE_LENGTH) {
@@ -247,8 +181,10 @@ export default function PosView() {
     if (memberPhone && memberPhone.length >= MEMBER_MIN_PHONE_LENGTH) return;
     const nameKey = getNameKey(memberNickname);
     if (!nameKey) {
-      if (!memberPhone) { setCurrentMember(null); setUsePoints(false);
-      setRedeemRewardId(null); }
+      if (!memberPhone) {
+        setCurrentMember(null); setUsePoints(false);
+        setRedeemRewardId(null);
+      }
       return;
     }
     // Do not resolve members while the nickname is still being typed. A partial
@@ -257,7 +193,7 @@ export default function PosView() {
     // a name without a phone remains freely editable guest text on this bill.
     setCurrentMember({ phone: '', points: 0, name: memberNickname, isNew: true, isGuest: !ALLOW_NAME_ONLY_MEMBERS });
     setUsePoints(false);
-      setRedeemRewardId(null);
+    setRedeemRewardId(null);
   }, [memberNickname, memberPhone]);
 
   const ordersRef = useRef(orders);
@@ -294,6 +230,48 @@ export default function PosView() {
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const handleCheckoutRef = useRef(null);
   const handleClearCartRef = useRef(null);
+  const addToCartRef = useRef(null);
+
+  // ---- cart mutations: stable callbacks so memoised tiles/rows skip re-rendering ----
+  const addToCart = useCallback((p) => {
+    if (needsOptionSheet(p, beanModifiers, saleSettings)) {
+      setPendingItem(p);
+      return;
+    }
+    setCart(prev => addPlainLine(prev, buildPlainLine(p, saleSettings)));
+  }, [beanModifiers, saleSettings]);
+  addToCartRef.current = addToCart;
+
+  const addFromSheet = useCallback((item, mods, sweetness, milkType) => {
+    setCart(prev => addOptionLine(prev, buildOptionLine(item, mods, sweetness, milkType, saleSettings)));
+    setPendingItem(null);
+  }, [saleSettings]);
+  const closeSheet = useCallback(() => setPendingItem(null), []);
+
+  const updateCartItemNote = useCallback((cartItemId, note) => setCart(prev => prev.map(item => (item.cartId || item.id) === cartItemId ? { ...item, note } : item)), []);
+  const updateQuantity = useCallback((cartItemId, d) => setCart(prev => prev.map(item => (item.cartId || item.id) === cartItemId ? { ...item, quantity: Math.max(0, item.quantity + d) } : item).filter(item => item.quantity > 0)), []);
+  const removeItem = useCallback((cartItemId) => setCart(prev => prev.filter(item => (item.cartId || item.id) !== cartItemId)), []);
+
+  const toggleItemPromo = useCallback((cartItemId) => {
+    if (!activePromotion) {
+      toast.warning('กรุณาเลือกโปรโมชั่นก่อนครับ');
+      return;
+    }
+    setCart(prev => prev.map(item => {
+      if ((item.cartId || item.id) === cartItemId) {
+        const isCurrentlyApplied = !!item.promoApplied;
+        const promoTag = `[${activePromotion.title}]`;
+        let nextNote = (item.note || '').trim();
+        if (!isCurrentlyApplied) {
+          if (!nextNote.includes(promoTag)) nextNote = nextNote ? `${nextNote} ${promoTag}` : promoTag;
+        } else {
+          nextNote = nextNote.replace(promoTag, '').trim();
+        }
+        return { ...item, promoApplied: !isCurrentlyApplied, note: nextNote };
+      }
+      return item;
+    }));
+  }, [activePromotion, toast]);
 
   useEffect(() => {
     const handlePosShortcut = (event) => {
@@ -313,7 +291,7 @@ export default function PosView() {
           break;
         case 'quick_add':
           if (typeof index === 'number' && featuredItemsRef.current[index]) {
-            addToCart(featuredItemsRef.current[index]);
+            addToCartRef.current(featuredItemsRef.current[index]);
           }
           break;
         default: break;
@@ -321,113 +299,58 @@ export default function PosView() {
     };
     window.addEventListener('pos-shortcut', handlePosShortcut);
     return () => window.removeEventListener('pos-shortcut', handlePosShortcut);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once listener; latest values accessed via refs
-  }, []);
+  }, [updateQuantity]);
 
-  const addToCart = (p) => {
-    const pGroups = getModifierGroups(p);
-    const hasOptions = beanModifiers.some(b => b.available !== false && pGroups.includes(b.group || 'เมล็ดกาแฟ'));
-    if (supportsSweetnessChoice(p, saleSettings) || (p.allowBeanModifier && hasOptions)) {
-      setPendingBeanSelections({});
-      setPendingSweetness(100);
-      setPendingMilkType('cow');
-      setPendingBeanItem(p);
-      return;
+  // "ซ้ำล่าสุด": the most recent order, rebuilt from today's menu (read-only on orders).
+  const lastOrder = useMemo(() => {
+    let best = null;
+    for (const o of orders) {
+      if (o.status === 'cancelled' || !(o.items || []).length) continue;
+      if (!best || orderMillis(o) > orderMillis(best)) best = o;
     }
-    const sale = getItemSalePrice(p, saleSettings);
-    // Coffee menus: round the charged price up to the nearest 5 baht.
-    const chargedPrice = p.allowBeanModifier ? roundUpTo5(sale.price) : sale.price;
-    setCart(prev => {
-      const existing = prev.find(item => item.id === p.id && !item.beanModifier);
-      if (existing) return prev.map(item => item.id === p.id && !item.beanModifier ? { ...item, quantity: item.quantity + 1 } : item);
-      const noteTag = sale.onSale ? cakeSaleNoteTag(sale.percent) : '';
-      return [...prev, {
-        ...p,
-        price: chargedPrice,
-        ...(sale.onSale ? { originalPrice: sale.originalPrice } : {}),
-        quantity: 1,
-        note: noteTag
-      }];
-    });
-  };
+    return best;
+  }, [orders]);
+  const repeatCandidate = useMemo(
+    () => (lastOrder ? repeatLines(lastOrder, { menuById, beanModifiers, saleSettings }) : []),
+    [lastOrder, menuById, beanModifiers, saleSettings],
+  );
+  const handleRepeatLast = useCallback(() => {
+    setCart(prev => repeatCandidate.reduce((acc, line) => (line.cartId
+      ? (acc.some(c => c.cartId === line.cartId) ? acc.map(c => (c.cartId === line.cartId ? { ...c, quantity: c.quantity + line.quantity } : c)) : [...acc, line])
+      : (acc.some(c => c.id === line.id && !c.beanModifier && !c.cartId) ? acc.map(c => (c.id === line.id && !c.beanModifier && !c.cartId ? { ...c, quantity: c.quantity + line.quantity } : c)) : [...acc, line])), prev));
+  }, [repeatCandidate]);
 
-  const addToCartWithBean = (item, modifiers, sweetness = null, milkType = null) => {
-    // Accepts one modifier or a list (one per group, e.g. ส้ม + เมล็ดกาแฟ).
-    // Price is additive: base = menu price, each non-base option adds its own
-    // surcharge — ส้มสด 80 (ฐาน 60 → +20) บวกเมล็ดพรีเมียมต่างหาก. กลุ่มเดียว
-    // ยังเท่ากับ max(ราคาเมนู, ราคาตัวเลือก+ส่วนเพิ่ม) แบบเดิม. ปัดขึ้นทีละ 5 บาท.
-    const mods = (Array.isArray(modifiers) ? modifiers : [modifiers]).filter(Boolean);
-    const finalPrice = computeModifierPrice(item, mods);
-    const modifierName = mods.map(m => `#${m.name}`).join(' ');
-    const modifierKey = mods.length ? `-${mods.map(m => m.id).join('-')}` : '';
-    const sweetnessKey = sweetness == null ? '' : `-sweet-${sweetness}`;
-    const milkKey = milkType ? `-milk-${milkType}` : '';
-    const cartItemId = `${item.id}${modifierKey}${sweetnessKey}${milkKey}`;
-    const milkLabel = MILK_OPTIONS.find(option => option.value === milkType)?.label || '';
-    // ใช้ตัวกลางร่วมกับหน้าลูกค้า · ของเดิมเขียนทับ usage บนอ็อบเจ็กต์ตัวเดียวกับ
-    // สูตรของเมนูใน state ทำให้หยิบลงตะกร้าซ้ำแล้วปริมาณสะสมทับสูตรกลางไปเรื่อยๆ
-    const mergedStockLinks = mergeStockLinks(item.stockLinks, ...mods.map(mod => mod.stockLinks));
-    setCart(prev => {
-      const existing = prev.find(c => c.cartId === cartItemId);
-      if (existing) return prev.map(c => c.cartId === cartItemId ? { ...c, quantity: c.quantity + 1 } : c);
-      return [...prev, {
-        ...item, cartId: cartItemId, price: finalPrice,
-        beanModifier: modifierName, sweetness, milkType, milkLabel, stockLinks: mergedStockLinks,
-        quantity: 1, note: [modifierName, milkLabel, sweetness == null ? '' : `หวาน ${sweetness}%`].filter(Boolean).join(' ')
-      }];
-    });
-    setPendingBeanItem(null);
-    setPendingBeanSelections({});
-    setPendingSweetness(100);
-    setPendingMilkType('cow');
-  };
-
-  const updateCartItemNote = (cartItemId, note) => setCart(prev => prev.map(item => (item.cartId || item.id) === cartItemId ? { ...item, note } : item));
-  const updateQuantity = (cartItemId, d) => setCart(prev => prev.map(item => (item.cartId || item.id) === cartItemId ? { ...item, quantity: Math.max(0, item.quantity + d) } : item).filter(item => item.quantity > 0));
-  const removeItem = (cartItemId) => setCart(prev => prev.filter(item => (item.cartId || item.id) !== cartItemId));
-
-  const toggleItemPromo = (cartItemId) => {
-    if (!activePromotion) {
-      toast.warning('กรุณาเลือกโปรโมชั่นก่อนครับ');
-      return;
-    }
-    setCart(prev => prev.map(item => {
-      if ((item.cartId || item.id) === cartItemId) {
-        const isCurrentlyApplied = !!item.promoApplied;
-        const promoTag = `[${activePromotion.title}]`;
-        let nextNote = (item.note || '').trim();
-        if (!isCurrentlyApplied) {
-          if (!nextNote.includes(promoTag)) nextNote = nextNote ? `${nextNote} ${promoTag}` : promoTag;
-        } else {
-          nextNote = nextNote.replace(promoTag, '').trim();
-        }
-        return { ...item, promoApplied: !isCurrentlyApplied, note: nextNote };
-      }
-      return item;
-    }));
-  };
-
-  const handleRefreshMembers = () => {
+  const handleRefreshMembers = useCallback(() => {
     setIsRefreshingMembers(true);
     setTimeout(() => setIsRefreshingMembers(false), 1000);
-  };
+  }, []);
 
-  const handleClearMember = () => {
+  const handleClearMember = useCallback(() => {
     setMemberPhone('');
     setMemberNickname('');
     setCurrentMember(null);
     setUsePoints(false);
-      setRedeemRewardId(null);
-  };
+    setRedeemRewardId(null);
+  }, []);
 
-  const handleSelectMember = (member) => {
+  const handleSelectMember = useCallback((member) => {
     setMemberPhone(String(member.phone || ''));
     setMemberNickname(String(member.name || ''));
     setCurrentMember(member);
     setUsePoints(false);
-      setRedeemRewardId(null);
+    setRedeemRewardId(null);
     setIsMemberNameFocused(false);
-  };
+  }, []);
+
+  const handleNicknameChange = useCallback((value) => {
+    setMemberNickname(value);
+    if (memberPhone) {
+      setMemberPhone('');
+      setCurrentMember(null);
+      setUsePoints(false);
+      setRedeemRewardId(null);
+    }
+  }, [memberPhone]);
 
   // Clear the whole in-progress sale — including edit mode. Leaving editingOrderId
   // set after "ล้าง" made the next customer's checkout OVERWRITE the previously
@@ -436,7 +359,7 @@ export default function PosView() {
   const handleClearCart = () => {
     setCart([]);
     setUsePoints(false);
-      setRedeemRewardId(null);
+    setRedeemRewardId(null);
     setBringOwnGlass(false);
     setReviewDiscount(false);
     setMemberPhone('');
@@ -446,8 +369,11 @@ export default function PosView() {
   };
   handleClearCartRef.current = handleClearCart;
 
-  const handleCheckout = () => withInFlightGuard(checkoutInFlight.current, ['checkout'], async () => {
+  // `paidArg` comes from the split CTA (รับเงินแล้ว = true / ค้างจ่าย = false). The
+  // keyboard shortcut and edit mode pass nothing → the current `isPaid` state.
+  const handleCheckout = (paidArg) => withInFlightGuard(checkoutInFlight.current, ['checkout'], async () => {
     if (cart.length === 0) return;
+    const paid = typeof paidArg === 'boolean' ? paidArg : isPaid;
     if (!user) {
       toast.error('ไม่พบข้อมูลผู้ใช้งาน - กรุณารีเฟรชหน้าจอหรือตรวจสอบอินเทอร์เน็ต');
       return;
@@ -455,9 +381,9 @@ export default function PosView() {
     await runDbAction(async () => {
       const orderData = {
         queueNumber: editingOrderId ? (orders.find(o => o.id === editingOrderId)?.queueNumber || queueCounter) : queueCounter,
-        items: cart, subtotal: Number(subtotal), discount: Number(discountAmount),
+        items: toOrderItems(cart), subtotal: Number(subtotal), discount: Number(discountAmount),
         vat: Number(vatAmount), total: Number(netTotal), vatIncluded: vatEnabled,
-        isPaid, memberPhone: currentMember?.phone || '', memberNickname,
+        isPaid: paid, memberPhone: currentMember?.phone || '', memberNickname,
         status: 'pending',
         promotionTitle: activePromotion?.title
           || (effectiveComboDiscount > 0 ? COMBO_PROMO_TITLE : '')
@@ -649,13 +575,14 @@ export default function PosView() {
       }
       setCart([]); setIsPaid(false); setMemberPhone(''); setMemberNickname(''); setUsePoints(false);
       setRedeemRewardId(null); setBringOwnGlass(false); setReviewDiscount(false);
-      toast.success(editingOrderId ? 'แก้ไขออเดอร์สำเร็จ' : `บันทึกออเดอร์ #${queueCounter} สำเร็จ`);
+      toast.success(editingOrderId ? 'แก้ไขออเดอร์สำเร็จ' : `บันทึกออเดอร์ #${queueCounter} สำเร็จ · ${paid ? 'รับเงินแล้ว' : 'ค้างจ่าย'}`);
     }, 'บันทึกออเดอร์ไม่สำเร็จ');
   }, ids => setCheckoutBusy(ids.size > 0));
 
   handleCheckoutRef.current = handleCheckout;
 
-  const handleGetRecommendations = async () => {
+  const handleGetRecommendations = useCallback(async () => {
+    const cart = cartRef.current;
     if (cart.length === 0) return;
     setIsRecommending(true);
     setRecommendations([]);
@@ -689,784 +616,163 @@ export default function PosView() {
     } finally {
       setIsRecommending(false);
     }
+  }, [menu, callGeminiAPI, toast]);
+
+  // ---------------------------------------------------------------- render parts
+  // Every callback handed to a memoised child is stable, so a cart tap only
+  // re-renders what shows the cart (grid tile badge, cart lines, totals).
+  const selectCategory = useCallback((cat) => { setActiveCategory(cat); setSearchTerm(''); }, []);
+  const clearPromotion = useCallback(() => setActivePromotion(null), [setActivePromotion]);
+  const toggleOwnGlass = useCallback(() => setBringOwnGlass(v => !v), []);
+  const toggleReview = useCallback(() => setReviewDiscount(v => !v), []);
+  const focusName = useCallback(() => setIsMemberNameFocused(true), []);
+  const blurName = useCallback(() => setIsMemberNameFocused(false), []);
+  const toggleRedeem = useCallback(() => {
+    const res = toggleRewardSelection(usePoints, redeemRewardId, 'discount');
+    setUsePoints(res.usePoints);
+    setRedeemRewardId(res.redeemRewardId);
+  }, [usePoints, redeemRewardId]);
+  const selectReward = useCallback((rewardId) => {
+    const res = toggleRewardSelection(usePoints, redeemRewardId, 'reward', rewardId);
+    setUsePoints(res.usePoints);
+    setRedeemRewardId(res.redeemRewardId);
+  }, [usePoints, redeemRewardId]);
+  const dismissUpsell = useCallback(() => setRecommendations([]), []);
+  const pickUpsell = useCallback((rec) => { trackRecommendationAccepted(rec); addToCartRef.current(rec); }, []);
+  const checkout = useCallback((paid) => handleCheckoutRef.current(paid), []);
+  const checkoutFromSheet = useCallback((paid) => { handleCheckoutRef.current(paid); setIsMobileCartOpen(false); }, []);
+
+  const eligibleRewards = useMemo(() => ((pointsRewardsEnabled && currentMember && !currentMember.isGuest)
+    ? getEligibleRewards(pointsRewards, currentMember.points) : []), [pointsRewardsEnabled, currentMember, pointsRewards]);
+  const upsell = useMemo(() => ({
+    items: recommendations, loading: isRecommending, onAsk: handleGetRecommendations, onDismiss: dismissUpsell, onPick: pickUpsell,
+  }), [recommendations, isRecommending, handleGetRecommendations, dismissUpsell, pickUpsell]);
+
+
+  const discountPanel = (
+    <DiscountMemberPanel
+      bringOwnGlass={bringOwnGlass} onToggleOwnGlass={toggleOwnGlass} ownGlassDiscount={OWN_GLASS_DISCOUNT}
+      reviewDiscount={reviewDiscount} onToggleReview={toggleReview} reviewDiscountAmount={reviewDiscountAmount}
+      memberPhone={memberPhone} onPhoneChange={setMemberPhone}
+      memberNickname={memberNickname} onNicknameChange={handleNicknameChange}
+      nameFocused={isMemberNameFocused} onNameFocus={focusName} onNameBlur={blurName}
+      nameSuggestions={memberNameSuggestions} onSelectMember={handleSelectMember}
+      currentMember={currentMember} onClearMember={handleClearMember}
+      onRefreshMembers={handleRefreshMembers} isRefreshingMembers={isRefreshingMembers}
+      netTotal={currentMember?.isNew ? netTotal : 0}
+      redeemThreshold={REDEEM_POINTS_THRESHOLD} redeemDiscountValue={REDEEM_DISCOUNT_VALUE}
+      usePoints={usePoints} pointsRedeemActive={pointsRedeemActive} onToggleRedeem={toggleRedeem}
+      eligibleRewards={eligibleRewards} redeemRewardId={redeemRewardId} onSelectReward={selectReward}
+    />
+  );
+
+  const checkoutBar = (onCheckout) => (
+    <CheckoutBar
+      subtotal={subtotal} rows={totalRows} hints={totalHints} netTotal={netTotal}
+      disabled={cart.length === 0} busy={checkoutBusy} editing={!!editingOrderId}
+      isPaid={isPaid} onPaidChange={setIsPaid} onCheckout={onCheckout}
+    />
+  );
+
+  const cartPanelProps = {
+    cart, menuById, activePromotion, currentQueue, cartCount, editing: !!editingOrderId,
+    onQty: updateQuantity, onRemove: removeItem, onNote: updateCartItemNote, onTogglePromo: toggleItemPromo,
+    onClear: handleClearCart,
+    repeat: repeatCandidate.length > 0 ? { count: repeatCandidate.length, queue: lastOrder?.queueNumber, onRepeat: handleRepeatLast } : null,
+    upsell,
   };
 
-  // ------- Reusable cart render helpers (regular functions, NOT components — avoids Fast Refresh hook issues) -------
-
-  const renderCartItems = (compact = false) => (
-    <div className={`flex-1 overflow-y-auto ${compact ? 'px-4' : 'px-5'} scrollbar-hide`}>
-      {cart.length === 0 ? (
-        <div className="h-full flex items-center justify-center py-10">
-          <EmptyState icon="cart" title="ตะกร้าว่างเปล่า" description="เลือกเมนูด้านข้างเพื่อเริ่มสั่ง" size="sm" />
-        </div>
-      ) : cart.map(item => {
-        const cartItemId = item.cartId || item.id;
-        return (
-          <div key={cartItemId} className="flex gap-3 py-3 border-b border-[var(--border-color)] last:border-b-0">
-            <div className="w-12 h-12 flex-shrink-0 rounded-xl overflow-hidden bg-[var(--bg-tertiary)]">
-              {item.image ? (
-                <img src={item.image} className="w-full h-full object-cover" alt={item.name} />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
-                  <Coffee size={20} />
-                </div>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-bold leading-tight line-clamp-1 text-[var(--text-primary)]">{String(item.name)}</div>
-              {item.beanModifier && (
-                <span className="inline-block text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-[var(--radius-sm)] mt-0.5">{item.beanModifier}</span>
-              )}
-              {item.sweetness != null && (
-                <span className="inline-block ml-1 text-[10px] font-medium text-orange-700 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/30 px-1.5 py-0.5 rounded-[var(--radius-sm)] mt-0.5">หวาน <span className="num">{item.sweetness}%</span></span>
-              )}
-              {item.milkLabel && (
-                <span className="inline-block ml-1 text-[10px] font-medium text-sky-700 dark:text-sky-400 bg-sky-100 dark:bg-sky-900/30 px-1.5 py-0.5 rounded-[var(--radius-sm)] mt-0.5">{item.milkLabel}</span>
-              )}
-              <div className="text-xs mt-0.5 text-[var(--text-muted)] font-medium">฿{Number(item.price).toLocaleString()} / แก้ว</div>
-              <div className="flex items-center gap-2 mt-2">
-                <button onClick={() => updateQuantity(cartItemId, -1)} aria-label="ลดจำนวน"
-                  className="w-7 h-7 rounded-full flex items-center justify-center bg-[var(--bg-tertiary)] text-[var(--text-primary)] active:scale-95 transition-transform">
-                  <Minus size={12} strokeWidth={2.5} />
-                </button>
-                <span className="num text-sm font-semibold w-5 text-center text-[var(--text-primary)]">{Number(item.quantity)}</span>
-                <button onClick={() => updateQuantity(cartItemId, 1)} aria-label="เพิ่มจำนวน"
-                  className="w-7 h-7 rounded-full flex items-center justify-center bg-[var(--accent-emerald)] text-white active:scale-95 transition-transform">
-                  <Plus size={12} strokeWidth={2.5} />
-                </button>
-                {activePromotion && (
-                  <button onClick={() => toggleItemPromo(cartItemId)}
-                    className={`ml-auto h-7 px-2 rounded-[var(--radius-sm)] text-[10px] font-medium flex items-center gap-2 transition-all ${item.promoApplied ? 'bg-violet-600 text-white' : 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300'}`}
-                    title="ใช้โปรโมชั่นกับเมนูนี้">
-                    <Tag size={10} strokeWidth={2.5} />
-                    {item.promoApplied ? `${activePromotion.discountPercent}%` : 'PROMO'}
-                  </button>
-                )}
-              </div>
-              <input
-                type="text"
-                placeholder="หมายเหตุ..."
-                value={item.note || ''}
-                onChange={(e) => updateCartItemNote(cartItemId, e.target.value)}
-                className="w-full mt-2 bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-lg py-1.5 px-2 text-[11px] font-medium outline-none focus:border-[var(--accent-emerald)] text-[var(--text-primary)]"
-              />
-            </div>
-            <div className="flex flex-col items-end justify-between flex-shrink-0">
-              <button onClick={() => removeItem(cartItemId)} aria-label="ลบรายการ"
-                className="p-1 text-[var(--text-muted)] hover:text-red-500 transition-colors">
-                <X size={14} strokeWidth={2.5} />
-              </button>
-              <div className="num text-sm font-bold text-[var(--text-primary)]">฿{(Number(item.price) * Number(item.quantity)).toLocaleString()}</div>
-            </div>
-          </div>
-        );
-      })}
-
-      {/* AI Upsell */}
-      {cart.length > 0 && (
-        <div className="py-3">
-          {recommendations.length === 0 ? (
-            <button onClick={handleGetRecommendations} disabled={isRecommending}
-              className="w-full py-2.5 rounded-[var(--radius-sm)] bg-gradient-to-r from-violet-100 to-fuchsia-100 dark:from-violet-900/30 dark:to-fuchsia-900/30 text-violet-600 dark:text-violet-300 font-medium text-[11px] flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 transition-all border border-violet-200 dark:border-violet-800">
-              {isRecommending ? (<><div className="w-3.5 h-3.5 border-2 border-violet-600 border-t-transparent rounded-full animate-spin" /> กำลังวิเคราะห์...</>) : (<><Zap size={14} fill="currentColor" /> เชียร์ขายอะไรดี? (AI Upsell)</>)}
-            </button>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-medium text-violet-500 flex items-center gap-2"><Zap size={10} fill="currentColor" /> แนะนำทานคู่กัน</span>
-                <button onClick={() => setRecommendations([])} aria-label="ปิด" className="text-[var(--text-muted)]"><X size={12} /></button>
-              </div>
-              {recommendations.map(rec => (
-                <div key={rec.id} onClick={() => { trackRecommendationAccepted(rec); addToCart(rec); }}
-                  className="bg-[var(--bg-secondary)] p-2.5 rounded-xl border border-violet-200 dark:border-violet-900 flex items-center gap-2.5 cursor-pointer hover:border-violet-500 hover:shadow-sm transition-all group">
-                  <div className="w-9 h-9 bg-[var(--bg-tertiary)] rounded-lg overflow-hidden shrink-0">
-                    {rec.image && <img src={rec.image} alt={rec.name} className="w-full h-full object-cover" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{rec.name}</p>
-                    <p className="num text-[11px] text-[var(--accent-emerald)] font-bold">฿{Number(rec.price).toLocaleString()}</p>
-                  </div>
-                  <PlusCircle size={18} className="text-violet-400 group-hover:text-violet-600 transition-colors" />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-
-  const renderCartOptions = () => (
-    <div className="px-5 py-4 space-y-3 bg-[var(--bg-tertiary)] border-t border-[var(--border-color)] shrink-0">
-      {/* Bring-own-cup toggle */}
-      <button onClick={() => setBringOwnGlass(!bringOwnGlass)}
-        className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[var(--bg-secondary)] transition-all active:scale-[0.98]"
-        style={{ border: `1.5px solid ${bringOwnGlass ? 'var(--accent-emerald)' : 'var(--border-color)'}` }}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)]">
-            <Coffee size={16} strokeWidth={2} />
-          </div>
-          <div className="text-left">
-            <div className="text-[13px] font-bold text-[var(--text-primary)]">นำแก้วมาเอง</div>
-            <div className="text-[10px] text-[var(--text-muted)]">ลดทันที ฿{OWN_GLASS_DISCOUNT}</div>
-          </div>
-        </div>
-        <div className={`w-10 h-6 rounded-full relative transition-colors ${bringOwnGlass ? 'bg-[var(--accent-emerald)]' : 'bg-[var(--border-color)]'}`}>
-          <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${bringOwnGlass ? 'right-0.5' : 'left-0.5'}`} />
-        </div>
-      </button>
-
-      {/* Review-discount toggle — staff applies 5% once they've seen the customer's review */}
-      <button onClick={() => setReviewDiscount(!reviewDiscount)}
-        className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[var(--bg-secondary)] transition-all active:scale-[0.98]"
-        style={{ border: `1.5px solid ${reviewDiscount ? 'var(--accent-emerald)' : 'var(--border-color)'}` }}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)]">
-            <Star size={16} strokeWidth={2} />
-          </div>
-          <div className="text-left">
-            <div className="text-[13px] font-bold text-[var(--text-primary)]">รีวิวร้าน</div>
-            <div className="text-[10px] text-[var(--text-muted)]">ลด 5% (ลูกค้ารีวิวแล้ว)</div>
-          </div>
-        </div>
-        <div className={`w-10 h-6 rounded-full relative transition-colors ${reviewDiscount ? 'bg-[var(--accent-emerald)]' : 'bg-[var(--border-color)]'}`}>
-          <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${reviewDiscount ? 'right-0.5' : 'left-0.5'}`} />
-        </div>
-      </button>
-
-      {/* Points card */}
-      <div className="p-3 rounded-2xl bg-[var(--bg-secondary)] space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles size={14} className="text-[var(--accent-emerald)]" />
-            <span className="text-[11px] font-medium text-[var(--text-secondary)]">สะสมแต้ม</span>
-          </div>
-          <div className="flex items-center gap-1">
-            {(memberPhone || memberNickname || currentMember) && (
-              <button onClick={handleClearMember} aria-label="ล้างสมาชิก" title="ล้างสมาชิกแล้วกรอกใหม่"
-                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-red-500 transition-colors">
-                <X size={13} />
-              </button>
-            )}
-            <button onClick={handleRefreshMembers} aria-label="รีเฟรชสมาชิก"
-              className={`p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-emerald)] transition-colors ${isRefreshingMembers ? 'animate-spin' : ''}`}>
-              <RefreshCcw size={12} />
-            </button>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <div className="flex-1 min-w-0 flex items-center gap-2 px-3 h-9 rounded-[var(--radius-sm)] bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
-            <Phone size={12} className="text-[var(--text-muted)] shrink-0" />
-            <input type="tel" maxLength={10} placeholder="เบอร์โทร" value={memberPhone} onChange={(e) => setMemberPhone(e.target.value)}
-              className="bg-transparent outline-none text-xs flex-1 min-w-0 w-full font-medium text-[var(--text-primary)]" />
-          </div>
-          <div className="relative flex-1 min-w-0">
-            <div className="flex items-center gap-2 px-3 h-9 rounded-[var(--radius-sm)] bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
-              <User size={12} className="text-[var(--text-muted)] shrink-0" />
-              <input type="text" placeholder="ชื่อเล่น" value={memberNickname}
-                onFocus={() => setIsMemberNameFocused(true)}
-                onBlur={() => setIsMemberNameFocused(false)}
-                onChange={(e) => {
-                  setMemberNickname(e.target.value);
-                  if (memberPhone) {
-                    setMemberPhone('');
-                    setCurrentMember(null);
-                    setUsePoints(false);
-      setRedeemRewardId(null);
-                  }
-                }}
-                autoComplete="off"
-                className="bg-transparent outline-none text-xs flex-1 min-w-0 w-full font-medium text-[var(--text-primary)]" />
-            </div>
-            {isMemberNameFocused && memberNameSuggestions.length > 0 && (
-              <div className="absolute z-30 top-full left-0 right-0 mt-1 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border-color)] bg-[var(--bg-primary)] shadow-[var(--elev-2)]">
-                {memberNameSuggestions.map(member => (
-                  <button key={member.id || member.phone} type="button"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => handleSelectMember(member)}
-                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-secondary)] transition-colors border-b last:border-b-0 border-[var(--border-light)]">
-                    <span className="block text-xs font-bold text-[var(--text-primary)] truncate">{member.name || 'ลูกค้า'}</span>
-                    <span className="block text-[10px] text-[var(--text-muted)] truncate">{member.phone}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        {currentMember?.isGuest && (
-          <div className="flex items-start gap-2 pt-1 text-[10px] font-medium text-[var(--text-muted)] leading-snug">
-            <UserX size={12} className="shrink-0 mt-0.5" />
-            <span>ไม่มีเบอร์ = ไม่บันทึกเป็นสมาชิก · ใส่เบอร์เพื่อสะสมแต้ม</span>
-          </div>
-        )}
-        {currentMember && !currentMember.isGuest && (
-          <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-[11px] font-medium text-[var(--text-primary)] truncate">
-                {currentMember.isNew ? (memberNickname || 'ลูกค้าใหม่') : String(currentMember.name)}
-              </span>
-              {currentMember.isNew && (
-                <span className="bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] text-[9px] font-medium px-1.5 py-0.5 rounded-[var(--radius-sm)] uppercase tracking-wider shrink-0">New</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[10px] font-medium text-[var(--text-muted)]">
-                {currentMember.isNew ? 'จะได้' : 'แต้ม'}
-              </span>
-              <span className="num text-xs font-medium text-[var(--accent-emerald)]">
-                {currentMember.isNew ? `+${Math.floor(netTotal / 10)}` : Number(currentMember.points || 0)}
-              </span>
-              {!currentMember.isNew && Number(currentMember.points || 0) >= REDEEM_POINTS_THRESHOLD && (
-                <button onClick={() => {
-                  const res = toggleRewardSelection(usePoints, redeemRewardId, 'discount');
-                  setUsePoints(res.usePoints);
-                  setRedeemRewardId(res.redeemRewardId);
-                }}
-                  className={`ml-1 px-2 h-6 rounded-[var(--radius-sm)] text-[9px] font-medium flex items-center gap-2 transition-all ${usePoints ? 'bg-[var(--accent-orange)] text-white' : 'bg-[var(--accent-orange-light)] text-[var(--accent-orange)]'}`}>
-                  <Gift size={10} />{usePoints ? '??????' : `??? ${REDEEM_POINTS_THRESHOLD}`}
-                </button>
-              )}
-                        </div>
-          </div>
-        )}
-
-        {pointsRewardsEnabled && currentMember && !currentMember.isGuest && getEligibleRewards(pointsRewards, currentMember.points).length > 0 && (
-          <div className="pt-2 border-t border-[var(--border-color)]">
-            <p className="text-[10px] font-semibold text-[var(--text-muted)] mb-1.5 uppercase tracking-wider">?????????????</p>
-            <div className="space-y-1.5">
-              {getEligibleRewards(pointsRewards, currentMember.points).map(reward => (
-                <label
-                  key={reward.id}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-[var(--radius-sm)] border cursor-pointer transition-all ${redeemRewardId === reward.id ? 'bg-[var(--accent-orange-light)] border-[var(--accent-orange)]' : 'bg-[var(--bg-primary)] border-[var(--border-color)] hover:border-[var(--accent-orange)]'}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${redeemRewardId === reward.id ? 'border-[var(--accent-orange)]' : 'border-gray-300'}`}>
-                      {redeemRewardId === reward.id && <div className="w-2 h-2 bg-[var(--accent-orange)] rounded-full" />}
-                    </div>
-                    <span className={`text-[11px] font-semibold ${redeemRewardId === reward.id ? 'text-[var(--accent-orange)]' : 'text-[var(--text-primary)]'}`}>
-                      {reward.name}
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-bold text-[var(--accent-orange)]">
-                    {reward.cost} ????
-                  </span>
-                  <input
-                    type="radio"
-                    className="hidden"
-                    checked={redeemRewardId === reward.id}
-                    onChange={() => {
-                      const res = toggleRewardSelection(usePoints, redeemRewardId, 'reward', reward.id);
-                      setUsePoints(res.usePoints);
-                      setRedeemRewardId(res.redeemRewardId);
-                    }}
-                  />
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  const renderCartTotals = (onConfirm) => (
-    <div className="px-5 py-4 space-y-3 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] shrink-0">
-      <div className="space-y-1.5">
-        <div className="flex justify-between text-xs text-[var(--text-secondary)]">
-          <span>รวม</span>
-          <span className="font-bold">฿{subtotal.toLocaleString()}</span>
-        </div>
-        {bringOwnGlass && (
-          <div className="flex justify-between text-xs text-[var(--accent-emerald)]">
-            <span>ส่วนลดแก้วส่วนตัว</span>
-            <span className="font-bold">-฿{OWN_GLASS_DISCOUNT}</span>
-          </div>
-        )}
-        {reviewDiscount && (
-          <div className="flex justify-between text-xs text-[var(--accent-emerald)]">
-            <span>ส่วนลดรีวิว (5%)</span>
-            <span className="font-bold">-฿{reviewDiscountAmount.toLocaleString()}</span>
-          </div>
-        )}
-        {pointsRedeemActive && (
-          <div className="flex justify-between text-xs text-[var(--accent-emerald)]">
-            <span>ใช้แต้มสะสม</span>
-            <span className="font-bold">-฿{REDEEM_DISCOUNT_VALUE}</span>
-          </div>
-        )}
-        {effectiveComboDiscount > 0 && (
-          <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400">
-            <span>คอมโบเค้ก+เครื่องดื่ม -{combo.percent}%</span>
-            <span className="font-bold">-฿{effectiveComboDiscount.toLocaleString()}</span>
-          </div>
-        )}
-        {effectiveSpendDiscount > 0 && (
-          <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400">
-            <span>โปรสั่งครบ ฿{SPEND_THRESHOLD.toLocaleString()} -{SPEND_DISCOUNT_PERCENT}%</span>
-            <span className="font-bold">-฿{effectiveSpendDiscount.toLocaleString()}</span>
-          </div>
-        )}
-        {combo.enabled && !combo.applies && combo.hasCake !== combo.hasDrink && cart.length > 0 && effectiveSpendDiscount === 0 && (
-          <div className="text-[10px] text-emerald-500 font-bold text-right">
-            เพิ่ม{combo.hasCake ? 'เครื่องดื่ม' : 'เค้ก'}รับส่วนลด {combo.percent}%
-          </div>
-        )}
-        {spendActive && effectiveSpendDiscount === 0 && effectiveComboDiscount === 0 && subtotal > 0 && subtotal < SPEND_THRESHOLD && (
-          <div className="text-[10px] text-emerald-500 font-bold text-right">
-            สั่งอีก ฿{(SPEND_THRESHOLD - subtotal).toLocaleString()} รับส่วนลด {SPEND_DISCOUNT_PERCENT}%
-          </div>
-        )}
-        {vatAmount > 0 && (
-          <div className="flex justify-between text-xs text-[var(--text-secondary)]">
-            <span>VAT 7%</span>
-            <span className="font-bold">+฿{vatAmount.toLocaleString()}</span>
-          </div>
-        )}
-        <div className="flex items-end justify-between pt-1">
-          <span className="text-sm font-bold text-[var(--text-primary)]">ยอดสุทธิ</span>
-          <span className="num text-3xl font-bold text-[var(--accent-emerald)] leading-none">฿{netTotal.toLocaleString()}</span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <button onClick={() => setIsPaid(false)}
-          className={`h-11 rounded-[var(--radius-sm)] text-[13px] font-semibold flex items-center justify-center gap-2 transition-all ${!isPaid ? 'bg-[var(--accent-orange)] text-white shadow-[var(--elev-2)]' : 'bg-[var(--accent-orange-light)] text-[var(--accent-orange)]'}`}>
-          <Wallet size={14} strokeWidth={2.5} /> ยังไม่จ่าย
-        </button>
-        <button onClick={() => setIsPaid(true)}
-          className={`h-11 rounded-[var(--radius-sm)] text-[13px] font-semibold flex items-center justify-center gap-2 transition-all ${isPaid ? 'bg-[var(--accent-emerald)] text-white shadow-[var(--elev-2)]' : 'bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)]'}`}>
-          <CreditCard size={14} strokeWidth={2.5} /> จ่ายแล้ว
-        </button>
-      </div>
-
-      <button onClick={onConfirm} disabled={cart.length === 0 || checkoutBusy}
-        className="w-full h-14 rounded-[var(--radius-sm)] text-[15px] font-semibold flex items-center justify-center gap-2 bg-[var(--accent-emerald)] text-white active:scale-[0.98] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
-        style={{ boxShadow: cart.length === 0 ? 'none' : '0 8px 24px -8px var(--accent-emerald)' }}>
-        <CheckCircle size={18} strokeWidth={2.5} />
-        {editingOrderId ? 'บันทึกการแก้ไข' : 'ยืนยันการสั่งซื้อ'}
-        <ArrowRight size={18} strokeWidth={2.5} />
-      </button>
-    </div>
-  );
+  const searching = !!debouncedSearchTerm;
 
   return (
     <>
-      <div data-pos="main" className="flex flex-col md:flex-row h-full animate-in fade-in duration-500"
-        style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-        {/* LEFT: Desktop Category Sidebar */}
-        <div data-pos="sidebar-cat"
-          className="hidden md:flex w-[76px] lg:w-[200px] flex-shrink-0 flex-col p-4 gap-3 border-r z-10"
-          style={{ borderColor: 'var(--border-color)', background: 'var(--bg-primary)' }}>
-          <div className="flex items-center gap-2 px-1 pt-1 pb-1">
-            <div className="w-9 h-9 rounded-[var(--radius)] flex items-center justify-center text-white font-semibold text-base shrink-0 shadow-[var(--elev-1)]"
-              style={{ background: 'var(--accent-emerald)', boxShadow: '0 4px 12px -4px var(--accent-emerald)' }}>S</div>
-            <div className="hidden lg:block min-w-0">
-              <div className="text-[14px] font-bold leading-tight text-[var(--text-primary)]">Siwara</div>
-              <div className="text-[10px] text-[var(--text-muted)] leading-tight">POS System</div>
-            </div>
-          </div>
-          <div className="hidden lg:block text-[10px] font-medium px-2 mt-2 text-[var(--text-muted)]">หมวดหมู่</div>
-          <div className="flex flex-col gap-2 flex-1 overflow-y-auto scrollbar-hide">
-            {categories.map(cat => {
-              const isActive = activeCategory === cat;
-              return (
-                <button key={cat} onClick={() => { setActiveCategory(cat); setSearchTerm(''); }}
-                  className={`w-full flex items-center lg:gap-3 gap-2 rounded-[var(--radius)] min-h-[72px] transition-all active:scale-95 lg:flex-row flex-col lg:py-3 lg:px-4 py-3 px-2`}
-                  style={{
-                    background: isActive ? 'var(--accent-emerald)' : 'transparent',
-                    color: isActive ? '#fff' : 'var(--text-secondary)'
-                  }}>
-                  {cat === 'แนะนำ' ? <Star size={18} strokeWidth={isActive ? 2.5 : 1.8} fill={isActive ? 'currentColor' : 'none'} /> : <Coffee size={18} strokeWidth={isActive ? 2.5 : 1.8} />}
-                  <span className="lg:text-sm text-[10px] font-semibold tracking-tight leading-tight text-center lg:text-left">{String(cat)}</span>
-                </button>
-              );
-            })}
-          </div>
+      <div className="flex flex-col md:flex-row h-full min-h-0 bg-[var(--bg-canvas)] text-[var(--text-primary)]">
+        {/* Category rail · fixed 88px on iPad landscape / desktop */}
+        <div className="hidden lg:block h-full">
+          <CategoryRail categories={categories} active={searching ? null : activeCategory} onSelect={selectCategory} vertical />
         </div>
 
-        {/* Mobile Category Chips */}
-        <div data-pos="mobile-cat" className="md:hidden flex overflow-x-auto scrollbar-hide px-4 py-2 gap-2 shrink-0"
-          style={{ background: 'var(--bg-primary)' }}>
-          {categories.map(cat => {
-            const isActive = activeCategory === cat;
-            return (
-              <button key={cat} onClick={() => { setActiveCategory(cat); setSearchTerm(''); }}
-                className="flex items-center gap-2 px-4 h-10 rounded-[var(--radius-sm)] flex-shrink-0 text-[12px] font-semibold active:scale-95 transition-all"
-                style={{
-                  background: isActive ? 'var(--accent-emerald)' : 'var(--bg-secondary)',
-                  color: isActive ? '#fff' : 'var(--text-secondary)',
-                  border: `1px solid ${isActive ? 'var(--accent-emerald)' : 'var(--border-color)'}`
-                }}>
-                {cat === 'แนะนำ' ? <Star size={12} strokeWidth={2} fill={isActive ? 'currentColor' : 'none'} /> : <Coffee size={12} strokeWidth={2} />}
-                {String(cat)}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* CENTER: Menu Grid */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <header className="px-3 md:px-5 pt-3 md:pt-4 pb-2 flex items-center gap-2 md:gap-3 shrink-0">
-            <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={18} />
-              <input type="text" placeholder="ค้นหาเมนู..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full h-14 pl-12 pr-4 rounded-[var(--radius-sm)] text-[15px] outline-none font-medium transition-all focus:ring-2 focus:ring-[var(--accent-emerald)]/20"
-                style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }} />
-            </div>
-
-            <div className="hidden lg:flex items-center gap-2 px-2 h-14 rounded-[var(--radius-sm)] shrink-0"
-              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-              <span className="text-[11px] font-medium uppercase tracking-wider px-2 text-[var(--text-muted)]">Show</span>
-              {MENU_PAGE_OPTIONS.map(n => {
-                const isActive = itemsPerPage === n;
-                return (
-                  <button key={n} onClick={() => setItemsPerPage(n)}
-                    className="w-9 h-9 rounded-[var(--radius-sm)] text-xs font-medium transition-all active:scale-95"
-                    style={{ background: isActive ? 'var(--accent-emerald)' : 'transparent', color: isActive ? '#fff' : 'var(--text-secondary)' }}>{n}</button>
-                );
-              })}
-            </div>
-
-            <div className="flex items-center gap-2 px-4 h-14 rounded-[var(--radius-sm)] font-semibold shrink-0"
-              style={{ background: 'var(--accent-emerald-light)', color: 'var(--accent-emerald)', border: '1px solid color-mix(in srgb, var(--accent-emerald) 20%, transparent)' }}>
-              <Receipt size={16} strokeWidth={2.5} />
-              <span className="text-sm hidden sm:inline">คิว</span>
-              <span className="text-lg">#{currentQueue}</span>
-            </div>
-          </header>
-
-          {/* Section heading */}
-          <div className="px-3 md:px-5 pb-2 flex items-center justify-between shrink-0">
-            <div>
-              <div className="text-[18px] md:text-[22px] font-bold tracking-tight text-[var(--text-primary)] leading-tight">
-                {activeCategory}
-              </div>
-              <div className="text-[11px] md:text-xs text-[var(--text-muted)] font-medium">
-                {filteredMenu.length} เมนู · แตะเพื่อเพิ่มลงตะกร้า
-              </div>
-            </div>
-            {activePromotion ? (
-              <div className="hidden sm:flex items-center gap-2 px-3 h-9 rounded-xl text-[11px] font-bold"
-                style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
-                <Zap size={12} fill="currentColor" className="text-violet-500" />
-                <span className="truncate max-w-[160px]">{activePromotion.title}</span>
-                <button onClick={() => setActivePromotion(null)} className="text-[var(--text-muted)] hover:text-red-500"><X size={12} /></button>
-              </div>
-            ) : (
-              <div className="hidden sm:flex items-center gap-2 px-3 h-9 rounded-[var(--radius-sm)] text-[11px] font-bold"
-                style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
-                <Flame size={12} /> Rush Hour
-              </div>
-            )}
+        {/* Menu */}
+        <section className="flex-1 min-w-0 min-h-0 flex flex-col" aria-label="เมนู">
+          <div className="lg:hidden bg-[var(--bg-canvas)]">
+            <CategoryRail categories={categories} active={searching ? null : activeCategory} onSelect={selectCategory} />
           </div>
-
-          <div className="flex-1 flex flex-col overflow-hidden relative">
-            <div data-pos="menu-grid" className="flex-1 overflow-y-auto px-3 md:px-5 pb-24 md:pb-8 scrollbar-hide">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
-                {isSyncing && <div className="col-span-full"><Skeleton.MenuGrid items={8} /></div>}
-                {!isSyncing && pagedMenu.length === 0 && (
-                  <div className="col-span-full">
-                    <EmptyState icon="search" title="ไม่พบเมนูในหมวดนี้" description="ลองเลือกหมวดหมู่อื่นหรือเพิ่มเมนูใหม่" size="sm" />
-                  </div>
-                )}
-                {pagedMenu.map(item => {
-                  const itemSale = getItemSalePrice(item, saleSettings);
-                  return (
-                  <div key={item.id} onClick={() => addToCart(item)}
-                    className="group relative rounded-[var(--radius)] min-h-[72px] overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.97] animate-in zoom-in-95"
-                    style={{ background: 'var(--bg-secondary)', boxShadow: '0 1px 0 var(--border-color), 0 8px 24px -12px var(--shadow-color)' }}>
-                    {(item.isFeatured || item.recommended) && (
-                      <div className="absolute top-3 left-3 z-10 flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] text-[10px] font-medium"
-                        style={{ background: 'var(--accent-orange)', color: '#fff', letterSpacing: '0.02em' }}>
-                        <Star size={10} strokeWidth={2.5} fill="currentColor" />
-                        <span>แนะนำ</span>
-                      </div>
-                    )}
-                    {itemSale.onSale && (
-                      <div className="absolute top-3 right-3 z-10 flex items-center gap-1 px-2 py-1 rounded-[var(--radius-sm)] text-[10px] font-medium bg-red-500 text-white shadow-sm">
-                        Happy Hour -<span className="num">{itemSale.percent}%</span>
-                      </div>
-                    )}
-                    <div className="aspect-[4/3] md:aspect-[4/3] bg-[var(--bg-tertiary)] overflow-hidden shrink-0">
-                      {item.image ? (
-                        <img src={item.image}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                          alt={item.name} loading="lazy" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
-                          <Coffee size={32} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-3.5 space-y-1">
-                      <div className="text-[13px] leading-tight font-bold line-clamp-2 min-h-[2.4em] text-[var(--text-primary)]">{String(item.name)}</div>
-                      <div className="flex items-baseline justify-between pt-1">
-                        <div>
-                          {itemSale.onSale ? (
-                            <>
-                              <div className="num text-xl font-bold text-red-500">฿{itemSale.price.toLocaleString()}</div>
-                              <div className="num text-[11px] font-bold text-[var(--text-muted)] line-through leading-none">฿{itemSale.originalPrice.toLocaleString()}</div>
-                            </>
-                          ) : (
-                            <div className="num text-xl font-bold text-[var(--accent-emerald)]">฿{Number(item.price).toLocaleString()}</div>
-                          )}
-                        </div>
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center transition-all group-hover:scale-110"
-                          style={{ background: 'var(--accent-emerald-light)', color: 'var(--accent-emerald)' }}>
-                          <Plus size={16} strokeWidth={2.5} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {totalPages > 1 && (
-              <div className={`absolute left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-full z-10 animate-in slide-in-from-bottom-4 transition-all duration-500 ${isNavExpanded ? 'bottom-28' : 'bottom-6'}`}
-                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', boxShadow: '0 8px 24px -8px var(--shadow-color)' }}>
-                <button disabled={menuPage === 1} onClick={() => setMenuPage(p => Math.max(1, p - 1))} aria-label="ก่อนหน้า"
-                  className="w-9 h-9 rounded-full flex items-center justify-center transition-all disabled:opacity-30"
-                  style={{ background: 'var(--accent-emerald-light)', color: 'var(--accent-emerald)' }}>
-                  <ChevronLeft size={18} strokeWidth={2.5} />
-                </button>
-                <div className="flex items-center gap-2 px-1">
-                  <span className="num text-sm font-semibold text-[var(--accent-emerald)]">{menuPage}</span>
-                  <span className="num text-[11px] font-bold text-[var(--text-muted)]">/ {totalPages}</span>
-                </div>
-                <button disabled={menuPage === totalPages} onClick={() => setMenuPage(p => Math.min(totalPages, p + 1))} aria-label="ถัดไป"
-                  className="w-9 h-9 rounded-full flex items-center justify-center transition-all disabled:opacity-30"
-                  style={{ background: 'var(--accent-emerald-light)', color: 'var(--accent-emerald)' }}>
-                  <ChevronRight size={18} strokeWidth={2.5} />
-                </button>
-              </div>
-            )}
+          <MenuHeader
+            searchTerm={searchTerm} onSearch={setSearchTerm}
+            density={density} onDensity={setDensity}
+            title={searching ? `ผลค้นหา “${debouncedSearchTerm}”` : activeCategory}
+            count={filteredMenu.length}
+            promotion={activePromotion} onClearPromotion={clearPromotion}
+          />
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 md:px-5 pb-28 md:pb-6" data-menu-scroll>
+            <MenuGrid
+              items={filteredMenu}
+              saleSettings={saleSettings}
+              onAdd={addToCart}
+              density={density}
+              qtyById={qtyById}
+              loading={isSyncing}
+              showFeatured={activeCategory !== 'แนะนำ' || searching}
+            />
           </div>
-        </div>
+        </section>
 
-        {/* RIGHT: Desktop Cart Sidebar */}
-        <div data-pos="sidebar-cart"
-          className="hidden md:flex w-72 lg:w-[340px] flex-col shrink-0 p-3 lg:p-4"
-          style={{ borderLeft: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}>
-          <div className="flex flex-col h-full rounded-3xl overflow-hidden"
-            style={{ background: 'var(--bg-secondary)', boxShadow: '0 1px 0 var(--border-color), 0 8px 24px -12px var(--shadow-color)' }}>
-            {/* 1. Header */}
-            <div className="px-5 py-4 flex items-center justify-between shrink-0 border-b"
-              style={{ borderColor: 'var(--border-color)' }}>
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0"
-                  style={{ background: 'var(--accent-emerald)' }}>
-                  <ShoppingBag size={16} strokeWidth={2.5} />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-[var(--text-primary)] leading-tight">ตะกร้า</div>
-                  <div className="text-[11px] text-[var(--text-muted)] truncate">{cartCount} รายการ · คิว #{currentQueue}</div>
-                </div>
-              </div>
-              <button onClick={handleClearCart}
-                className="text-xs font-bold flex items-center gap-1 text-[var(--text-muted)] hover:text-red-500 transition-colors px-2 py-1.5 rounded-lg">
-                <Trash2 size={13} strokeWidth={2.5} /> ล้าง
-              </button>
+        {/* Cart · iPad / desktop */}
+        {isMdUp && (
+          <aside className="flex w-[300px] lg:w-[340px] shrink-0 h-full min-h-0 border-l border-[var(--border-color)]" aria-label="ตะกร้า">
+            <div className="w-full h-full">
+              <CartPanel {...cartPanelProps} discountPanel={discountPanel} checkoutBar={checkoutBar(checkout)} />
             </div>
-
-            {/* 2. Items */}
-            {renderCartItems(false)}
-
-            {/* 3. Options */}
-            {renderCartOptions()}
-
-            {/* 4. Totals + CTA */}
-            {renderCartTotals(handleCheckout)}
-          </div>
-        </div>
+          </aside>
+        )}
       </div>
 
-      {/* Mobile Floating Cart Bar */}
-      {cart.length > 0 && (
-        <button data-pos="mobile-cart-btn" onClick={() => setIsMobileCartOpen(true)}
-          className={`md:hidden fixed left-3 right-3 rounded-2xl p-1.5 flex items-center gap-2 active:scale-[0.98] transition-transform z-[90] ${isNavExpanded ? 'bottom-24' : 'bottom-6'}`}
-          style={{ background: 'var(--accent-emerald)', boxShadow: '0 20px 40px -16px var(--accent-emerald)' }}>
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 relative bg-white/20 text-white">
-            <ShoppingBag size={18} strokeWidth={2.5} />
-            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-white flex items-center justify-center text-[10px] font-medium"
-              style={{ color: 'var(--accent-emerald)' }}><span className="num">{cartCount}</span></div>
-          </div>
-          <div className="flex-1 text-left text-white">
-            <div className="text-[10px] opacity-80 font-bold leading-none">ยอดสุทธิ</div>
-            <div className="num text-[15px] font-bold leading-none mt-0.5">฿{netTotal.toLocaleString()}</div>
-          </div>
-          <div className="h-10 px-4 rounded-[var(--radius-sm)] flex items-center gap-2 text-[12px] font-semibold bg-white"
-            style={{ color: 'var(--accent-emerald)' }}>
-            ยืนยันสั่ง <ArrowRight size={14} strokeWidth={2.5} />
-          </div>
-        </button>
-      )}
+      {!isMdUp && (
+        <>
+          {/* Phone: cart bar above the tab bar */}
+          <button
+            type="button"
+            onClick={() => setIsMobileCartOpen(true)}
+            data-mobile-cart-bar
+            className="fixed left-4 right-4 z-[140] min-h-14 px-4 flex items-center gap-3 rounded-[var(--radius)] bg-[var(--accent)] text-[var(--text-on-accent)] shadow-[var(--elev-3)] active:scale-[0.99] transition-transform"
+            style={{ bottom: 'calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px)' }}
+          >
+            <ShoppingBag size={20} />
+            <span className="flex-1 min-w-0 text-left">
+              <span className="block text-sm font-semibold leading-normal">
+                {cart.length ? <>ตะกร้า · <span className="num">{cartCount}</span> ชิ้น</> : 'ตะกร้าว่าง'}
+              </span>
+              <span className="block text-xs leading-[18px] opacity-90">คิว <span className="num">#{currentQueue}</span></span>
+            </span>
+            <span className="num text-lg font-semibold">{formatBaht(netTotal)}</span>
+            <ChevronRight size={18} />
+          </button>
 
-      {/* Empty-cart FAB (mobile, to open drawer anyway) */}
-      {cart.length === 0 && (
-        <button data-pos="mobile-cart-btn" onClick={() => setIsMobileCartOpen(true)}
-          className={`md:hidden fixed right-4 rounded-full p-4 shadow-[var(--elev-2)] active:scale-95 transition-transform z-[90] ${isNavExpanded ? 'bottom-24' : 'bottom-6'}`}
-          style={{ background: 'var(--accent-emerald)', color: '#fff' }}>
-          <ShoppingBag size={22} strokeWidth={2.5} />
-        </button>
-      )}
-
-      {/* Mobile Cart Drawer */}
-      {isMobileCartOpen && (
-        <div data-pos="mobile-cart-drawer" className="md:hidden fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="absolute right-0 top-0 bottom-0 w-full max-w-md flex flex-col animate-in slide-in-from-right"
-            style={{ background: 'var(--bg-primary)' }}>
-            <div className="p-3 flex flex-col h-full">
-              <div className="flex-1 flex flex-col rounded-3xl overflow-hidden"
-                style={{ background: 'var(--bg-secondary)' }}>
-                {/* Header */}
-                <div className="px-5 py-4 flex items-center justify-between shrink-0 border-b"
-                  style={{ borderColor: 'var(--border-color)' }}>
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0"
-                      style={{ background: 'var(--accent-emerald)' }}>
-                      <ShoppingBag size={16} strokeWidth={2.5} />
-                    </div>
-                    <div className="min-w-0">
-              <div className="text-sm font-semibold text-[var(--text-primary)]">ตะกร้า</div>
-                      <div className="text-[11px] text-[var(--text-muted)] truncate">{cartCount} รายการ · คิว #{currentQueue}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button onClick={handleClearCart}
-                      className="text-xs font-bold text-[var(--text-muted)] hover:text-red-500 px-2 py-1.5 rounded-lg">
-                      <Trash2 size={14} strokeWidth={2.5} />
-                    </button>
-                    <button onClick={() => setIsMobileCartOpen(false)} aria-label="ปิด"
-                      className="p-2 rounded-lg text-[var(--text-muted)]">
-                      <X size={20} strokeWidth={2.5} />
-                    </button>
-                  </div>
-                </div>
-
-                {renderCartItems(true)}
-                {renderCartOptions()}
-                {renderCartTotals(() => { handleCheckout(); setIsMobileCartOpen(false); })}
+          <Sheet
+            open={isMobileCartOpen}
+            onClose={() => setIsMobileCartOpen(false)}
+            side="bottom"
+            title={editingOrderId ? 'แก้ไขบิล' : 'ตะกร้า'}
+            description={<><span className="num">{cartCount}</span> ชิ้น · คิว <span className="num">#{currentQueue}</span></>}
+            footer={(
+              <div className="w-[calc(100%+2.5rem)] -mx-5 -my-3">
+                {discountPanel}
+                {checkoutBar(checkoutFromSheet)}
               </div>
-            </div>
-          </div>
-        </div>
+            )}
+          >
+            <CartPanel {...cartPanelProps} showHeader={false} />
+          </Sheet>
+        </>
       )}
 
-      {/* Bean Modifier Selection Modal — รองรับหลายกลุ่ม (เช่น ส้ม + เมล็ดกาแฟ) */}
-      <Modal isOpen={!!pendingBeanItem} onClose={() => { setPendingBeanItem(null); setPendingBeanSelections({}); setPendingSweetness(100); setPendingMilkType('cow'); }} title="เลือกตัวเลือก" size="sm">
-        {pendingBeanItem && (() => {
-          const itemBase = Number(pendingBeanItem.price) || 0;
-          const extra = Number(pendingBeanItem.beanExtra) || 0;
-          // กลุ่มที่มีตัวเลือกพร้อมขายจริงเท่านั้น
-          const groups = getModifierGroups(pendingBeanItem)
-            .map(g => ({
-              name: g,
-              mods: beanModifiers
-                .filter(b => b.available !== false && (b.group || 'เมล็ดกาแฟ') === g)
-                .map(mod => ({
-                  mod,
-                  surcharge: isBaseModifier(pendingBeanItem, mod) ? 0 : Math.max(0, (Number(mod.price) || 0) + extra - itemBase),
-                }))
-                .sort((a, b) => a.surcharge - b.surcharge),
-            }))
-            .filter(g => g.mods.length > 0);
-          const multi = groups.length > 1;
-          const allChosen = groups.every(g => pendingBeanSelections[g.name]);
-          const chosenMods = groups.map(g => pendingBeanSelections[g.name]).filter(Boolean);
-          const previewPrice = computeModifierPrice(pendingBeanItem, chosenMods);
-          const showSweetness = supportsSweetnessChoice(pendingBeanItem, saleSettings);
-          const showMilkChoice = supportsMilkChoice(pendingBeanItem);
-          const needsConfirmButton = showSweetness || multi;
-
-          return (
-            <div className="space-y-4">
-              <p className="text-center font-medium -mt-2 text-[var(--text-secondary)]">{pendingBeanItem.name}</p>
-              {groups.map(group => (
-                <div key={group.name} className="space-y-2">
-                  {multi && <p className="text-xs font-medium text-[var(--text-muted)] ml-1">{group.name}</p>}
-                  <div className="space-y-2">
-                    {group.mods.map(({ mod }) => {
-                      const selected = pendingBeanSelections[group.name]?.id === mod.id;
-                      // ราคาบนปุ่มต้องเป็นราคาที่จะจ่ายจริงถ้ากดตัวนี้ โดยคิดรวมกับ
-                      // ตัวเลือกกลุ่มอื่นที่เลือกไว้แล้ว · ของเดิมคิดแบบเลือกตัวนี้
-                      // ตัวเดียว ทำให้เอธิโชว์ 90 ส้มสดโชว์ 80 แต่เลือกคู่กันจ่ายจริง 105
-                      const withThis = groups
-                        .map(g => (g.name === group.name ? mod : pendingBeanSelections[g.name]))
-                        .filter(Boolean);
-                      const priceIfChosen = computeModifierPrice(pendingBeanItem, withThis);
-                      const delta = priceIfChosen - previewPrice;
-                      // กลุ่มเดียว = แตะเลือกแล้วเพิ่มลงตะกร้าทันที (UX เดิม).
-                      // หลายกลุ่ม = แตะเพื่อเลือกในกลุ่มนั้น แล้วกดยืนยันด้านล่าง.
-                      const onClick = needsConfirmButton
-                        ? () => setPendingBeanSelections(prev => ({ ...prev, [group.name]: mod }))
-                        : () => addToCartWithBean(pendingBeanItem, mod);
-                      return (
-                        <button key={mod.id} onClick={onClick}
-                          className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${selected ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-500 ring-2 ring-amber-400' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 hover:border-amber-500'}`}>
-                          <span className="font-bold text-amber-800 dark:text-amber-400">#{mod.name}</span>
-                          <span className="flex flex-col items-end leading-tight">
-                            {/* สีบอกทิศทางเทียบกับที่เลือกอยู่ ไม่ใช่เทียบราคาฐาน
-                                ตัวที่ถูกลงต้องไม่ย้อมสีเหมือนตัวที่บวกเพิ่ม */}
-                            <span className={`font-bold ${delta > 0 ? 'text-amber-600' : 'text-[var(--accent-emerald)]'}`}>
-                              ฿{priceIfChosen.toLocaleString()}
-                            </span>
-                            {!selected && delta !== 0 && (
-                              <span className="text-xs font-semibold text-[var(--text-muted)]">
-                                {delta > 0 ? `+฿${delta.toLocaleString()}` : `ถูกลง ฿${(-delta).toLocaleString()}`}
-                              </span>
-                            )}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-              {showSweetness && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-[var(--text-muted)] ml-1">ระดับความหวาน</p>
-                  <div className="grid grid-cols-5 gap-2">
-                    {[0, 25, 50, 75, 100].map(level => (
-                      <button key={level} type="button" onClick={() => setPendingSweetness(level)}
-                        className={`min-h-[44px] rounded-[var(--radius-sm)] border-2 text-xs font-medium transition-all ${pendingSweetness === level ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] ring-2 ring-emerald-200' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-emerald-300'}`}>
-                        <span className="num">{level}%</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {showMilkChoice && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-[var(--text-muted)] ml-1">ชนิดนม</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {MILK_OPTIONS.map(option => (
-                      <button key={option.value} type="button" onClick={() => setPendingMilkType(option.value)}
-                        className={`min-h-[48px] rounded-[var(--radius-sm)] border-2 text-sm font-semibold transition-all ${pendingMilkType === option.value ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] text-[var(--accent-emerald)] ring-2 ring-emerald-200' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-emerald-300'}`}>
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {needsConfirmButton && (
-                <>
-                  <div className="flex items-center justify-between px-1 pt-1 text-[var(--text-primary)]">
-                    <span className="font-bold">รวม</span>
-                    <span className="num font-bold text-lg text-[var(--accent-emerald)]">฿{previewPrice.toLocaleString()}</span>
-                  </div>
-                  <Button variant="primary" fullWidth disabled={!allChosen}
-                    onClick={() => addToCartWithBean(pendingBeanItem, chosenMods, showSweetness ? pendingSweetness : null, showMilkChoice ? pendingMilkType : null)}>
-                    {allChosen ? 'เพิ่มลงตะกร้า' : 'เลือกให้ครบทุกกลุ่ม'}
-                  </Button>
-                </>
-              )}
-              <Button variant="secondary" fullWidth onClick={() => { setPendingBeanItem(null); setPendingBeanSelections({}); setPendingSweetness(100); setPendingMilkType('cow'); }}>ยกเลิก</Button>
-            </div>
-          );
-        })()}
-      </Modal>
+      <OptionSheet
+        item={pendingItem}
+        beanModifiers={beanModifiers}
+        saleSettings={saleSettings}
+        onAdd={addFromSheet}
+        onClose={closeSheet}
+      />
     </>
   );
 }

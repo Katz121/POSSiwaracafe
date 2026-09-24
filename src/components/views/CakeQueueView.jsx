@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Cake, Phone, Clock, CheckCircle2, PackageCheck, XCircle, RotateCcw, Zap, Truck, Store } from 'lucide-react';
 import { collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
-import { Button, Badge, Card, EmptyState, Spinner, Tabs, useToast } from '../ui';
+import { Button, Badge, Card, EmptyState, PageHeader, Spinner, Tabs, useToast } from '../ui';
+import { formatBaht } from '../../utils/format';
 
 /**
  * คิวเค้กสั่งทำ
@@ -24,15 +25,8 @@ const FLOW = {
   cancelled: { label: 'ยกเลิก',             tone: 'rose',    next: null,        nextLabel: '',              icon: XCircle },
 };
 
-const TONE = {
-  amber:   'bg-amber-100 text-amber-800 border-amber-200',
-  blue:    'bg-blue-100 text-blue-800 border-blue-200',
-  violet:  'bg-violet-100 text-violet-800 border-violet-200',
-  emerald: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  rose:    'bg-rose-100 text-rose-800 border-rose-200',
-};
-
-const baht = (n) => Number(n || 0).toLocaleString('th-TH');
+// Status → Badge tone (semantic tokens, readable in both themes)
+const TONE = { amber: 'warn', blue: 'info', violet: 'neutral', emerald: 'ok', rose: 'danger' };
 
 export default function CakeQueueView() {
   const toast = useToast();
@@ -83,26 +77,20 @@ export default function CakeQueueView() {
   const waiting = groups.todo.filter((o) => o.status === 'new').length;
 
   return (
-    <div className="p-3 md:p-5 space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Cake size={20} className="text-[var(--accent-emerald)]" />
-          <h2 className="text-base md:text-lg font-semibold">คิวเค้กสั่งทำ</h2>
-          {waiting > 0 && (
-            <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-              {waiting} รายการยังไม่ได้ยืนยันกับลูกค้า
-            </span>
-          )}
-        </div>
-        <div className="text-xs text-[var(--text-muted)]">ออเดอร์จากหน้าเว็บ siwaracafe.com/cake</div>
-      </div>
-
+    <div className="min-h-full">
+      <PageHeader
+        title="คิวเค้กสั่งทำ"
+        subtitle="ออเดอร์จากหน้าเว็บ siwaracafe.com/cake"
+        icon={Cake}
+        meta={waiting > 0 ? <Badge tone="warn" dot>{waiting} รายการยังไม่ได้ยืนยันกับลูกค้า</Badge> : null}
+      />
+      <div className="px-[var(--page-pad)] py-4 space-y-4">
       <Tabs value={tab} onChange={setTab} variant="underline">
-        <Tabs.List className="w-full">
-          <Tabs.Tab value="todo">ต้องทำ ({groups.todo.length})</Tabs.Tab>
-          <Tabs.Tab value="done">รอรับ ({groups.done.length})</Tabs.Tab>
-          <Tabs.Tab value="closed">จบแล้ว ({groups.closed.length})</Tabs.Tab>
-          <Tabs.Tab value="all">ทั้งหมด ({groups.all.length})</Tabs.Tab>
+        <Tabs.List className="w-full overflow-x-auto scrollbar-hide">
+          <Tabs.Tab value="todo" count={groups.todo.length}>ต้องทำ</Tabs.Tab>
+          <Tabs.Tab value="done" count={groups.done.length}>รอรับ</Tabs.Tab>
+          <Tabs.Tab value="closed" count={groups.closed.length}>จบแล้ว</Tabs.Tab>
+          <Tabs.Tab value="all" count={groups.all.length}>ทั้งหมด</Tabs.Tab>
         </Tabs.List>
       </Tabs>
 
@@ -123,36 +111,33 @@ export default function CakeQueueView() {
                   <img
                     src={`https://siwaracafe.com/${o.img}`}
                     alt={o.designName || 'ลายเค้ก'}
+                    width={96}
+                    height={96}
                     loading="lazy"
-                    className="w-24 h-24 rounded-xl object-cover shrink-0 border border-[var(--border-color)]"
+                    decoding="async"
+                    className="w-24 h-24 rounded-[var(--radius-sm)] object-cover shrink-0 border border-[var(--border-color)]"
                   />
                 ) : (
-                  <div className="w-24 h-24 rounded-xl shrink-0 border border-dashed border-[var(--border-color)]
-                                  flex items-center justify-center text-[10px] text-center text-[var(--text-muted)] p-1">
+                  <div className="w-24 h-24 rounded-[var(--radius-sm)] shrink-0 border border-dashed border-[var(--border-color)]
+                                  flex items-center justify-center text-xs leading-[18px] text-center text-[var(--text-muted)] p-1">
                     ลูกค้าส่งรูปเอง<br />ดูในแชท
                   </div>
                 )}
 
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${TONE[flow.tone]}`}>
-                      <StatusIcon size={11} className="inline -mt-0.5 mr-1" />{flow.label}
-                    </span>
-                    <code className="text-[11px] text-[var(--text-muted)]">{o.code}</code>
-                    {o.rush && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 border border-orange-200">
-                        <Zap size={11} className="inline -mt-0.5 mr-0.5" />ขอด่วน
-                      </span>
-                    )}
+                    <Badge tone={TONE[flow.tone]} icon={<StatusIcon size={12} />}>{flow.label}</Badge>
+                    <code className="text-xs text-[var(--text-muted)]">{o.code}</code>
+                    {o.rush && <Badge tone="warn" icon={<Zap size={12} />}>ขอด่วน</Badge>}
                   </div>
 
-                  <div className="font-medium text-sm truncate">{o.designName || o.design || 'ไม่ระบุลาย'}</div>
-                  <div className="text-xs text-[var(--text-secondary)]">
+                  <div className="font-semibold leading-normal truncate text-[var(--text-primary)]">{o.designName || o.design || 'ไม่ระบุลาย'}</div>
+                  <div className="text-sm text-[var(--text-secondary)]">
                     {[o.size, o.flavor].filter(Boolean).join(' · ')}
                   </div>
-                  {o.msg && <div className="text-xs text-[var(--text-secondary)]">เขียนหน้าเค้ก: “{o.msg}”</div>}
+                  {o.msg && <div className="text-sm text-[var(--text-secondary)]">เขียนหน้าเค้ก: “{o.msg}”</div>}
 
-                  <div className="text-xs font-medium">
+                  <div className="text-sm font-medium text-[var(--text-primary)]">
                     รับ {o.pickupDate || '-'} {o.pickupTime || ''}
                     <span className="ml-2 text-[var(--text-muted)]">
                       {String(o.fulfill || '').includes('ส่ง')
@@ -161,30 +146,30 @@ export default function CakeQueueView() {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs flex-wrap">
+                  <div className="flex items-center gap-2 text-sm flex-wrap text-[var(--text-primary)]">
                     <span>{o.name || '-'}</span>
                     {o.tel && (
-                      <a href={`tel:${o.tel}`} className="text-[var(--accent-emerald)] inline-flex items-center gap-1">
+                      <a href={`tel:${o.tel}`} className="min-h-11 text-[var(--accent-soft-fg)] inline-flex items-center gap-1">
                         <Phone size={12} />{o.tel}
                       </a>
                     )}
-                    {!!o.total && <span className="ml-auto font-semibold">~{baht(o.total)} บาท</span>}
+                    {!!o.total && <span className="ml-auto font-semibold num">~{formatBaht(o.total)}</span>}
                   </div>
 
                   <div className="flex gap-2 pt-1 flex-wrap">
                     {flow.next && (
-                      <Button size="sm" disabled={busy === o.id} onClick={() => setStatus(o, flow.next)}>
+                      <Button size="md" disabled={busy === o.id} onClick={() => setStatus(o, flow.next)}>
                         {flow.nextLabel}
                       </Button>
                     )}
                     {o.status !== 'cancelled' && o.status !== 'picked' && (
-                      <Button size="sm" variant="ghost" disabled={busy === o.id} onClick={() => setStatus(o, 'cancelled')}>
+                      <Button size="md" variant="ghost" disabled={busy === o.id} onClick={() => setStatus(o, 'cancelled')}>
                         ยกเลิก
                       </Button>
                     )}
                     {(o.status === 'picked' || o.status === 'cancelled') && (
-                      <Button size="sm" variant="ghost" disabled={busy === o.id} onClick={() => setStatus(o, 'new')}>
-                        <RotateCcw size={13} className="mr-1" />เอากลับเข้าคิว
+                      <Button size="md" variant="ghost" disabled={busy === o.id} onClick={() => setStatus(o, 'new')}>
+                        <RotateCcw size={16} />เอากลับเข้าคิว
                       </Button>
                     )}
                   </div>
@@ -195,9 +180,10 @@ export default function CakeQueueView() {
         </div>
       )}
 
-      <p className="text-[11px] text-[var(--text-muted)] pt-2">
+      <p className="text-xs leading-[18px] text-[var(--text-muted)] pt-2">
         ยอดที่เห็นเป็นยอดประเมินจากตัวเลือกบนเว็บ · ราคาจริงยืนยันกับลูกค้าในแชทเสมอ
       </p>
+      </div>
     </div>
   );
 }

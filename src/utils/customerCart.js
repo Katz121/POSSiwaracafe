@@ -2,6 +2,24 @@ import { computeModifierPrice, roundUpTo5, MILK_OPTIONS, VAT_RATE, getModifierGr
 import { getItemSalePrice, cakeSaleNoteTag, getComboDiscount, isCakeCategory, isCakeSaleActive, supportsSweetnessChoice } from './promotions';
 import { mergeStockLinks } from './stockLinks';
 
+// Fields an order line keeps from its menu item. A menu doc also carries display
+// data (image, description, posterImage, soldCount, flags...) that checkout,
+// kitchen, receipt, stock deduction and reports never read from a line; copying
+// it made every order carry the menu photo (old orders hold ~54 MB of base64).
+// Screens that want a thumbnail look the menu item up by `id`.
+export const ORDER_LINE_FIELDS = [
+  'id', 'name', 'nameEn', 'category', 'price', 'originalPrice', 'quantity', 'note', 'cartId',
+  'beanModifier', 'modifierIds', 'sweetness', 'milkType', 'milkLabel', 'stockLinks', 'promoApplied',
+];
+
+/** Copy only ORDER_LINE_FIELDS (undefined values skipped: Firestore rejects them). */
+export function pickOrderLineFields(source) {
+  const line = {};
+  if (!source) return line;
+  for (const key of ORDER_LINE_FIELDS) if (source[key] !== undefined) line[key] = source[key];
+  return line;
+}
+
 export function buildCartLine(item, modifier = null, sweetness = null, milkType = null, settingsData = {}) {
     // modifier อาจเป็นตัวเดียวหรือเป็นลิสต์ (หนึ่งตัวต่อกลุ่ม เช่น ส้ม + เมล็ดกาแฟ)
     const mods = (Array.isArray(modifier) ? modifier : [modifier]).filter(Boolean);
@@ -42,7 +60,7 @@ export function buildCartLine(item, modifier = null, sweetness = null, milkType 
       }
 
   return {
-          ...item,
+          ...pickOrderLineFields(item),
           cartId,
           price: finalPrice,
           ...saleFields,

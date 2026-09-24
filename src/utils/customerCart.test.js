@@ -64,6 +64,13 @@ describe('shared customer cart pricing', () => {
     expect(buildCheckoutItems([line])[0]).toEqual({ id: 'drink', quantity: 1, modifierIds: ['premium', 'fruit'], sweetness: 50, milkType: 'oat', note: line.note });
     expect(buildCartLine({ ...item, price: 62 }).price).toBe(65);
   });
+  it('never copies menu display data (photo, description) into the line', () => {
+    const menuItem = { ...drink, nameEn: 'Latte', image: 'data:image/png;base64,AAAA', posterImage: 'x.png', description: 'long', descriptionEn: 'long', soldCount: 9, isFeatured: true, allowBeanModifier: false };
+    const line = buildCartLine(menuItem, null, 100, 'oat');
+    for (const key of ['image', 'posterImage', 'description', 'descriptionEn', 'soldCount', 'isFeatured']) expect(line).not.toHaveProperty(key);
+    expect(line).toMatchObject({ id: 'drink', name: 'Latte', nameEn: 'Latte', category: 'Coffee', price: 100, milkType: 'oat', milkLabel: 'นมโอ๊ต' });
+    expect(Object.values(line).includes(undefined)).toBe(false);
+  });
 });
 
 describe('line notes when options are rebuilt', () => {

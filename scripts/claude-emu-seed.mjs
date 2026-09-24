@@ -33,6 +33,14 @@ const revive = (v) => {
   return v;
 };
 
+// บิลเก่ามีรูป base64 ฝังในรายการรวม ~54 MB · emulator (Java) heap เต็มจนค้าง
+// ตัดทิ้งในสำเนาทดสอบ (ระบบจริงไม่แตะ) · EMU_KEEP_IMAGES=1 ถ้าต้องการข้อมูลเหมือนจริงทุกไบต์
+if (process.env.EMU_KEEP_IMAGES !== '1') {
+  (snap.orders || []).forEach(o => (o.items || []).forEach(it => {
+    if (typeof it.image === 'string' && it.image.startsWith('data:')) delete it.image;
+  }));
+}
+
 const base = db.collection('artifacts').doc('siwara-pos-v1').collection('public').doc('data');
 let n = 0;
 for (const [col, docs] of Object.entries(snap)) {
