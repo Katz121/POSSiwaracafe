@@ -1,7 +1,7 @@
-import { STOCK_CATEGORIES } from '../config/constants';
+import { INVENTORY_CATEGORIES } from '../config/constants';
 
-// หมวดหมู่ที่ถือเป็นสินค้าคงคลัง ต้องมีการอัพเดตสต็อกเมื่อมีการซื้อ
-export const INVENTORY_CATEGORIES = ['วัตถุดิบ', ...STOCK_CATEGORIES];
+// หมวดหมู่ที่ถือเป็นสินค้าคงคลัง ต้องมีการอัพเดตสต็อกเมื่อมีการซื้อ · อุปกรณ์/ของใช้ไม่เข้าสต็อก
+export { INVENTORY_CATEGORIES };
 
 // ตรวจสอบว่าหมวดหมู่นี้เป็นสินค้าคงคลังหรือไม่
 export function isInventoryCategory(cat) {

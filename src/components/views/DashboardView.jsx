@@ -8,7 +8,7 @@ import { getISODate, getOrderDate } from '../../utils/calculations';
 import { countUnits } from '../../utils/salesHistory';
 import { computeProfitability } from '../../utils/profitability';
 import { formatThaiDate } from '../../utils/format';
-import { STOCK_CATEGORIES } from '../../config/constants';
+import { INVENTORY_CATEGORIES } from '../../config/constants';
 import { Button, ConfirmModal, DateStepper, IconButton, ListRow, PageHeader, Sheet, useMediaQuery, useToast } from '../ui';
 import { compareMonths, WASTE_CATEGORY } from './overview/monthCompare';
 import { computeTodayStats } from './overview/todayStats';
@@ -20,7 +20,6 @@ import MenuPerformance from './overview/MenuPerformance';
 import AiConsultantSheet from './overview/AiConsultantSheet';
 
 // หมวดที่ถือว่า "ซื้อของเข้าคลัง" ไม่ใช่ค่าใช้จ่ายของงวด (ถูกนับผ่าน COGS แทน)
-const INVENTORY_CATEGORIES = ['วัตถุดิบ', ...STOCK_CATEGORIES];
 
 /**
  * DashboardView · ภาพรวมร้าน (UX v2 · WP3)

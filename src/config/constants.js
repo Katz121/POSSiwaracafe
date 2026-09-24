@@ -117,6 +117,13 @@ export const inferStockCategory = (name) => {
 };
 
 export const getStockCategory = (item) => item?.category || inferStockCategory(item?.name);
+
+// อุปกรณ์/ของใช้ (กระปุก แก้วตวง ผ้า ถัง) ใช้ซ้ำได้ ไม่หมดไปกับการขาย
+// → ซื้อแล้วไม่เข้าสต็อก · ไม่เตือนใกล้หมด · นับเป็นรายจ่ายของงวด (ไม่ใช่ต้นทุนผ่านสูตร)
+export const EQUIPMENT_CATEGORY = 'อุปกรณ์และของใช้';
+export const isEquipmentStock = (item) => getStockCategory(item) === EQUIPMENT_CATEGORY;
+// หมวดรายจ่ายที่ถือเป็น "ซื้อของเข้าคลัง" (ตัดผ่านสูตร/COGS) · ไม่รวมอุปกรณ์
+export const INVENTORY_CATEGORIES = ['วัตถุดิบ', ...STOCK_CATEGORIES.filter((c) => c !== EQUIPMENT_CATEGORY)];
 export const DEFAULT_MIN_QUANTITY = 5;               // จำนวนขั้นต่ำเตือนสต็อกใกล้หมด
 
 // ==================== POS ====================

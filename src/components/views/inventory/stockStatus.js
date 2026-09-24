@@ -1,6 +1,6 @@
 // Pure helpers for the inventory screens (status, filters, route params).
 import { isArchivedStock } from '../../../utils/stockMerge';
-import { DEFAULT_MIN_QUANTITY, DEFAULT_STOCK_UNIT, STOCK_CATEGORIES, getStockCategory } from '../../../config/constants';
+import { DEFAULT_MIN_QUANTITY, DEFAULT_STOCK_UNIT, STOCK_CATEGORIES, getStockCategory, isEquipmentStock } from '../../../config/constants';
 
 /**
  * Reorder point. Same fallback as the dashboard's low-stock alert
@@ -14,9 +14,12 @@ export const STOCK_STATUS = {
   out: { key: 'out', label: 'หมด', tone: 'danger', rank: 2 },
   low: { key: 'low', label: 'ใกล้หมด', tone: 'warn', rank: 1 },
   ok: { key: 'ok', label: 'พอ', tone: 'ok', rank: 0 },
+  equipment: { key: 'equipment', label: 'ของใช้', tone: 'neutral', rank: 0 },
 };
 
 export function stockStatus(item) {
+  // อุปกรณ์/ของใช้ ใช้ซ้ำได้ ไม่มีวันใกล้หมด
+  if (isEquipmentStock(item)) return STOCK_STATUS.equipment;
   const qty = Number(item?.quantity) || 0;
   if (qty < 0) return STOCK_STATUS.negative;
   if (qty === 0) return STOCK_STATUS.out;

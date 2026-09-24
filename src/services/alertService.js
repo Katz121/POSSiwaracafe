@@ -3,6 +3,7 @@
  * Analyzes shop data and generates intelligent alerts
  */
 import { getOrderDate } from '../utils/calculations';
+import { isEquipmentStock } from '../config/constants';
 import { auditMenuLinks, auditDay } from '../utils/stockAudit';
 import { isArchivedStock } from '../utils/stockMerge';
 
@@ -48,7 +49,8 @@ export const generateSmartAlerts = (data) => {
 
   // 1. Low Stock Alerts
   // สต็อกที่ถูกรวมไปแล้ว (ยอด 0) ไม่ใช่ของหมด · ยังส่งมาทั้งหมดเพื่อให้ตรวจบิลเก่าเดินตาม mergedInto ได้
-  const lowStockItems = stock.filter(s => !isArchivedStock(s)).filter(s => {
+  // ของใช้/อุปกรณ์ใช้ซ้ำได้ ไม่เตือนใกล้หมด
+  const lowStockItems = stock.filter(s => !isArchivedStock(s) && !isEquipmentStock(s)).filter(s => {
     const qty = Number(s.quantity) || 0;
     const minQty = Number(s.minQuantity) || 5;
     return qty <= minQty;

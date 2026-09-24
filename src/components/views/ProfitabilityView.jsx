@@ -6,11 +6,10 @@ import { useAppContext } from '../../context/AppContext';
 import { getISODate, getOrderDate } from '../../utils/calculations';
 import { computeProfitability } from '../../utils/profitability';
 import { formatBaht, formatNumber, formatPercent, formatThaiDate } from '../../utils/format';
-import { STOCK_CATEGORIES } from '../../config/constants';
+import { INVENTORY_CATEGORIES } from '../../config/constants';
 import { Badge, Banner, Button, DataTable, DateStepper, PageHeader, SectionCard, SegmentedControl, StatCard } from '../ui';
 
 // การซื้อเข้าคลังต้องไม่ถูกหักซ้ำกับต้นทุนที่ใช้ตอนขาย
-const INVENTORY_CATEGORIES = ['วัตถุดิบ', ...STOCK_CATEGORIES];
 // ปัดเป็นบาทเต็มให้ตรงกับหน้าอื่นทั้งแอป · เศษสตางค์บนยอดเฉลี่ยต่อบิลไม่ได้ช่วย
 // ตัดสินใจอะไร มีแต่ทำให้แถวตัวเลขอ่านยาก
 const money = value => formatBaht(value, { decimals: 0 });
