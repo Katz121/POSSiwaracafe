@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Package, PackagePlus, PackageMinus, Pencil, Plus, Trash2, SearchX } from 'lucide-react';
+import { Package, PackagePlus, PackageMinus, Pencil, Plus, Trash2, SearchX, CookingPot, Combine, SpellCheck } from 'lucide-react';
 import { collection, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useDataContext, useUIContext } from '../../context/AppContext';
@@ -7,9 +7,14 @@ import { useNavigate, useRouteParams } from '../../navigation';
 import { getISODate } from '../../utils/calculations';
 import { formatNumber } from '../../utils/format';
 import {
-  Button, DataTable, EmptyState, FilterChips, NumberStepper, PageHeader, Skeleton, Toolbar,
+  Badge, Banner, Button, DataTable, EmptyState, FilterChips, NumberStepper, PageHeader, Skeleton, Toolbar,
   useMediaQuery, useToast,
 } from '../ui';
+import { isArchivedStock, planUnitFixes, suggestDuplicates } from '../../utils/stockMerge';
+import { isPrep } from '../../utils/production';
+import MergeSheet from './inventory/MergeSheet';
+import { runMerge, runUnitFixes } from './production/productionActions';
+import { auth } from '../../services/firebase';
 import { STOCK_CATEGORIES, getStockCategory } from '../../config/constants';
 import StockSheet from './inventory/StockSheet';
 import StockStatusPill from './inventory/StockStatusPill';
@@ -26,7 +31,10 @@ const qty = (n) => formatNumber(n, { maxDecimals: 3 });
 const stop = { onClick: (e) => e.stopPropagation(), onKeyDown: (e) => e.stopPropagation() };
 
 export default function StockView() {
-  const { stock, isSyncing } = useDataContext();
+  const { stock: allStock, menu = [], beanModifiers = [], isSyncing } = useDataContext();
+  // merged (archived) docs stay in `allStock` for history · the page works on the live ones
+  const stock = useMemo(() => allStock.filter((s) => !isArchivedStock(s)), [allStock]);
+  const mergedCount = allStock.length - stock.length;
   const { runDbAction } = useUIContext();
   const params = useRouteParams();
   const navigate = useNavigate();
@@ -50,7 +58,7 @@ export default function StockView() {
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
 
-  const sorted = useMemo(() => sortStockForReview(stock), [stock]);
+  const sorted = useMemo(() => sortStockForReview(filter === 'merged' ? allStock : stock), [filter, allStock, stock]);
   const counts = useMemo(() => ({
     all: stock.length,
     low: stock.filter(needsRestock).length,
@@ -66,6 +74,30 @@ export default function StockView() {
     && matchesStockSearch(item, search)
   )), [sorted, filter, category, search]);
   const filtering = filter !== 'all' || category !== 'all' || search.trim() !== '';
+
+  // ── รวมรายการซ้ำ + หน่วยสะกดผิด
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const strongDupes = useMemo(() => suggestDuplicates(allStock).filter((p) => p.strength === 'strong').length, [allStock]);
+  const unitFixes = useMemo(() => planUnitFixes(stock), [stock]);
+  const doMerge = async ({ keepId, mergeIds }) => {
+    setMergeBusy(true);
+    try {
+      const plan = await runMerge({ keepId, mergeIds, stock: allStock, menu, beanModifiers, by: auth.currentUser?.email || '' });
+      toast.success(`รวมเข้า "${plan.keep.name}" แล้ว · ย้ายเมนู ${plan.summary.menuCount} รายการ`);
+      return true;
+    } catch (e) {
+      console.error(e);
+      toast.error(`รวมไม่สำเร็จ: ${e.message}`);
+      return false;
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+  const fixUnits = async () => {
+    const ok = await runDbAction(() => runUnitFixes(unitFixes), 'แก้หน่วยไม่สำเร็จ');
+    if (ok) toast.success(`แก้หน่วย ${unitFixes.length} รายการแล้ว`);
+  };
   const clearFilters = () => { setFilter('all'); setCategory('all'); setSearch(''); };
 
   // ── sheet + confirm state
@@ -164,12 +196,16 @@ export default function StockView() {
   };
 
   // ── rendering helpers
-  const menuItems = (item) => [
+  const menuItems = (item) => (isArchivedStock(item) ? [] : [
+    ...(isPrep(item) ? [{ key: 'make', label: 'ทำของเตรียม', icon: CookingPot, onSelect: () => navigate('production', { make: item.id }) }] : []),
     { key: 'intake', label: 'รับของเข้า', icon: PackagePlus, onSelect: () => openSheet('intake', item) },
     { key: 'adjust', label: 'ตัดของเสีย / ปรับยอด', icon: PackageMinus, onSelect: () => openSheet('adjust', item) },
     { key: 'edit', label: 'แก้ไข', icon: Pencil, onSelect: () => openSheet('edit', item) },
     { key: 'delete', label: 'ลบวัตถุดิบ', icon: Trash2, danger: true, onSelect: () => setToDelete(item) },
-  ];
+  ]);
+  const rowTag = (item) => (isArchivedStock(item)
+    ? <Badge tone="neutral" className="shrink-0">รวมแล้ว → {allStock.find((s) => s.id === item.mergedInto)?.name || '?'}</Badge>
+    : isPrep(item) ? <Badge tone="accent" icon={<CookingPot size={12} />} className="shrink-0">ของเตรียม</Badge> : null);
   const stepper = (item, size = 'md') => (
     <NumberStepper
       size={size}
@@ -187,7 +223,10 @@ export default function StockView() {
       header: 'วัตถุดิบ',
       render: (_, r) => (
         <div className="min-w-0 py-1.5">
-          <p className="truncate font-semibold text-[var(--text-primary)]">{String(r.name)}</p>
+          <p className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-semibold text-[var(--text-primary)]">{String(r.name)}</span>
+            {rowTag(r)}
+          </p>
           <p className="truncate text-xs text-[var(--text-muted)]">{getStockCategory(r)}</p>
         </div>
       ),
@@ -214,8 +253,8 @@ export default function StockView() {
       width: 212,
       render: (_, r) => (
         <div className="flex items-center justify-end gap-1" {...stop}>
-          {stepper(r)}
-          <RowMenu items={menuItems(r)} label={`ตัวเลือกของ ${r.name}`} />
+          {!isArchivedStock(r) && stepper(r)}
+          {!isArchivedStock(r) && <RowMenu items={menuItems(r)} label={`ตัวเลือกของ ${r.name}`} />}
         </div>
       ),
     },
@@ -249,6 +288,9 @@ export default function StockView() {
         sticky={false}
         actions={(
           <>
+            <Button variant="secondary" leftIcon={<Combine size={18} />} onClick={() => setMergeOpen(true)}>
+              รวมรายการซ้ำ{strongDupes > 0 ? ` (${strongDupes})` : ''}
+            </Button>
             <Button variant="secondary" leftIcon={<PackagePlus size={18} />} onClick={() => openSheet('intake', null, { pick: true })}>
               รับของเข้า
             </Button>
@@ -284,6 +326,7 @@ export default function StockView() {
               { value: 'all', label: 'ทั้งหมด', count: counts.all },
               { value: 'low', label: 'ต้องเติม', count: counts.low, tone: 'warn' },
               { value: 'out', label: 'หมด/ติดลบ', count: counts.out, tone: 'danger' },
+              ...(mergedCount > 0 || filter === 'merged' ? [{ value: 'merged', label: 'รวมแล้ว', count: mergedCount }] : []),
             ]}
           />
         )}
@@ -295,6 +338,18 @@ export default function StockView() {
 
       <div className="flex-1 min-h-0 overflow-y-auto px-[var(--page-pad)] pb-24 md:pb-10">
         <div className="max-w-[1400px] mx-auto">
+          {unitFixes.length > 0 && !isSyncing && (
+            <Banner
+              tone="warn"
+              icon={SpellCheck}
+              className="mb-3"
+              title={`หน่วยสะกดผิด ${unitFixes.length} รายการ`}
+              action={{ label: 'แก้หน่วยสะกดผิด', onClick: fixUnits }}
+            >
+              {unitFixes.slice(0, 3).map((f) => `${f.name}: ${f.from} → ${f.to}`).join(' · ')}
+              {unitFixes.length > 3 ? ` · อีก ${unitFixes.length - 3}` : ''} · ปริมาณเท่าเดิม
+            </Banner>
+          )}
           {wide ? (
             <DataTable
               caption="รายการวัตถุดิบในสต็อก"
@@ -302,7 +357,7 @@ export default function StockView() {
               rows={rows}
               loading={isSyncing}
               cardBreakpoint={false}
-              onRowClick={(r) => openSheet('detail', r)}
+              onRowClick={(r) => { if (!isArchivedStock(r)) openSheet('detail', r); }}
               selectedKey={sheet?.id}
               emptyState={emptyNode}
             />
@@ -317,16 +372,16 @@ export default function StockView() {
                   <div className="flex items-start gap-1 pr-1">
                     <button
                       type="button"
-                      onClick={() => openSheet('detail', item)}
+                      onClick={() => { if (!isArchivedStock(item)) openSheet('detail', item); }}
                       className="min-w-0 flex-1 rounded-[var(--radius)] px-4 pt-3 pb-1 text-left outline-none focus-visible:shadow-[var(--focus-ring)]"
                     >
                       <span className="flex items-center gap-2">
                         <span className="min-w-0 truncate font-semibold text-[var(--text-primary)]">{String(item.name)}</span>
-                        <StockStatusPill item={item} />
+                        {rowTag(item) || <StockStatusPill item={item} />}
                       </span>
                       <span className="block truncate text-xs text-[var(--text-muted)]">{getStockCategory(item)}</span>
                     </button>
-                    <span className="pt-1"><RowMenu items={menuItems(item)} label={`ตัวเลือกของ ${item.name}`} /></span>
+                    {!isArchivedStock(item) && <span className="pt-1"><RowMenu items={menuItems(item)} label={`ตัวเลือกของ ${item.name}`} /></span>}
                   </div>
                   <div className="flex items-center justify-between gap-3 px-4 pb-3">
                     <p className="num min-w-0">
@@ -334,7 +389,7 @@ export default function StockView() {
                       <span className="ml-1 text-sm text-[var(--text-secondary)]">{item.unit}</span>
                       <span className="block text-xs text-[var(--text-muted)]">ขั้นต่ำ {qty(reorderPoint(item))}</span>
                     </p>
-                    {stepper(item)}
+                    {!isArchivedStock(item) && stepper(item)}
                   </div>
                 </li>
               ))}
@@ -355,6 +410,16 @@ export default function StockView() {
         onSaveItem={saveStockItem}
         onAdjust={handleAdjustStock}
         onIntake={handleIntake}
+      />
+
+      <MergeSheet
+        open={mergeOpen}
+        onClose={() => setMergeOpen(false)}
+        stock={allStock}
+        menu={menu}
+        beanModifiers={beanModifiers}
+        busy={mergeBusy}
+        onMerge={doMerge}
       />
 
       <TopConfirm

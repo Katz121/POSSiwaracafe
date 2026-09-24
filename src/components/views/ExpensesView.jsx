@@ -32,7 +32,9 @@ function shiftToMonth(isoDate, isoMonth) {
 }
 
 export default function ExpensesView() {
-  const { expenses, orders, quickExpenses, stock } = useDataContext();
+  // ของที่ถูกรวมไปแล้วไม่ให้เลือก/จับคู่ใบเสร็จ · ชื่อเดิมอยู่ใน purchaseAliases ของตัวที่เก็บไว้
+  const { expenses, orders, quickExpenses, stock: allStock = [], activeStock } = useDataContext();
+  const stock = activeStock || allStock;
   const { runDbAction, callGeminiAPI, handleViewChange, setAdminTab } = useUIContext();
   const params = useRouteParams();
   const navigate = useNavigate();

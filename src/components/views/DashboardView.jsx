@@ -3,6 +3,7 @@ import { BarChart3, Bot, FileText, MoreHorizontal } from 'lucide-react';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useAppContext } from '../../context/AppContext';
+import { isArchivedStock } from '../../utils/stockMerge';
 import { getISODate, getOrderDate } from '../../utils/calculations';
 import { countUnits } from '../../utils/salesHistory';
 import { computeProfitability } from '../../utils/profitability';
@@ -154,7 +155,7 @@ const DashboardView = ({ onNavigate }) => {
         const totalWasteCost = wasteExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
         // b. Low Stock
-        const lowStockCount = stock.filter(s => Number(s.quantity) <= Number(s.minQuantity || 5)).length;
+        const lowStockCount = stock.filter(s => !isArchivedStock(s) && Number(s.quantity) <= Number(s.minQuantity || 5)).length;
 
         // c. Top Products
         const monthOrders = orders.filter(o => o.status === 'completed' && String(getOrderDate(o)).startsWith(currentMonth));

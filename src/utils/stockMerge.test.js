@@ -75,6 +75,26 @@ describe('suggestDuplicates', () => {
   it('marks a trailing qualifier as weak only', () => {
     expect(has('white', 'red')?.strength).toBe('weak');
   });
+  it('skips different sizes and short near-names', () => {
+    const extra = suggestDuplicates([
+      { id: 'b1', name: 'กล่องเค้ก ขนาด 1 ปอนด์', unit: 'ชิ้น' },
+      { id: 'b2', name: 'กล่องเค้ก ขนาด 2 ปอนด์', unit: 'ชิ้น' },
+      { id: 'c1', name: 'แก้ว 16 oz', unit: 'ใบ' },
+      { id: 'c2', name: 'แก้ว 14 oz', unit: 'ใบ' },
+      { id: 'm1', name: 'นมจืด', unit: 'กรัม' },
+      { id: 'm2', name: 'เนยจืด', unit: 'กรัม' },
+      { id: 'd1', name: 'น้ำดื่ม', unit: 'ขวด' },
+      { id: 'd2', name: 'น้ำดื้ม', unit: 'ขวด' },
+      { id: 'e1', name: 'บลูเบอรี่', unit: 'กรัม' },
+      { id: 'e2', name: 'บลูเบอรี่สด', unit: 'กรัม' },
+    ]);
+    const pair = (a, b) => extra.find((p) => p.ids.includes(a) && p.ids.includes(b));
+    expect(pair('b1', 'b2')).toBeUndefined();
+    expect(pair('c1', 'c2')).toBeUndefined();
+    expect(pair('m1', 'm2')).toBeUndefined();
+    expect(pair('d1', 'd2')?.strength).toBe('strong');
+    expect(pair('e1', 'e2')?.strength).toBe('weak');
+  });
   it('never pairs different units or archived items', () => {
     expect(has('egg', 'eggkg')).toBeUndefined();
     expect(has('egg', 'old')).toBeUndefined();

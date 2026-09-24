@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { isArchivedStock } from '../../utils/stockMerge';
 import { Settings } from 'lucide-react';
 import { doc, collection, addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
@@ -175,7 +176,8 @@ export default function AdminView() {
   const stockLinkGroups = useMemo(() => {
     const categoryOrder = new Map(STOCK_CATEGORIES.map((category, index) => [category, index]));
     const groups = new Map();
-    stock.forEach(item => {
+    // สต็อกที่ถูกรวมไปแล้ว (mergedInto) ไม่ให้เลือกผูกใหม่
+    stock.filter(item => !isArchivedStock(item)).forEach(item => {
       const category = getStockCategory(item);
       if (!groups.has(category)) groups.set(category, []);
       groups.get(category).push(item);

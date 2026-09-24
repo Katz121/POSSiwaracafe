@@ -4,6 +4,7 @@
  */
 import { getOrderDate } from '../utils/calculations';
 import { auditMenuLinks, auditDay } from '../utils/stockAudit';
+import { isArchivedStock } from '../utils/stockMerge';
 
 // Alert types
 export const ALERT_TYPES = {
@@ -45,7 +46,8 @@ export const generateSmartAlerts = (data) => {
   // getOrderDate imported from utils/calculations
 
   // 1. Low Stock Alerts
-  const lowStockItems = stock.filter(s => {
+  // สต็อกที่ถูกรวมไปแล้ว (ยอด 0) ไม่ใช่ของหมด · ยังส่งมาทั้งหมดเพื่อให้ตรวจบิลเก่าเดินตาม mergedInto ได้
+  const lowStockItems = stock.filter(s => !isArchivedStock(s)).filter(s => {
     const qty = Number(s.quantity) || 0;
     const minQty = Number(s.minQuantity) || 5;
     return qty <= minQty;

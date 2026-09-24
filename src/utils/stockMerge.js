@@ -98,13 +98,16 @@ function middleInsertion(short, long, maxInsert = 5) {
   return tail.length >= 2 && long.endsWith(tail);
 }
 
+const digitsOf = (norm) => (norm.match(/\d+(?:[./]\d+)?/g) || []).join(',');
+
 /** หน่วยเทียบกันได้ไหม · "กรัท" ≡ "กรัม" */
 export const sameUnit = (a, b) => normalizeUnit(a) === normalizeUnit(b);
 
 /**
  * คู่สต็อกที่น่าจะเป็นของชิ้นเดียวกัน
- * strong = ระยะแก้ไข ≤ 2 (พิมพ์ผิด ไข่/ไข) หรือแทรกคำกลางชื่อ (วิป/วิปปิ้ง)
+ * strong = พิมพ์ผิดเล็กน้อย (ไข่/ไข · ระยะแก้ไข ≤ 1 ชื่อสั้น, ≤ 2 ชื่อยาว) หรือแทรกคำกลางชื่อ (วิป/วิปปิ้ง)
  * weak   = ชื่อหนึ่งอยู่ในอีกชื่อ (น้ำตาลทราย ⊂ น้ำตาลทรายแดง) · มักเป็นของคนละตัว ให้คนตัดสิน
+ * ข้าม   = ตัวเลขในชื่อต่างกัน (กล่อง 1 ปอนด์ / 2 ปอนด์) · คนละขนาด
  * หน่วยต้องเทียบกันได้ และต้องเป็นชนิดเดียวกัน (วัตถุดิบ/ของเตรียม)
  *
  * @returns {Array<{ key, ids:[string,string], names:[string,string], unit, strength:'strong'|'weak', reason }>}
@@ -120,13 +123,20 @@ export function suggestDuplicates(stock = []) {
       const b = items[j];
       if (a.unit !== b.unit || a.kind !== b.kind) continue;
       const [short, long] = a.norm.length <= b.norm.length ? [a.norm, b.norm] : [b.norm, a.norm];
+      // ตัวเลขต่างกัน = คนละขนาด (กล่องเค้ก 1 ปอนด์ / 2 ปอนด์, แก้ว 14/16 oz) ไม่ใช่พิมพ์ผิด
+      const digitsA = digitsOf(a.norm);
+      const digitsB = digitsOf(b.norm);
+      if (digitsA && digitsB && digitsA !== digitsB) continue;
       let strength = null;
       let reason = '';
       if (short === long) { strength = 'strong'; reason = 'ชื่อเหมือนกัน'; }
-      else if (short.length >= 4 && editDistance(short, long) <= 2) { strength = 'strong'; reason = 'สะกดต่างกันนิดเดียว'; }
+      // ต่อท้าย/นำหน้า มักเป็นคนละอย่าง (น้ำตาลทราย ⊂ น้ำตาลทรายแดง) · ให้คนตัดสิน
+      else if (long.includes(short)) { strength = 'weak'; reason = 'ชื่อหนึ่งอยู่ในอีกชื่อ'; }
+      // ชื่อสั้นยอมพิมพ์ผิดได้ 1 ตัว (นมจืด/เนยจืด ต่าง 2 = คนละของ) · ชื่อยาวยอม 2
+      else if (short.length >= 4 && editDistance(short, long) <= (short.length >= 6 ? 2 : 1)) { strength = 'strong'; reason = 'สะกดต่างกันนิดเดียว'; }
       else if (middleInsertion(short, long)) { strength = 'strong'; reason = 'ชื่อต่างกันแค่คำกลาง'; }
-      else if (short.length >= 2 && long.includes(short)) { strength = 'weak'; reason = 'ชื่อหนึ่งอยู่ในอีกชื่อ'; }
       if (!strength) continue;
+      if (strength === 'strong' && digitsA !== digitsB) { strength = 'weak'; }
       // ตัวที่ขายผ่านบ่อยกว่า/มียอดมากกว่ามาก่อน · หน้าจอเลือกให้เป็นตัวที่เก็บไว้
       const pair = [a.s, b.s].sort((x, y) => num(y.quantity) - num(x.quantity));
       out.push({
