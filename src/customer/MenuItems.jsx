@@ -129,7 +129,7 @@ export const MenuRow = memo(function MenuRow({ item, onAdd, onView, settingsData
       <button
         type="button"
         tabIndex={canView ? 0 : -1}
-        aria-label={canView ? `${t('viewDetails')} ${name}` : undefined}
+        aria-label={canView ? `${item.posterImage ? `${t('posterBadgeShort')} · ` : ''}${t('viewDetails')} ${name}` : undefined}
         aria-hidden={canView ? undefined : true}
         onClick={canView ? (e) => { e.stopPropagation(); onView(item); } : undefined}
         className="relative shrink-0 w-24 h-24 rounded-[var(--radius-sm)] overflow-hidden bg-[var(--accent-soft)] flex items-center justify-center"

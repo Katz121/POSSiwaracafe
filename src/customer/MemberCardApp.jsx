@@ -96,7 +96,7 @@ export default function MemberCardApp() {
 
   return (
     <div className="min-h-dvh bg-[var(--bg-canvas)] text-[var(--text-primary)] flex flex-col items-center px-4 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))]">
-      <div className="w-full max-w-sm">
+      <main className="w-full max-w-sm">
 
         <header className="flex items-center gap-3 mb-6">
           <span className="shrink-0 w-12 h-12 rounded-[var(--radius)] bg-[var(--surface-inverse)] text-[var(--text-on-inverse)] flex items-center justify-center" aria-hidden="true">
@@ -218,7 +218,7 @@ export default function MemberCardApp() {
         <p className="text-xs text-[var(--text-muted)] text-center mt-6 leading-relaxed">
           แต้มผูกกับเบอร์โทร · สั่งครั้งไหนใส่เบอร์เดิม แต้มสะสมต่อให้เอง
         </p>
-      </div>
+      </main>
     </div>
   );
 }

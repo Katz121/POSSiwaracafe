@@ -398,8 +398,8 @@ function LanguageToggle({ lang, onToggle }) {
       type="button"
       onClick={onToggle}
       className="shrink-0 flex items-center gap-0.5 p-1 min-h-11 rounded-full bg-[var(--bg-sunken)] text-xs font-bold"
-      aria-label="Toggle language / สลับภาษา"
     >
+      <span className="sr-only">สลับภาษา / Toggle language: </span>
       {['th', 'en'].map((code) => (
         <span
           key={code}
@@ -1655,7 +1655,7 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   if (shouldShowQrLoadError({ loadError, menuReady, hasPainted })) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-secondary)] px-6">
+      <main className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-secondary)] px-6">
         <EmptyState
           icon="error"
           title={t('menuLoadSlow')}
@@ -1663,16 +1663,16 @@ function CustomerOrderApp() {
           actionLabel={t('menuLoadRetry')}
           onAction={handleRetryLoad}
         />
-      </div>
+      </main>
     );
   }
 
   if (shouldShowQrSpinner({ loading, authed, menuReady, loadError, hasPainted })) {
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-secondary)] gap-4">
+      <main className="flex flex-col items-center justify-center min-h-screen bg-[var(--bg-secondary)] gap-4" aria-busy="true">
         <Spinner size="xl" color="emerald" />
-          <p className="text-[var(--text-muted)] font-medium text-sm">{t('appLoading')}</p>
-      </div>
+        <p className="text-[var(--text-muted)] font-medium text-sm">{t('appLoading')}</p>
+      </main>
     );
   }
 
