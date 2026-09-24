@@ -1,23 +1,28 @@
 import { useMemo, useState } from 'react';
 import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { BookOpen, Search, Lock, Pencil } from 'lucide-react';
+import { BookOpen, Lock, Pencil, ChevronRight, Coffee } from 'lucide-react';
 import { db, appId } from '../../services/firebase';
-import { useAppContext } from '../../context/AppContext';
-import { Button, Input, Textarea, Modal, EmptyState, useToast } from '../ui';
+import { useDataContext, useConfigContext, useUIContext } from '../../context/AppContext';
+import { Badge, Button, Input, Textarea, Modal, EmptyState, FilterChips, PageHeader, Sheet, Toolbar, useToast } from '../ui';
 import RecipeSheet from '../RecipeSheet';
 
 const ALL = 'ทั้งหมด';
+const hasRecipe = (recipes, id) => Boolean(String(recipes[id]?.text || '').trim());
 
 /**
  * สูตรเมนู — every staff member can read; editing asks for the admin PIN each
  * time (when PIN security is on). Recipes live in recipes/{menuId}, separate
  * from menu docs because menu is published to the customer QR page.
+ * UX v2 (WP5): PageHeader + Toolbar, "ยังไม่มีสูตร" chip, dense list, editor in a Sheet.
  */
 export default function RecipesView() {
-  const { menu, recipes = {}, dynamicCategories, pinEnabled, adminPin, runDbAction } = useAppContext();
+  const { menu, recipes = {}, dynamicCategories } = useDataContext();
+  const { pinEnabled, adminPin } = useConfigContext();
+  const { runDbAction } = useUIContext();
   const toast = useToast();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState(ALL);
+  const [recipeFilter, setRecipeFilter] = useState('all'); // all | missing | done
   const [viewing, setViewing] = useState(null); // menu item
   const [pinFor, setPinFor] = useState(null); // menu item waiting for PIN
   const [pin, setPin] = useState('');
@@ -33,15 +38,20 @@ export default function RecipesView() {
     return [ALL, ...order.filter((c) => used.includes(c)), ...used.filter((c) => !order.includes(c))];
   }, [menu, dynamicCategories]);
 
-  const items = useMemo(() => {
+  const searched = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (menu || [])
       .filter((m) => (category === ALL || m.category === category))
-      .filter((m) => !q || String(m.name || '').toLowerCase().includes(q) || String(recipes[m.id]?.text || '').toLowerCase().includes(q))
-      .sort((a, b) => String(a.category || '').localeCompare(String(b.category || ''), 'th') || String(a.name || '').localeCompare(String(b.name || ''), 'th'));
+      .filter((m) => !q || String(m.name || '').toLowerCase().includes(q) || String(recipes[m.id]?.text || '').toLowerCase().includes(q));
   }, [menu, recipes, category, query]);
 
-  const withRecipe = (menu || []).filter((m) => String(recipes[m.id]?.text || '').trim()).length;
+  const items = useMemo(() => searched
+    .filter((m) => recipeFilter === 'all' || (recipeFilter === 'missing' ? !hasRecipe(recipes, m.id) : hasRecipe(recipes, m.id)))
+    .sort((a, b) => String(a.category || '').localeCompare(String(b.category || ''), 'th') || String(a.name || '').localeCompare(String(b.name || ''), 'th')),
+  [searched, recipes, recipeFilter]);
+
+  const withRecipe = (menu || []).filter((m) => hasRecipe(recipes, m.id)).length;
+  const missingInView = searched.filter((m) => !hasRecipe(recipes, m.id)).length;
 
   const startEdit = (item) => {
     setViewing(null);
@@ -75,53 +85,71 @@ export default function RecipesView() {
   };
 
   return (
-    <div className="h-full flex flex-col gap-4 p-4 md:p-6 overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-500"><BookOpen size={22} /></div>
-          <div>
-            <h1 className="text-xl md:text-2xl font-semibold text-[var(--text-primary)]">สูตรเมนู</h1>
-            <p className="text-xs text-[var(--text-muted)]">มีสูตรแล้ว {withRecipe} จาก {(menu || []).length} เมนู · แตะเมนูเพื่อดู{needsPin ? ' · แก้ไขต้องใส่ PIN' : ''}</p>
+    <div className="min-h-full bg-[var(--bg-canvas)] text-[var(--text-primary)]">
+      <PageHeader
+        title="สูตรเมนู"
+        icon={BookOpen}
+        subtitle={`มีสูตรแล้ว ${withRecipe} จาก ${(menu || []).length} เมนู · แตะเมนูเพื่อดู${needsPin ? ' · แก้ไขต้องใส่ PIN' : ''}`}
+      />
+
+      <Toolbar
+        search={{ value: query, onChange: setQuery, placeholder: 'ค้นหาเมนูหรือคำในสูตร' }}
+        filters={(
+          <div className="flex flex-col gap-2">
+            <FilterChips
+              ariaLabel="กรองตามสูตร"
+              value={recipeFilter}
+              onChange={setRecipeFilter}
+              chips={[
+                { value: 'all', label: 'ทั้งหมด', count: searched.length },
+                { value: 'missing', label: 'ยังไม่มีสูตร', count: missingInView, tone: missingInView ? 'warn' : undefined },
+                { value: 'done', label: 'มีสูตรแล้ว', count: searched.length - missingInView, tone: 'ok' },
+              ]}
+            />
+            <FilterChips
+              ariaLabel="กรองตามหมวด"
+              value={category}
+              onChange={setCategory}
+              chips={categories.map((c) => ({ value: c, label: c }))}
+            />
           </div>
-        </div>
-        <div className="relative w-full sm:w-72">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเมนูหรือคำในสูตร..."
-            className="w-full min-h-[44px] pl-9 pr-3 rounded-[var(--radius-sm)] bg-[var(--bg-secondary)] border border-[var(--border-color)] text-sm outline-none focus:ring-2 focus:ring-[var(--accent-emerald)]/20" />
-        </div>
-      </div>
+        )}
+      />
 
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide shrink-0">
-        {categories.map((c) => (
-          <button key={c} type="button" onClick={() => setCategory(c)} aria-pressed={category === c}
-            className={`min-h-[44px] px-4 rounded-full text-sm font-semibold whitespace-nowrap border ${category === c ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border-color)]'}`}>
-            {c}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
+      <div className="px-[var(--page-pad)] pb-24 md:pb-10 pt-1">
         {items.length === 0 ? (
-          <EmptyState icon="search" title="ไม่พบเมนู" description="ลองเปลี่ยนหมวดหรือคำค้น" />
+          <EmptyState icon="search" title="ไม่พบเมนู" description="ลองเปลี่ยนหมวด ตัวกรอง หรือคำค้น" />
         ) : (
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 pb-24">
+          <ul className="grid grid-cols-1 xl:grid-cols-2 gap-px rounded-[var(--radius)] overflow-hidden bg-[var(--border-light)] shadow-[var(--elev-1)]">
             {items.map((m) => {
               const text = String(recipes[m.id]?.text || '').trim();
               return (
-                <button key={m.id} type="button" onClick={() => setViewing(m)}
-                  className="text-left p-4 rounded-[var(--radius)] bg-[var(--bg-secondary)] border border-[var(--border-color)] shadow-[var(--elev-1)] hover:border-emerald-300 active:scale-[0.99] transition-all flex gap-3">
-                  {m.image ? <img src={m.image} alt="" className="w-14 h-14 rounded-[var(--radius-sm)] object-cover shrink-0" loading="lazy" /> : <div className="w-14 h-14 rounded-[var(--radius-sm)] bg-[var(--bg-tertiary)] shrink-0" />}
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-[var(--text-primary)] leading-snug break-words">{m.name}</p>
-                    <p className="text-xs text-[var(--text-muted)] mb-1">{m.category || '—'}</p>
-                    {text
-                      ? <p className="text-sm text-[var(--text-secondary)] line-clamp-2 whitespace-pre-line">{text}</p>
-                      : <p className="text-sm text-orange-500 font-medium">ยังไม่มีสูตร</p>}
-                  </div>
-                </button>
+                <li key={m.id} className="bg-[var(--bg-surface)]">
+                  <button
+                    type="button"
+                    onClick={() => setViewing(m)}
+                    className="w-full text-left flex items-center gap-3 min-h-16 px-4 py-2.5 hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[inset_0_0_0_3px_var(--accent)]"
+                  >
+                    <span className="w-12 h-12 shrink-0 rounded-[var(--radius-sm)] overflow-hidden bg-[var(--bg-sunken)] flex items-center justify-center">
+                      {m.image
+                        ? <img src={m.image} alt="" width={48} height={48} loading="lazy" decoding="async" className="w-12 h-12 object-cover" />
+                        : <Coffee size={18} className="text-[var(--text-muted)]" aria-hidden="true" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span className="font-semibold leading-snug text-[var(--text-primary)] break-words">{m.name}</span>
+                        <span className="text-sm text-[var(--text-muted)]">{m.category || 'ไม่มีหมวด'}</span>
+                      </span>
+                      {text
+                        ? <span className="block text-sm leading-[var(--lh-sm)] text-[var(--text-secondary)] truncate">{text.split('\n').filter(Boolean).join(' · ')}</span>
+                        : <Badge tone="warn" className="mt-1">ยังไม่มีสูตร</Badge>}
+                    </span>
+                    <ChevronRight size={18} className="shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
+                  </button>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
       </div>
 
@@ -149,20 +177,29 @@ export default function RecipesView() {
         </div>
       </Modal>
 
-      <Modal isOpen={!!editing} onClose={() => { if (!saving) setEditing(null); }} title={editing ? `แก้ไขสูตร · ${editing.item.name}` : ''} size="lg">
-        {editing && (
-          <div className="space-y-4">
-            <Textarea rows={12} value={editing.text} autoFocus
-              onChange={(e) => setEditing((prev) => ({ ...prev, text: e.target.value }))}
-              placeholder={'เช่น\nแก้ว 16 oz · น้ำแข็งเต็มแก้ว\n1. ช็อตกาแฟ 2 ช็อต (36 ml)\n2. นมสด 150 ml\n3. ไซรัปคาราเมล 20 ml (หวาน 100%)'} />
-            <p className="text-xs text-[var(--text-muted)]">เว้นว่างแล้วบันทึก = ลบสูตรของเมนูนี้</p>
-            <div className="flex gap-2">
-              <Button variant="secondary" fullWidth disabled={saving} onClick={() => setEditing(null)}>ยกเลิก</Button>
-              <Button fullWidth loading={saving} onClick={save}>บันทึกสูตร</Button>
-            </div>
-          </div>
+      <Sheet
+        open={!!editing}
+        onClose={() => { if (!saving) setEditing(null); }}
+        title={editing ? `แก้ไขสูตร · ${editing.item.name}` : ''}
+        description="เว้นว่างแล้วบันทึก = ลบสูตรของเมนูนี้"
+        width={560}
+        footer={(
+          <>
+            <Button variant="secondary" disabled={saving} onClick={() => setEditing(null)}>ยกเลิก</Button>
+            <Button loading={saving} onClick={save}>บันทึกสูตร</Button>
+          </>
         )}
-      </Modal>
+      >
+        {editing && (
+          <Textarea
+            label="สูตร"
+            rows={14}
+            value={editing.text}
+            onChange={(e) => setEditing((prev) => ({ ...prev, text: e.target.value }))}
+            placeholder={'เช่น\nแก้ว 16 oz · น้ำแข็งเต็มแก้ว\n1. ช็อตกาแฟ 2 ช็อต (36 ml)\n2. นมสด 150 ml\n3. ไซรัปคาราเมล 20 ml (หวาน 100%)'}
+          />
+        )}
+      </Sheet>
     </div>
   );
 }
