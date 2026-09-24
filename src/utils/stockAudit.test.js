@@ -218,3 +218,67 @@ describe('merged stock (mergedInto)', () => {
     expect(res.stockUsed.map((s) => s.stockId)).toEqual(['egg']);
   });
 });
+
+describe('milkSwap · นมโอ๊ตตัดแทนนมวัว', () => {
+  const sStock = [
+    { id: 'cow', name: 'นมจืด', unit: 'ml', quantity: 1000 },
+    { id: 'oat', name: 'นมโอ๊ต', unit: 'ml', quantity: 1000 },
+    { id: 'cup', name: 'แก้ว', unit: 'ใบ', quantity: 100 },
+  ];
+  const sById = new Map(sStock.map((s) => [s.id, s]));
+  const milkSwap = { oat: { from: ['cow'], to: 'oat' } };
+  const latte = (milkType, quantity = 1) => ({
+    id: 'latte', name: 'ลาเต้', price: 60, quantity, milkType,
+    stockLinks: [{ stockId: 'cow', usage: 150 }, { stockId: 'cup', usage: 1 }],
+  });
+
+  it('planOrderDeduction: oat line cuts oat milk, cow line cuts cow milk', () => {
+    const order = { items: [latte('oat', 2), latte('cow')] };
+    expect(planOrderDeduction(order, sById, { milkSwap }).applied).toEqual({ oat: 300, cow: 150, cup: 3 });
+    // ไม่ส่ง milkSwap = พฤติกรรมเดิม
+    expect(planOrderDeduction(order, sById).applied).toEqual({ cow: 450, cup: 3 });
+  });
+
+  it('auditDay: oat usage shows under นมโอ๊ต and the recorded bill is not a mismatch', () => {
+    const order = {
+      id: 'o1', date: '2026-09-24', status: 'completed', stockDeducted: true,
+      stockDeduction: { applied: { oat: 150, cow: 150, cup: 2 }, milkSwapApplied: true },
+      items: [latte('oat'), latte('cow')],
+    };
+    const res = auditDay({ orders: [order], stock: sStock, date: '2026-09-24', milkSwap });
+    expect(res.summary.billsMismatch).toBe(0);
+    expect(res.summary.verdict).toBe('ok');
+    const used = Object.fromEntries(res.stockUsed.map((r) => [r.stockId, r.used]));
+    expect(used).toEqual({ oat: 150, cow: 150, cup: 2 });
+    // ไม่ส่ง milkSwap บิลเดียวกันจะดูเหมือนตัดผิด · ยืนยันว่า option ถูกใช้จริง
+    expect(auditDay({ orders: [order], stock: sStock, date: '2026-09-24' }).summary.billsMismatch).toBe(1);
+  });
+
+  it('auditDays threads milkSwap through', () => {
+    const order = {
+      id: 'o1', date: '2026-09-24', status: 'completed', stockDeducted: true,
+      stockDeduction: { applied: { oat: 150, cup: 1 }, milkSwapApplied: true },
+      items: [latte('oat')],
+    };
+    expect(auditDays({ orders: [order], stock: sStock, dates: ['2026-09-24'], milkSwap })[0].errors).toBe(0);
+  });
+});
+
+describe('auditDay · บิลนมโอ๊ตก่อน/หลังมีระบบสลับนม', () => {
+  const stock2 = [
+    { id: 'cow', name: 'นมจืด', unit: 'กรัม', quantity: 5000, unitCost: 0.05 },
+    { id: 'oat', name: 'นมโอ๊ต', unit: 'กรัม', quantity: 5000, unitCost: 0.1 },
+  ];
+  const swap = { oat: { from: ['cow'], to: 'oat' } };
+  const line = { id: 'latte', name: 'ลาเต้', price: 60, quantity: 1, milkType: 'oat', stockLinks: [{ stockId: 'cow', usage: 120 }] };
+  const base = { date: '2026-09-23', time: '10:00', status: 'completed', stockDeducted: true, total: 60, items: [line] };
+  it('บิลเก่าที่ตัดนมวัว (ไม่มีป้าย) ไม่ขึ้นตัดไม่ตรงสูตร', () => {
+    const r = auditDay({ orders: [{ ...base, id: 'old', stockDeduction: { applied: { cow: 120 } } }], stock: stock2, date: '2026-09-23', milkSwap: swap });
+    expect(r.summary.billsMismatch).toBe(0);
+  });
+  it('บิลใหม่ที่ตัดนมโอ๊ต (มีป้าย) ตรงสูตร และนับการใช้เป็นนมโอ๊ต', () => {
+    const r = auditDay({ orders: [{ ...base, id: 'new', stockDeduction: { applied: { oat: 120 }, milkSwapApplied: true } }], stock: stock2, date: '2026-09-23', milkSwap: swap });
+    expect(r.summary.billsMismatch).toBe(0);
+    expect(r.stockUsed.map((s) => s.stockId)).toEqual(['oat']);
+  });
+});

@@ -20,6 +20,7 @@
 
 import { getOrderDate } from './calculations.js';
 import { resolveStockId } from './stockMerge.js';
+import { applyMilkSwap } from './milkSwap.js';
 
 const num = (value) => {
   const n = Number(value);
@@ -137,15 +138,17 @@ export function auditMenuLinks({ menu = [], stock = [], beanModifiers = [], incl
  * บันทึกการตัดสต็อกของบิลหนึ่งใบ เก็บลงบิลตอนกด "เสร็จ"
  * ทำให้ย้อนมาตรวจได้ว่าตัดอะไรไปจริงเท่าไหร่ ไม่ต้องเดาจากสต็อกคงเหลือ
  *
+ * @param {object} [options]
+ * @param {object} [options.milkSwap] นมโอ๊ตตัดแทนนมวัว (ดู milkSwap.js)
  * @returns {{ applied: Object<string, number>, skipped: Array, unlinked: Array }}
  */
-export function planOrderDeduction(order, stockById) {
+export function planOrderDeduction(order, stockById, options = {}) {
   const applied = {};
   const skipped = [];
   const unlinked = [];
   (order?.items || []).forEach((item) => {
     const qty = num(item?.quantity);
-    const links = (item?.stockLinks || []).filter((l) => l?.stockId);
+    const links = applyMilkSwap(item, options.milkSwap, stockById).filter((l) => l?.stockId);
     if (!links.length) {
       if (qty > 0) unlinked.push({ name: String(item?.name || ''), quantity: qty });
       return;
@@ -180,8 +183,9 @@ const orderTime = (order) => {
  * @param {Array} input.stock สต็อกปัจจุบัน
  * @param {Array} [input.menu] ใช้บอกว่าเมนูที่ไม่ได้ผูกในบิล ตอนนี้ผูกแล้วหรือยัง
  * @param {string} input.date YYYY-MM-DD
+ * @param {object} [input.milkSwap] นมโอ๊ตตัดแทนนมวัว (ดู milkSwap.js)
  */
-export function auditDay({ orders = [], stock = [], menu = [], date } = {}) {
+export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap } = {}) {
   const stockById = new Map(stock.map((s) => [s.id, s]));
   const menuById = new Map(menu.map((m) => [m.id, m]));
   const menuByName = new Map(menu.map((m) => [String(m.name || '').trim(), m]));
@@ -218,6 +222,9 @@ export function auditDay({ orders = [], stock = [], menu = [], date } = {}) {
   dayOrders.forEach((order) => {
     const completed = order.status === 'completed';
     const deducted = completed && Boolean(order.stockDeducted);
+    // บิลที่ตัดไปแล้วโดยไม่มีป้าย milkSwapApplied = ตัดก่อนมีระบบนมโอ๊ต (ตัดนมวัวจริง)
+    // ตรวจตามกติกาตอนตัด ไม่งั้นบิลนมโอ๊ตเก่าขึ้น "ตัดไม่ตรงสูตร" ทั้งที่ระบบทำตามกติกาสมัยนั้น
+    const orderSwap = order.stockDeducted && !order.stockDeduction?.milkSwapApplied ? null : milkSwap;
     if (completed) summary.completed += 1; else summary.waiting += 1;
 
     const lines = order.items || [];
@@ -243,7 +250,7 @@ export function auditDay({ orders = [], stock = [], menu = [], date } = {}) {
       const name = String(item?.name || 'ไม่ระบุ');
       const modifier = String(item?.beanModifier || '').trim();
       const key = `${item?.id || name}::${modifier}`;
-      const { status: rawStatus, alive, dead } = classifyLinks(item?.stockLinks, stockById);
+      const { status: rawStatus, alive, dead } = classifyLinks(applyMilkSwap(item, orderSwap, stockById), stockById);
       const currentMenu = menuById.get(item?.id) || menuByName.get(name.trim());
       // สูตรในบิลมีแต่ของจากตัวเลือก (เมล็ด) · ตัวเมนูเองไม่มีสูตร แก้ว/นม/ไซรัปจึงไม่ถูกตัด
       const status = rawStatus === LINK_STATUS.OK && modifier && currentMenu
@@ -336,7 +343,7 @@ export function auditDay({ orders = [], stock = [], menu = [], date } = {}) {
     const record = order.stockDeduction;
     if (deducted && record && record.applied) {
       summary.billsRecorded += 1;
-      const expected = planOrderDeduction(order, stockById).applied;
+      const expected = planOrderDeduction(order, stockById, { milkSwap: orderSwap }).applied;
       // บิลที่ตัดก่อนรวมสต็อกบันทึก id เดิมไว้ · แปลงไปตัวปลายทางก่อนเทียบ
       const recorded = {};
       Object.entries(record.applied).forEach(([id, used]) => {
@@ -430,9 +437,9 @@ export function auditDay({ orders = [], stock = [], menu = [], date } = {}) {
  * สรุปหลายวันแบบย่อ · ใช้ทำแถบ "7 วันล่าสุด ตัดถูกไหม"
  * @param {string[]} dates
  */
-export function auditDays({ orders = [], stock = [], menu = [], dates = [] } = {}) {
+export function auditDays({ orders = [], stock = [], menu = [], dates = [], milkSwap } = {}) {
   return dates.map((date) => {
-    const { summary } = auditDay({ orders, stock, menu, date });
+    const { summary } = auditDay({ orders, stock, menu, date, milkSwap });
     return {
       date,
       bills: summary.bills,

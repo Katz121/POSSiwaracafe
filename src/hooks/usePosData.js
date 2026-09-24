@@ -83,6 +83,7 @@ export default function usePosData(user, appId) {
   const [comboPercent, setComboPercent] = useState(DEFAULT_COMBO_PERCENT);
   const [spendThreshold, setSpendThreshold] = useState(0);
   const [spendDiscount, setSpendDiscount] = useState(0);
+  const [milkSwapSetting, setMilkSwapSetting] = useState(null);
   const [settingsRaw, setSettingsRaw] = useState(null);
 
   // Row caches for mapDocsReusing (reset whenever the listeners re-subscribe).
@@ -201,6 +202,8 @@ export default function usePosData(user, appId) {
         if (data.comboPercent != null) setComboPercent(Number(data.comboPercent));
         setSpendThreshold(Number(data.spendThreshold) || 0);
         setSpendDiscount(Number(data.spendDiscount) || 0);
+        // นมโอ๊ตตัดแทนนมวัว · ยังไม่ตั้ง = null → App ใช้ค่าเริ่มต้นจากชื่อสต็อก (milkSwap.js)
+        setMilkSwapSetting(data.milkSwap && typeof data.milkSwap === 'object' ? data.milkSwap : null);
       }
       setSettingsLoaded(true);
     }, handleSnapshotError);
@@ -233,5 +236,5 @@ export default function usePosData(user, appId) {
     return () => clearTimeout(timeout);
   }, [menu, dynamicCategories, beanModifiers, settingsRaw, appId, isSyncing]);
 
-  return { pointsRewardsEnabled, pointsRewards, isSyncing, settingsLoaded, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
+  return { pointsRewardsEnabled, pointsRewards, isSyncing, settingsLoaded, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount, milkSwapSetting };
 }
