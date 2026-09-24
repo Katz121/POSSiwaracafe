@@ -8,20 +8,15 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart,
-  Plus,
-  Minus,
   X,
-  Check,
   Search,
-  ChevronDown,
+  ChevronLeft,
   Coffee,
   AlertCircle,
-  RefreshCw,
-  FileText,
+  Flame,
   Star,
-  BookOpen,
-  Maximize2,
-  MessageCircle,
+  Cake,
+  Gift,
 } from 'lucide-react';
 import {
   signInAnonymously,
@@ -62,11 +57,10 @@ import {
 // Direct imports, not the ../components/ui barrel (which drags Table, Select,
 // Tabs, StockUsageInput → utils/wastage, ... onto the customer page).
 import Button from '../components/ui/Button';
-import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Spinner from '../components/ui/Spinner';
 import EmptyState from '../components/ui/EmptyState';
-import { formatCurrency, roundUpTo5, getModifierGroups, isBaseModifier, supportsMilkChoice, MILK_OPTIONS, MEMBER_MIN_PHONE_LENGTH, normalizeThaiPhoneInput } from '../config/constants';
+import { formatCurrency, roundUpTo5, getModifierGroups, supportsMilkChoice, MEMBER_MIN_PHONE_LENGTH, normalizeThaiPhoneInput } from '../config/constants';
 import { getItemSalePrice, COMBO_PROMO_TITLE, isCakeSaleActive, isCakeCategory, supportsSweetnessChoice } from '../utils/promotions';
 import { bumpMenuSoldCount } from '../utils/menuSales';
 import { sortByFeaturedOrder } from '../utils/featuredOrder';
@@ -75,6 +69,14 @@ import { trackFunnelStep } from '../utils/qrFunnel';
 import { readCartDraft, restoreCartDraft, saveCartDraft, clearCartDraft, readLastSweetness, rememberSweetness } from '../utils/cartDraft';
 import { applyCustomerSEO } from '../utils/seo';
 import { getEligibleRewards, toggleRewardSelection } from '../utils/rewards';
+import { dispField, lineOptionSummary, defaultOptionNote } from './display';
+import { MenuCard, MenuRow } from './MenuItems';
+import { CategoryChips } from './CategoryNav';
+import { sectionDomId, useScrollSpy } from './scrollSpy';
+import OptionSheet from './OptionSheet';
+import ItemDetailSheet from './ItemDetailSheet';
+import CartSheet from './CartSheet';
+import SuccessScreen from './SuccessScreen';
 
 // Lazy full-SDK helpers (see the firebaseCore import above).
 const loadFullDb = () => import('../services/firebase').then((m) => m.db);
@@ -95,11 +97,6 @@ const whenIdle = (fn) => {
 // ---------------------------------------------------------------------------
 const QR_LANG_STORAGE_KEY = 'qr_lang';
 
-const milkLabelForLanguage = (milkType, lang) => {
-  const option = MILK_OPTIONS.find((candidate) => candidate.value === milkType);
-  return lang === 'en' ? option?.labelEn : option?.label;
-};
-
 // Feature flag — set to true to bring back the auto-running welcome popup.
 // Disabled for now per request; all popup code stays intact but costs nothing
 // while the flag is off (JSX and welcomeItems computation are both gated).
@@ -107,6 +104,31 @@ const WELCOME_POPUP_ENABLED = false;
 
 const TX = {
   th: {
+    bestSellerBadgeText: 'ขายดี',
+    posterBadgeShort: 'เรื่องราว',
+    viewDetails: 'ดูรายละเอียด',
+    chooseOptionHint: 'เลือกแบบที่นิยมไว้ให้แล้ว เปลี่ยนได้ตามชอบ',
+    chooseOptionTapHint: 'แตะตัวเลือกเพื่อเพิ่มลงตะกร้า',
+    cheaperBy: (price) => `ถูกลง ${price}`,
+    cartCount: (n) => `${n} รายการ`,
+    removeItem: 'ลบรายการ',
+    decrease: 'ลดจำนวน',
+    increase: 'เพิ่มจำนวน',
+    saveNote: 'บันทึกหมายเหตุ',
+    orderSent: 'ส่งออเดอร์เข้าครัวแล้ว',
+    redeemedReward: 'รางวัลที่แลกในบิลนี้',
+    rewardRedeem: (name) => `แลก ${name}`,
+    rewardCost: (n) => `${n} แต้ม`,
+    featuredChip: 'แนะนำ',
+    menuSections: 'หมวดเมนู',
+    searchResults: (n) => `พบ ${n} เมนู`,
+    clearSearch: 'ล้างคำค้น',
+    otherCategory: 'อื่นๆ',
+    customerInfo: 'ข้อมูลผู้สั่ง',
+    back: 'กลับไปเลือกเมนู',
+    payAtCounterHint: 'ส่งออเดอร์แล้วชำระเงินที่เคาน์เตอร์',
+    cartButton: (n) => `ตะกร้า ${n} รายการ`,
+    editCart: 'แก้ไข',
     crossSell: (pct) => `ทานคู่กันลด ${pct}%`,
     netAdd: (price) => `+ เพิ่ม · จ่ายเพิ่มสุทธิ ${price}`,
     lastSweetness: (level) => `ล่าสุดคุณเลือก ${level}%`,
@@ -131,8 +153,8 @@ const TX = {
     featuredBadge: 'แนะนำ',
     startingFrom: 'เริ่มต้น ',
     startingFromShort: 'เริ่ม ',
-    bestSellerRailTitle: '🔥 เมนูขายดี',
-    featuredRailTitle: '⭐ เมนูแนะนำ',
+    bestSellerRailTitle: 'เมนูขายดี',
+    featuredRailTitle: 'เมนูแนะนำ',
     cakeRailTitle: 'เค้กวันนี้',
     cakeRailSubtitle: 'อบสดใหม่ มีจำนวนจำกัด',
     happyHourBanner: (pct, left) => `Happy Hour! เค้กลด ${pct}% · เหลืออีก ${left} ⏳`,
@@ -218,6 +240,31 @@ const TX = {
     submitFailedError: (code) => `สั่งออเดอร์ไม่สำเร็จ (${code}) — ลองใหม่อีกครั้ง`,
   },
   en: {
+    bestSellerBadgeText: 'Best seller',
+    posterBadgeShort: 'Story',
+    viewDetails: 'View details',
+    chooseOptionHint: 'The usual choice is preselected · change anything you like',
+    chooseOptionTapHint: 'Tap an option to add it to your cart',
+    cheaperBy: (price) => `${price} less`,
+    cartCount: (n) => `${n} item${n > 1 ? 's' : ''}`,
+    removeItem: 'Remove item',
+    decrease: 'Decrease quantity',
+    increase: 'Increase quantity',
+    saveNote: 'Save note',
+    orderSent: 'Your order is in the kitchen',
+    redeemedReward: 'Reward redeemed on this bill',
+    rewardRedeem: (name) => `Redeem ${name}`,
+    rewardCost: (n) => `${n} points`,
+    featuredChip: 'Picks',
+    menuSections: 'Menu sections',
+    searchResults: (n) => `${n} item${n === 1 ? '' : 's'} found`,
+    clearSearch: 'Clear search',
+    otherCategory: 'Other',
+    customerInfo: 'Your details',
+    back: 'Back to menu',
+    payAtCounterHint: 'Place the order, then pay at the counter',
+    cartButton: (n) => `Cart, ${n} item${n > 1 ? 's' : ''}`,
+    editCart: 'Edit',
     crossSell: (pct) => `Pair them for ${pct}% off`,
     netAdd: (price) => `+ Add · Net extra ${price}`,
     lastSweetness: (level) => `Last time: ${level}%`,
@@ -242,8 +289,8 @@ const TX = {
     featuredBadge: 'Featured',
     startingFrom: 'From ',
     startingFromShort: 'From ',
-    bestSellerRailTitle: '🔥 Best sellers',
-    featuredRailTitle: '⭐ Featured',
+    bestSellerRailTitle: 'Best sellers',
+    featuredRailTitle: 'Featured',
     cakeRailTitle: 'Today’s cakes',
     cakeRailSubtitle: 'Freshly baked, limited quantities',
     happyHourBanner: (pct, left) => `Happy Hour! ${pct}% off cakes · ${left} left ⏳`,
@@ -330,29 +377,17 @@ const TX = {
   },
 };
 
+// Popular first: most-ordered (soldCount) at the top, least at the back, so
+// the top of every section surfaces what customers order most. Ties fall back
+// to name for a stable order.
+const byPopularity = (a, b) =>
+  (Number(b.soldCount || 0) - Number(a.soldCount || 0)) ||
+  String(a.name || '').localeCompare(String(b.name || ''), 'th');
+
 const makeT = (lang) => (key, ...args) => {
   const entry = TX[lang]?.[key] ?? TX.th[key] ?? key;
   return typeof entry === 'function' ? entry(...args) : entry;
 };
-
-// Menu/category/bean names come from Firestore (the shop's own data). When the
-// customer switches to English we show the `<field>En` value if the owner has
-// filled it in, otherwise we fall back to the original Thai. `field` defaults to
-// 'name' → 'nameEn'; pass 'description' for 'descriptionEn'.
-const dispField = (obj, lang, field = 'name') => {
-  if (!obj) return '';
-  const en = obj[`${field}En`];
-  return lang === 'en' && en ? en : (obj[field] || '');
-};
-
-// Modifier-group headings are a small fixed set (not their own Firestore docs),
-// so they are translated with a static map rather than a `nameEn` field.
-const GROUP_EN = {
-  'เมล็ดกาแฟ': 'Coffee Beans',
-  'ผงมัทฉะ': 'Matcha Powder',
-  'ส้ม': 'Orange',
-};
-const dispGroup = (name, lang) => (lang === 'en' && GROUP_EN[name]) ? GROUP_EN[name] : (name || '');
 
 // ---------------------------------------------------------------------------
 // Sub-component: LanguageToggle — TH/EN switch shown in the header
@@ -360,250 +395,54 @@ const dispGroup = (name, lang) => (lang === 'en' && GROUP_EN[name]) ? GROUP_EN[n
 function LanguageToggle({ lang, onToggle }) {
   return (
     <button
+      type="button"
       onClick={onToggle}
-        className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-[var(--radius-sm)] text-xs font-bold bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)] transition-colors min-h-[44px]"
-      style={{ minHeight: 32 }}
+      className="shrink-0 flex items-center gap-0.5 p-1 min-h-11 rounded-full bg-[var(--bg-sunken)] text-xs font-bold"
       aria-label="Toggle language / สลับภาษา"
     >
-          <span className={lang === 'th' ? 'text-[var(--accent-emerald)]' : 'text-[var(--text-muted)]'}>TH</span>
-          <span className="text-[var(--text-muted)]">|</span>
-          <span className={lang === 'en' ? 'text-[var(--accent-emerald)]' : 'text-[var(--text-muted)]'}>EN</span>
+      {['th', 'en'].map((code) => (
+        <span
+          key={code}
+          className={`px-2.5 py-1.5 rounded-full ${lang === code ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-[var(--elev-1)]' : 'text-[var(--text-muted)]'}`}
+        >
+          {code.toUpperCase()}
+        </span>
+      ))}
     </button>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Helper: merge stock links from a menu item and a bean modifier
+// Sub-component: FeaturedRail · horizontal, swipeable row of photo cards.
+// (The best-seller rail used to auto-scroll as a marquee; moving targets are
+// hard to tap and ignore reduced-motion, so every rail is now static.)
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Sub-component: MenuItemCard
-// ---------------------------------------------------------------------------
-// `priority`: first above-the-fold cards (cake rail) · the LCP element on /order,
-// so load eagerly with high fetch priority instead of loading="lazy".
-function MenuItemCard({ item, onAdd, onView, settingsData, isBestSeller = false, t, lang = 'th', priority = false }) {
-  const hasImage = Boolean(item.image);
-  const sale = getItemSalePrice(item, settingsData);
-  // Coffee menus display prices rounded up to the nearest 5 baht.
-  const dp = (p) => (item.allowBeanModifier ? roundUpTo5(p) : p);
-  // The thumbnail is cropped 4:3, so tapping it opens the full image + full
-  // description. Menus with a story poster open it from anywhere on the card.
-  const canView = Boolean(onView && (hasImage || item.posterImage));
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      whileTap={{ scale: 0.97 }}
-className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] overflow-hidden flex flex-col cursor-pointer active:shadow-inner"
-      onClick={() => (item.posterImage && canView ? onView(item) : onAdd(item))}
-    >
-      {/* Image */}
-      <div
-        className="relative w-full aspect-[4/3] bg-emerald-50 flex items-center justify-center overflow-hidden"
-        onClick={canView ? (e) => { e.stopPropagation(); onView(item); } : undefined}
-      >
-        {hasImage ? (
-          <img
-            src={item.image}
-            alt={item.name}
-            className="w-full h-full object-cover"
-            loading={priority ? 'eager' : 'lazy'}
-            fetchPriority={priority ? 'high' : undefined}
-            decoding="async"
-          />
-        ) : (
-          <Coffee size={36} className="text-emerald-300" strokeWidth={1.5} />
-        )}
-        <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
-          {isBestSeller && (
-            <span className="bg-orange-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-              {t('bestSellerBadge')}
-            </span>
-          )}
-          {item.isFeatured && (
-            <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-              {t('featuredBadge')}
-            </span>
-          )}
-        </div>
-        {sale.onSale && (
-          <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-            Happy Hour -{sale.percent}%
-          </span>
-        )}
-        {item.posterImage ? (
-          <span className="absolute bottom-2 left-2 flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded-full">
-            <BookOpen size={12} /> {t('posterBadge')}
-          </span>
-        ) : canView && (
-          <span className="absolute bottom-2 right-2 w-7 h-7 flex items-center justify-center bg-black/45 backdrop-blur-sm text-white rounded-full" aria-hidden="true">
-            <Maximize2 size={14} />
-          </span>
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="p-3 flex flex-col gap-1 flex-1">
-<p className="font-semibold text-[var(--text-primary)] text-sm leading-tight line-clamp-2">{dispField(item, lang)}</p>
-        {dispField(item, lang, 'description') && (
-<p className="text-[var(--text-muted)] text-xs leading-tight line-clamp-2">{dispField(item, lang, 'description')}</p>
-        )}
-        <div className="mt-auto pt-2 flex items-center justify-between">
-          {sale.onSale ? (
-            <div className="flex flex-col gap-0.5">
-<span className="text-[var(--text-muted)] text-xs line-through leading-none">
-                {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(sale.originalPrice))}
-              </span>
-              <span className="text-red-500 font-bold text-base leading-none">
-                {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(sale.price))}
-              </span>
-            </div>
-          ) : (
-            <span className="text-emerald-600 font-bold text-base">
-              {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(item.price))}
-            </span>
-          )}
-          {/* "+" always adds — even on story-poster menus where the card itself
-              opens the poster first (e.g. Poh). */}
-          <button
-            type="button"
-            aria-label={`${t('addToCart')} ${dispField(item, lang)}`}
-            onClick={(e) => { e.stopPropagation(); onAdd(item); }}
-            className="w-11 h-11 -m-1 bg-[var(--accent-emerald)] rounded-full flex items-center justify-center shadow-[var(--elev-1)] active:scale-95"
-          >
-            <Plus size={18} className="text-white" />
-          </button>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sub-component: MenuDetailSheet — full-screen view of one menu. Card thumbnails
-// are cropped 4:3 and descriptions clamped to 2 lines, so this shows the whole
-// picture (the story `posterImage` when the menu has one, e.g. Poh, else the
-// normal image) plus the full description. "Add to cart" continues into the
-// normal add flow (options modal etc.).
-// ---------------------------------------------------------------------------
-function MenuDetailSheet({ item, settingsData, onAdd, onClose, t, lang = 'th' }) {
-  const sale = item ? getItemSalePrice(item, settingsData) : null;
-  const dp = (p) => (item?.allowBeanModifier ? roundUpTo5(p) : p);
-  const description = item ? dispField(item, lang, 'description') : '';
-
-  return (
-    <AnimatePresence>
-      {item && (
-        <motion.div
-          key="menu-detail-sheet"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center"
-          role="dialog"
-          aria-modal="true"
-          aria-label={dispField(item, lang)}
-        >
-          {/* Positioned by a wrapper: global CSS forces `button { position: relative }` */}
-          <div className="absolute top-3 right-3 z-10">
-            <button
-              onClick={onClose}
-              className="rounded-full bg-white/15 text-white flex items-center justify-center backdrop-blur-sm active:scale-95"
-              style={{ width: 44, height: 44 }}
-              aria-label={t('close')}
-            >
-              <X size={22} />
-            </button>
-          </div>
-          <div className="flex-1 w-full min-h-0 overflow-y-auto p-3 pt-16 flex flex-col items-center" onClick={onClose}>
-            <div className="w-full md:max-w-2xl flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
-              <motion.img
-                initial={{ scale: 0.96, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                src={item.posterImage || item.image}
-                alt={dispField(item, lang)}
-                className="max-w-full max-h-[75vh] w-auto h-auto rounded-[var(--radius)] shadow-[var(--elev-2)] object-contain"
-              />
-              {description && (
-                <div className="w-full mt-4 px-1">
-                  <p className="text-white/90 text-sm md:text-base leading-relaxed whitespace-pre-line text-center">{description}</p>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="shrink-0 w-full bg-[var(--bg-secondary)] flex justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <div className="w-full md:max-w-2xl px-4 pt-3 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-[var(--text-primary)] text-sm md:text-base leading-tight truncate">{dispField(item, lang)}</p>
-                <p className={`${sale.onSale ? 'text-red-500' : 'text-emerald-600'} font-bold text-base md:text-lg leading-tight`}>
-                  {item.allowBeanModifier ? t('startingFrom') : ''}{formatCurrency(dp(sale.price))}
-                </p>
-              </div>
-              <Button onClick={() => onAdd(item)} leftIcon={<Plus size={18} />} className="min-h-[44px] px-5 md:px-8">
-                {t('addToCart')}
-              </Button>
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sub-component: HighlightRail — horizontal carousel of highlighted menu items
-// ---------------------------------------------------------------------------
-function HighlightRail({ title, items, onAdd, onView, settingsData, bestSellerIds, autoScroll = false, t, lang = 'th' }) {
-  const [paused, setPaused] = useState(false);
+function FeaturedRail({ title, subtitle, icon: Icon, items, onAdd, onView, settingsData, bestSellerIds, t, lang, sectionRef, wide = false, priorityCount = 0 }) {
   if (!items || items.length === 0) return null;
-
-  const card = (item, key, extra = '') => (
-    <div key={key} className={`w-40 flex-shrink-0 ${extra}`}>
-      <MenuItemCard
-        item={item}
-        onAdd={onAdd}
-        onView={onView}
-        settingsData={settingsData}
-        isBestSeller={bestSellerIds ? bestSellerIds.has(item.id) : true}
-        t={t}
-        lang={lang}
-      />
-    </div>
-  );
-
-  // Static (scrollable) rail unless this rail opts into auto-scroll AND has
-  // enough items to overflow. Only the best-seller rail enables autoScroll.
-  if (!autoScroll || items.length <= 2) {
-    return (
-      <section>
-<h2 className="text-sm font-bold text-[var(--text-primary)] mb-2 px-4">{title}</h2>
-        <div className="flex gap-3 overflow-x-auto px-4 pb-1 scrollbar-hide">
-          {items.map((item) => card(item, item.id))}
-        </div>
-      </section>
-    );
-  }
-
-  // Auto-scrolling marquee: the items are duplicated so translating -50% loops
-  // seamlessly; it pauses while the customer hovers/touches so they can tap.
   return (
-    <section>
-<h2 className="text-sm font-bold text-[var(--text-primary)] mb-2 px-4">{title}</h2>
-      <div className="overflow-hidden pb-1">
-        <div
-          className="flex w-max animate-marquee"
-          style={{
-            animationDuration: `${items.length * 4}s`,
-            animationPlayState: paused ? 'paused' : 'running',
-          }}
-          onPointerEnter={() => setPaused(true)}
-          onPointerLeave={() => setPaused(false)}
-          onPointerCancel={() => setPaused(false)}
-        >
-          {[...items, ...items].map((item, i) => card(item, `${item.id}-${i}`, 'mr-3'))}
-        </div>
+    <section ref={sectionRef} aria-label={title}>
+      <div className="px-4 mb-2 flex items-baseline gap-2">
+        <h3 className="flex items-center gap-1.5 text-base font-bold text-[var(--text-primary)] leading-snug">
+          {Icon && <Icon size={18} className="text-[var(--accent)]" aria-hidden="true" />}
+          {title}
+        </h3>
+        {subtitle && <p className="text-xs text-[var(--text-muted)] truncate">{subtitle}</p>}
+      </div>
+      <div className="flex gap-3 overflow-x-auto px-4 pb-2 snap-x scroll-px-4 scrollbar-hide">
+        {items.map((item, i) => (
+          <div key={item.id} className={`${wide ? 'w-48' : 'w-40'} shrink-0 snap-start`}>
+            <MenuCard
+              item={item}
+              onAdd={onAdd}
+              onView={onView}
+              settingsData={settingsData}
+              isBestSeller={bestSellerIds.has(item.id)}
+              t={t}
+              lang={lang}
+              priority={i < priorityCount}
+            />
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -723,388 +562,10 @@ className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[61] mx-auto max-w-md bg-[
 }
 
 // ---------------------------------------------------------------------------
-// Sub-component: BeanModifierModal — picker for bean/blend selection
+// Sub-component: CheckoutStep · who is ordering (name, phone, points) + order summary + submit
 // ---------------------------------------------------------------------------
-function BeanModifierModal({ isOpen, item, modifiers, settingsData, preset, editing = false, onSelect, onClose, t, lang = 'th' }) {
-  // เลือกตัวเลือกต่อกลุ่ม (เช่น { 'ส้ม': mod, 'เมล็ดกาแฟ': mod })
-  const [selections, setSelections] = useState({});
-  const [sweetness, setSweetness] = useState(100);
-  const [milkType, setMilkType] = useState('cow');
-  const [lastSweetness, setLastSweetness] = useState(null);
-  // เคลียร์ตัวเลือกทุกครั้งที่เปิดเมนูใหม่ หรือเปิด modal ขึ้นมาใหม่ (แม้เป็นเมนูเดิม)
-  // (ปรับ state ตอน render ตามแนวทาง React)
-  const [lastItemId, setLastItemId] = useState(item?.id);
-  const [wasOpen, setWasOpen] = useState(isOpen);
-  const itemChanged = item?.id !== lastItemId;
-  const justOpened = isOpen && !wasOpen;
-  if (itemChanged || isOpen !== wasOpen) {
-    if (itemChanged) setLastItemId(item?.id);
-    if (isOpen !== wasOpen) setWasOpen(isOpen);
-    if (itemChanged || justOpened) {
-      const remembered = readLastSweetness();
-      setLastSweetness(remembered);
-      setSelections(Object.fromEntries(modifiers.filter((m) => preset?.modifierIds?.includes(m.id)).map((m) => [m.group || 'เมล็ดกาแฟ', m])));
-      setSweetness(preset?.sweetness ?? (item && supportsSweetnessChoice(item, settingsData) ? remembered : null) ?? 100);
-      setMilkType(preset?.milkType || 'cow');
-    }
-  }
+const panel = 'bg-[var(--bg-surface)] rounded-[var(--radius-lg)] shadow-[var(--elev-1)]';
 
-  const itemBase = Number(item?.price) || 0;
-  const extra = Number(item?.beanExtra) || 0;
-
-  // กลุ่มที่มีตัวเลือกพร้อมขายจริงเท่านั้น (modifiers ส่งมาเฉพาะที่ available แล้ว)
-  const groups = item
-    ? getModifierGroups(item)
-        .map((g) => ({
-          name: g,
-          mods: modifiers
-            .filter((m) => (m.group || 'เมล็ดกาแฟ') === g)
-            .map((mod) => ({
-              mod,
-              surcharge: isBaseModifier(item, mod) ? 0 : Math.max(0, (Number(mod.price) || 0) + extra - itemBase),
-            }))
-            .sort((a, b) => a.surcharge - b.surcharge),
-        }))
-        .filter((g) => g.mods.length > 0)
-    : [];
-  const multi = groups.length > 1;
-  const allChosen = groups.every((g) => selections[g.name]);
-  const chosenMods = groups.map((g) => selections[g.name]).filter(Boolean);
-  const previewPrice = item ? buildCartLine(item, chosenMods, sweetness, milkType, settingsData).price : 0;
-  const showSweetness = item && supportsSweetnessChoice(item, settingsData);
-  const showMilkChoice = supportsMilkChoice(item);
-  const needsConfirmButton = showSweetness || showMilkChoice || multi || !!preset;
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={t('chooseOption')}
-      size="sm"
-      className="[&_button]:min-w-[44px] [&_button]:min-h-[44px]"
-      footer={
-        needsConfirmButton ? (
-          <div className="w-full space-y-2">
-            <div className="flex items-center justify-between px-1">
-<span className="font-semibold text-[var(--text-primary)]">{t('total')}</span>
-              <span className="font-bold text-lg text-emerald-600">{formatCurrency(previewPrice)}</span>
-            </div>
-            <Button variant="primary" size="lg" fullWidth disabled={!allChosen} noUppercase
-              onClick={() => onSelect(item, chosenMods, preset && !showSweetness ? preset.sweetness ?? null : sweetness, showMilkChoice ? milkType : null)}>
-              {allChosen ? t(editing ? 'saveOptions' : 'addToCart') : t('chooseAllGroups')}
-            </Button>
-<Button variant="ghost" fullWidth onClick={onClose} className="text-[var(--text-muted)]">{t('cancel')}</Button>
-          </div>
-        ) : (
-<Button variant="ghost" fullWidth onClick={onClose} className="text-[var(--text-muted)]">
-            {t('cancel')}
-          </Button>
-        )
-      }
-    >
-      {item && (
-        <div className="space-y-4">
-<p className="text-sm text-[var(--text-secondary)]">{t('chooseOptionFor')} <strong>{dispField(item, lang)}</strong></p>
-          {groups.map((group) => (
-            <div key={group.name} className="space-y-2">
-{multi && <p className="text-xs font-medium tracking-widest text-[var(--text-muted)] ml-1">{dispGroup(group.name, lang)}</p>}
-              {group.mods.map(({ mod }) => {
-                const selected = selections[group.name]?.id === mod.id;
-                // กลุ่มเดียว = แตะแล้วเพิ่มทันที (UX เดิม); หลายกลุ่ม = แตะเพื่อเลือกในกลุ่ม
-                const onClick = needsConfirmButton
-                  ? () => setSelections((prev) => ({ ...prev, [group.name]: mod }))
-                  : () => onSelect(item, mod);
-                return (
-                  <motion.button
-                    key={mod.id}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={onClick}
-className={`w-full flex items-center justify-between p-4 rounded-[var(--radius)] border-2 transition-all text-left min-h-[56px] ${selected ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] ring-2 ring-[var(--accent-emerald-light)]' : 'border-[var(--border-color)] hover:border-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-light)]'}`}
-                  >
-<span className="font-semibold text-[var(--text-primary)]">{dispField(mod, lang)}</span>
-                    {(() => {
-                      // ราคาที่โชว์ต้องเป็นราคาที่ "จะจ่ายจริงถ้ากดตัวนี้" โดยคิดรวมกับ
-                      // ตัวเลือกกลุ่มอื่นที่เลือกไว้แล้ว · ของเดิมโชว์ราคาแบบเลือกตัวนี้
-                      // ตัวเดียว ทำให้เอธิโชว์ 90 ส้มสดโชว์ 80 แต่พอเลือกคู่กันจ่ายจริง 105
-                      const withThis = groups
-                        .map((g) => (g.name === group.name ? mod : selections[g.name]))
-                        .filter(Boolean);
-                      const priceIfChosen = buildCartLine(item, withThis, sweetness, milkType, settingsData).price;
-                      const delta = priceIfChosen - previewPrice;
-                      return (
-                        <span className="flex flex-col items-end leading-tight">
-                          {/* สีบอกทิศทางเทียบกับที่เลือกอยู่ ไม่ใช่เทียบราคาฐาน
-                              ตัวที่ถูกลงต้องไม่ย้อมสีเหมือนตัวที่บวกเพิ่ม */}
-                          <span className={`font-bold ${delta > 0 ? 'text-orange-500' : 'text-emerald-600'}`}>
-                            {formatCurrency(priceIfChosen)}
-                          </span>
-                          {!selected && delta !== 0 && (
-                            <span className="text-xs font-semibold text-[var(--text-muted)]">
-                              {delta > 0 ? `+${formatCurrency(delta)}` : `ถูกลง ${formatCurrency(-delta)}`}
-                            </span>
-                          )}
-                        </span>
-                      );
-                    })()}
-                  </motion.button>
-                );
-              })}
-            </div>
-          ))}
-          {showSweetness && (
-            <div className="space-y-2">
-<p className="text-xs font-medium tracking-widest text-[var(--text-muted)] ml-1">{t('sweetness')}</p>
-              <div className="grid grid-cols-5 gap-2">
-                {[0, 25, 50, 75, 100].map((level) => (
-                  <button key={level} type="button" onClick={() => setSweetness(level)}
-                    className={`min-h-[44px] rounded-[var(--radius-sm)] border-2 text-xs font-bold transition-all ${sweetness === level ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] text-[var(--accent-emerald-dark)] ring-2 ring-[var(--accent-emerald-light)]' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-emerald)]'}`}>
-                    {level}%
-                  </button>
-                ))}
-              </div>
-              {lastSweetness != null && <p className="text-xs text-[var(--text-muted)]">{t('lastSweetness', lastSweetness)}</p>}
-            </div>
-          )}
-          {showMilkChoice && (
-            <div className="space-y-2">
-<p className="text-xs font-medium tracking-widest text-[var(--text-muted)] ml-1">{t('milkType')}</p>
-              <div className="grid grid-cols-2 gap-2">
-                {MILK_OPTIONS.map((option) => (
-                  <button key={option.value} type="button" onClick={() => setMilkType(option.value)}
-                    className={`min-h-[48px] rounded-[var(--radius-sm)] border-2 text-sm font-bold transition-all ${milkType === option.value ? 'border-[var(--accent-emerald)] bg-[var(--accent-emerald-light)] text-[var(--accent-emerald-dark)] ring-2 ring-[var(--accent-emerald-light)]' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-emerald)]'}`}>
-                    {lang === 'en' ? option.labelEn : option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sub-component: CartDrawer — slide-up drawer with cart contents
-// ---------------------------------------------------------------------------
-function CartDrawer({ isOpen, cart, onClose, onUpdateQty, onRemove, onUpdateNote, onEditOptions, crossSell, comboPercent, onAdd, total, onProceed, t, lang = 'th' }) {
-  const [editingNoteId, setEditingNoteId] = useState(null);
-  const [noteValue, setNoteValue] = useState('');
-
-  const startEditNote = (cartId, currentNote) => {
-    setEditingNoteId(cartId);
-    setNoteValue(currentNote || '');
-  };
-
-  const saveNote = (cartId) => {
-    onUpdateNote(cartId, noteValue);
-    setEditingNoteId(null);
-  };
-
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
-            onClick={onClose}
-          />
-
-          {/* Drawer */}
-          <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="[&_button]:min-w-[44px] [&_button]:min-h-[44px] fixed bottom-0 left-0 right-0 md:mx-auto md:max-w-2xl z-50 bg-[var(--bg-secondary)] rounded-t-[var(--radius)] shadow-[var(--elev-3)] flex flex-col"
-            style={{ maxHeight: '85vh' }}
-          >
-            {/* Handle */}
-            <div className="flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 bg-[var(--border-color)] rounded-full" />
-            </div>
-
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)]">
-              <h2 className="font-bold text-lg text-[var(--text-primary)]">{t('cartTitle')}</h2>
-              <button
-                onClick={onClose}
-                className="w-11 h-11 rounded-[var(--radius-sm)] flex items-center justify-center bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)] transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Items */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-3 space-y-3">
-              {cart.length === 0 ? (
-                <EmptyState
-                  icon="cart"
-                  title={t('cartEmptyTitle')}
-                  description={t('cartEmptyDesc')}
-                  size="sm"
-                />
-              ) : (
-                cart.map((cartItem) => {
-                  const id = cartItem.cartId || cartItem.id;
-                  const sweetnessNote = cartItem.sweetness == null ? '' : `หวาน ${cartItem.sweetness}%`;
-                  const defaultOptionNote = [cartItem.beanModifier, cartItem.milkLabel, sweetnessNote].filter(Boolean).join(' ');
-                  return (
-                    <div key={id} className="bg-[var(--bg-tertiary)] rounded-[var(--radius)] p-3 space-y-2">
-                      <div className="flex flex-wrap items-start gap-3">
-                        {/* Name & modifier */}
-                        <div className="w-full sm:w-auto sm:flex-1 min-w-0">
-                          <p className="font-semibold text-sm text-[var(--text-primary)] leading-tight">{dispField(cartItem, lang)}</p>
-                          {cartItem.beanModifier && cartItem.beanModifier !== '' && (
-                            <p className="text-xs text-emerald-600 font-medium">{cartItem.beanModifier}</p>
-                          )}
-                          {cartItem.sweetness != null && (
-                            <p className="text-xs text-orange-500 font-medium">{t('sweetness')}: {cartItem.sweetness}%</p>
-                          )}
-                          {cartItem.milkLabel && (
-                            <p className="text-xs text-sky-600 font-medium">{t('milkType')}: {milkLabelForLanguage(cartItem.milkType, lang) || cartItem.milkLabel}</p>
-                          )}
-                          <p className="text-emerald-600 font-bold text-sm mt-0.5">
-                            {formatCurrency(Number(cartItem.price) * Number(cartItem.quantity))}
-                          </p>
-                        </div>
-
-                        {/* Qty controls */}
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <button
-                            onClick={() => onUpdateQty(id, cartItem.quantity - 1)}
-                            className="w-11 h-11 rounded-[var(--radius-sm)] bg-[var(--border-color)] flex items-center justify-center text-[var(--text-primary)] hover:bg-red-100 hover:text-[var(--state-danger)] transition-colors"
-                          >
-                            <Minus size={14} />
-                          </button>
-                          <span className="w-6 text-center font-bold text-[var(--text-primary)] text-sm num">
-                            {cartItem.quantity}
-                          </span>
-                          <button
-                            onClick={() => onUpdateQty(id, cartItem.quantity + 1)}
-                            className="w-11 h-11 rounded-[var(--radius-sm)] bg-[var(--accent-emerald)] flex items-center justify-center text-white hover:bg-[var(--accent-emerald-dark)] transition-colors"
-                          >
-                            <Plus size={14} />
-                          </button>
-                        </div>
-
-                        {/* Remove */}
-                        <button
-                          onClick={() => onRemove(id)}
-                          className="w-11 h-11 rounded-[var(--radius-sm)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--state-danger)] hover:bg-red-50 transition-colors flex-shrink-0"
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-
-                      {/* Note */}
-                      {(cartItem.modifierIds?.length > 0 || cartItem.sweetness != null || cartItem.milkType) && (
-                        <button type="button" onClick={() => onEditOptions(cartItem)} className="min-h-[44px] min-w-[44px] text-xs font-semibold text-[var(--accent-emerald)]">{t('editOptions')}</button>
-                      )}
-                      {editingNoteId === id ? (
-                        <div className="flex gap-2">
-                          <input
-                            autoFocus
-                            value={noteValue}
-                            onChange={(e) => setNoteValue(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') saveNote(id); }}
-                            onBlur={() => saveNote(id)} // tapping elsewhere / "proceed" must not drop the note
-                            placeholder={t('notePlaceholder')}
-                            className="flex-1 text-xs border border-[var(--border-color)] rounded-[var(--radius-sm)] px-3 py-1.5 bg-[var(--bg-secondary)] focus:outline-none focus:border-[var(--accent-emerald)]"
-                          />
-                          <button
-                            onClick={() => saveNote(id)}
-                            className="w-11 h-11 bg-[var(--accent-emerald)] rounded-[var(--radius-sm)] flex items-center justify-center text-white flex-shrink-0"
-                          >
-                            <Check size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => startEditNote(id, cartItem.note)}
-                          className="min-h-[44px] min-w-[44px] flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--accent-emerald)] transition-colors"
-                        >
-                          <FileText size={12} />
-                          <span>{cartItem.note && cartItem.note !== defaultOptionNote ? cartItem.note : t('addNote')}</span>
-                        </button>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-              {crossSell.length > 0 && (
-                <section className="space-y-2" aria-label={t('crossSell', comboPercent)}>
-                  <p className="text-sm font-semibold text-[var(--accent-emerald)]">{t('crossSell', comboPercent)}</p>
-                  <div className="flex gap-3 overflow-x-auto pb-2">
-                    {crossSell.map(({ item, extra }) => (
-                      <button key={item.id} type="button" onClick={() => onAdd(item)} className="min-h-[44px] w-64 shrink-0 flex items-center gap-3 p-2 text-left rounded-[var(--radius-sm)] bg-[var(--bg-tertiary)]">
-                        {item.image ? <img src={item.image} alt="" className="w-12 h-12 rounded-[var(--radius-sm)] object-cover" /> : <Coffee size={24} className="shrink-0 text-[var(--text-muted)]" />}
-                        <span className="min-w-0 text-sm text-[var(--text-primary)]"><span className="block break-words">{dispField(item, lang)}</span><span className="block text-xs text-[var(--accent-emerald)]">{t('netAdd', formatCurrency(extra))}</span></span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </div>
-
-            {/* Footer: total + proceed (always visible, never overlaps items) */}
-            {cart.length > 0 && (
-              <div className="flex-shrink-0 border-t border-[var(--border-color)] px-4 py-4 bg-[var(--bg-secondary)] shadow-[var(--elev-3)]">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm text-[var(--text-secondary)] font-medium">{t('cartTotal')}</span>
-                  <span className="font-bold text-lg text-[var(--accent-emerald)] num">{formatCurrency(total)}</span>
-                </div>
-                <Button variant="primary" size="lg" fullWidth onClick={onProceed}>
-                  {t('proceed')}
-                </Button>
-              </div>
-            )}
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sub-component: StickyCartBar — fixed bottom bar showing cart summary
-// ---------------------------------------------------------------------------
-function StickyCartBar({ cart, total, onClick, t }) {
-  const itemCount = cart.reduce((s, i) => s + Number(i.quantity), 0);
-
-  if (itemCount === 0) return null;
-
-  return (
-    <motion.div
-      initial={{ y: 80, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      exit={{ y: 80, opacity: 0 }}
-      className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-6 pt-2"
-    >
-      <button
-        onClick={onClick}
-        className="w-full bg-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-dark)] active:bg-[var(--accent-emerald-dark)] text-white rounded-[var(--radius-sm)] flex items-center justify-between px-4 py-4 shadow-[var(--elev-3)] transition-colors"
-        style={{ minHeight: 56 }}
-      >
-        <span className="bg-white/20 rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
-          {itemCount}
-        </span>
-        <span className="font-bold text-base flex items-center gap-2">
-          <ShoppingCart size={18} />
-          {t('viewCart')}
-        </span>
-        <span className="font-bold text-base">{formatCurrency(total)}</span>
-      </button>
-    </motion.div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sub-component: CheckoutStep — name input + order summary + submit
-// ---------------------------------------------------------------------------
 function CheckoutStep({
   cart,
   subtotal,
@@ -1143,137 +604,66 @@ function CheckoutStep({
 }) {
   const itemCount = cart.reduce((s, i) => s + Number(i.quantity), 0);
   const canSubmit = canSubmitOrder({ customerName, cartLength: itemCount, submitting });
+  const eligibleRewards = pointsRewardsEnabled && member ? getEligibleRewards(pointsRewards, memberPoints) : [];
 
   return (
-    <motion.div
-      key="checkout"
-      initial={{ opacity: 0, x: 40 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -40 }}
-      className="flex flex-col min-h-screen bg-[var(--bg-tertiary)]"
-    >
+    <div className="min-h-dvh bg-[var(--bg-canvas)] flex flex-col">
       {/* Header */}
-              <div className="bg-[var(--bg-secondary)] border-b border-[var(--border-color)] px-4 py-4 flex items-center gap-3 sticky top-0 z-10 backdrop-blur-sm">
-        <button
-          onClick={onBack}
-                className="w-10 h-10 rounded-[var(--radius-sm)] bg-[var(--bg-tertiary)] flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--border-color)] transition-colors"
-        >
-          <ChevronDown size={20} className="rotate-90" />
-        </button>
-              <h1 className="font-bold text-[var(--text-primary)] text-lg">{t('confirmOrder')}</h1>
-      </div>
+      <header className="sticky top-0 z-20 bg-[var(--bg-surface)] border-b border-[var(--border-color)]">
+        <div className="max-w-2xl mx-auto px-2 h-16 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label={t('back')}
+            className="w-11 h-11 rounded-full flex items-center justify-center text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+          >
+            <ChevronLeft size={24} />
+          </button>
+          <h1 className="text-[length:var(--fs-xl)] leading-[var(--lh-xl)] font-bold text-[var(--text-primary)]">{t('confirmOrder')}</h1>
+        </div>
+      </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 pb-40 w-full flex flex-col items-center">
-        <div className="w-full md:max-w-2xl space-y-4">
-          {/* Order items summary */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] overflow-hidden">
-            <div className="px-4 py-3 border-b border-[var(--border-color)]">
-              <h2 className="font-bold text-[var(--text-primary)]">{t('orderedItems')}</h2>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {cart.map((cartItem) => {
-                const id = cartItem.cartId || cartItem.id;
-                const sweetnessNote = cartItem.sweetness == null ? '' : `หวาน ${cartItem.sweetness}%`;
-                const defaultOptionNote = [cartItem.beanModifier, cartItem.milkLabel, sweetnessNote].filter(Boolean).join(' ');
-                return (
-                  <div key={id} className="px-4 py-3 flex items-center justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-[var(--text-primary)] leading-tight">{dispField(cartItem, lang)}</p>
-                      {cartItem.beanModifier && cartItem.beanModifier !== '' && (
-                        <p className="text-xs text-emerald-600">{cartItem.beanModifier}</p>
-                      )}
-                      {cartItem.sweetness != null && (
-                        <p className="text-xs text-orange-500">{t('sweetness')}: {cartItem.sweetness}%</p>
-                      )}
-                      {cartItem.milkLabel && (
-                        <p className="text-xs text-sky-600">{t('milkType')}: {milkLabelForLanguage(cartItem.milkType, lang) || cartItem.milkLabel}</p>
-                      )}
-                      {cartItem.note && cartItem.note !== defaultOptionNote && (
-                      <p className="text-xs text-[var(--text-muted)]">{cartItem.note}</p>
-                      )}
-                    </div>
-                      <span className="text-sm text-[var(--text-secondary)] flex-shrink-0 num">x{cartItem.quantity}</span>
-                      <span className="font-semibold text-sm text-[var(--text-primary)] flex-shrink-0 num">
-                      {formatCurrency(Number(cartItem.price) * Number(cartItem.quantity))}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Totals */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 space-y-2">
-            <div className="flex justify-between text-sm text-[var(--text-secondary)]">
-              <span>{t('itemsPrice')}</span>
-              <span>{formatCurrency(subtotal)}</span>
-            </div>
-            {comboDiscount > 0 && (
-              <div className="flex justify-between text-sm text-red-500">
-                <span>{t('comboDiscountLabel')}</span>
-                <span>-{formatCurrency(comboDiscount)}</span>
-              </div>
-            )}
-            {pointsDiscount > 0 && (
-              <div className="flex justify-between text-sm text-emerald-600">
-                <span>{t('pointsDiscountLabel')}</span>
-                <span>-{formatCurrency(pointsDiscount)}</span>
-              </div>
-            )}
-            {spendDiscount > 0 && (
-              <div className="flex justify-between text-sm text-amber-600">
-                <span>{t('spendDiscountLabel')}</span>
-                <span>-{formatCurrency(spendDiscount)}</span>
-              </div>
-            )}
-            {vatEnabled && (
-                  <div className="flex justify-between text-sm text-[var(--text-secondary)]">
-                <span>{t('vatLabel')}</span>
-                <span>{formatCurrency(vat)}</span>
-              </div>
-            )}
-                  <div className="flex justify-between font-bold text-base text-[var(--text-primary)] pt-2 border-t border-[var(--border-color)]">
-              <span>{t('grandTotal')}</span>
-              <span className="text-emerald-600">{formatCurrency(total)}</span>
-            </div>
-          </div>
-
-          {/* Customer name input */}
-          <div className="bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 space-y-4">
+      <div className="flex-1 w-full max-w-2xl mx-auto px-4 pt-4 pb-44 space-y-4">
+        {/* Who is ordering: the name is how staff call the order */}
+        <section className={`${panel} px-4 py-4 space-y-4`} aria-label={t('customerInfo')}>
+          <div>
             <Input
               label={t('yourName')}
               placeholder={t('namePlaceholder')}
               value={customerName}
               onChange={(e) => onNameChange(e.target.value)}
               maxLength={60}
+              autoComplete="given-name"
               autoFocus
             />
-                  <p className="text-xs text-[var(--text-muted)] -mt-2">
-                    {nameSource === 'autofill' ? t('nameHintAutofilled') : t('nameHint')}
-                  </p>
+            <p className="text-xs text-[var(--text-muted)] mt-1.5">
+              {nameSource === 'autofill' ? t('nameHintAutofilled') : t('nameHint')}
+            </p>
+          </div>
 
-            {/* Phone input for membership */}
-            <div>
-              <p className="text-xs text-[var(--text-muted)] mb-1.5">{t('memberPhoneShortcut')}</p>
-              <Input
-                label={t('phoneLabel')}
-                placeholder={t('phonePlaceholder')}
-                value={customerPhone}
-                // Keep digits only: "081 234 5678" / "081-234-5678" still becomes a
-                // full 10-digit number instead of being cut off by maxLength, and a
-                // phone-autofilled "+66 81 234 5678" becomes 0812345678.
-                onChange={(e) => onPhoneChange(normalizeThaiPhoneInput(e.target.value))}
-                inputMode="numeric"
-                autoComplete="tel"
-              />
-              {/* Member status line + points progress */}
+          {/* Phone input for membership */}
+          <div className="pt-4 border-t border-[var(--border-color)]">
+            <p className="text-sm text-[var(--text-secondary)] mb-2">{t('memberPhoneShortcut')}</p>
+            <Input
+              label={t('phoneLabel')}
+              placeholder={t('phonePlaceholder')}
+              value={customerPhone}
+              // Keep digits only: "081 234 5678" / "081-234-5678" still becomes a
+              // full 10-digit number instead of being cut off by maxLength, and a
+              // phone-autofilled "+66 81 234 5678" becomes 0812345678.
+              onChange={(e) => onPhoneChange(normalizeThaiPhoneInput(e.target.value))}
+              inputMode="numeric"
+              autoComplete="tel"
+            />
+            {/* Member status line + points progress */}
+            <div aria-live="polite" className="mt-2">
               {member && lookupStatus !== 'checking' ? (
-                <div className="mt-1.5 flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-3 rounded-[var(--radius)] bg-[var(--accent-soft)] px-3 py-2.5">
                   <div className="space-y-0.5 min-w-0">
-                    <p className="text-xs text-emerald-600 font-medium">
+                    <p className="text-sm text-[var(--accent-soft-fg)] font-semibold">
                       {t('memberStatus', member.name || t('defaultCustomerName'), memberPoints)}
                     </p>
-                    <p className="text-xs text-amber-600 font-bold">
+                    <p className="text-sm text-[var(--text-secondary)]">
                       {memberPoints >= redeemPointsThreshold
                         ? t('pointsReady', redeemDiscountValue)
                         : t('pointsRemaining', redeemPointsThreshold - memberPoints, redeemDiscountValue)}
@@ -1283,308 +673,175 @@ function CheckoutStep({
                     <button
                       type="button"
                       onClick={onNotMe}
-                      className="text-xs text-[var(--text-muted)] underline underline-offset-2 shrink-0 pt-0.5"
+                      className="shrink-0 min-h-11 px-2 -my-1.5 -mr-1 text-sm text-[var(--text-secondary)] underline underline-offset-2"
                     >
                       {t('notMe')}
                     </button>
                   )}
                 </div>
               ) : lookupStatus === 'checking' ? (
-                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
-                  {t('lookupChecking')}
-                </p>
+                <p className="text-sm text-[var(--text-secondary)]">{t('lookupChecking')}</p>
               ) : lookupStatus === 'error' ? (
-                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
-                  {t('lookupFailedHint')}
-                </p>
+                <p className="text-sm text-[var(--text-secondary)]">{t('lookupFailedHint')}</p>
               ) : customerPhone.length >= MEMBER_MIN_PHONE_LENGTH ? (
-                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
-                  {t('newPhoneHint')}
-                </p>
+                <p className="text-sm text-[var(--text-secondary)]">{t('newPhoneHint')}</p>
               ) : (
-                <p className="text-xs text-[var(--text-muted)] mt-1.5">
-                  {t('noPhoneHint')}
-                </p>
+                <p className="text-sm text-[var(--text-muted)]">{t('noPhoneHint')}</p>
               )}
             </div>
+          </div>
 
-            {/* Points redemption toggle */}
-            {pointsEligible && (
-              <motion.button
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                type="button"
-                onClick={onTogglePoints}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-[var(--radius)] border-2 transition-all ${
-                  usePoints
-                    ? 'bg-emerald-50 border-emerald-400'
-                : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] hover:border-[var(--accent-emerald)]'
-                }`}
-                style={{ minHeight: 44 }}
-              >
-              <span className={`text-sm font-semibold ${usePoints ? 'text-[var(--accent-emerald-dark)]' : 'text-[var(--text-primary)]'}`}>
-                  {t('usePointsToggle', redeemPointsThreshold, redeemDiscountValue)}
-                </span>
-                <div
-                  className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${
-                usePoints ? 'bg-[var(--accent-emerald)]' : 'bg-[var(--border-color)]'
-                  }`}
-                >
-                  <div
-                className={`absolute top-0.5 w-5 h-5 bg-[var(--bg-secondary)] rounded-full shadow-[var(--elev-1)] transition-transform ${
-                      usePoints ? 'translate-x-5' : 'translate-x-0.5'
-                    }`}
-                  />
-                </div>
-              </motion.button>
-            )}
+          {/* Points redemption toggle */}
+          {pointsEligible && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={usePoints}
+              onClick={onTogglePoints}
+              className={`w-full min-h-14 flex items-center justify-between gap-3 px-4 py-3 rounded-[var(--radius)] border-2 text-left transition-colors ${
+                usePoints ? 'bg-[var(--accent-soft)] border-[var(--accent)]' : 'bg-[var(--bg-surface)] border-[var(--border-strong)]'
+              }`}
+            >
+              <span className={`flex items-center gap-2 font-semibold ${usePoints ? 'text-[var(--accent-soft-fg)]' : 'text-[var(--text-primary)]'}`}>
+                <Gift size={18} aria-hidden="true" />
+                {t('usePointsToggle', redeemPointsThreshold, redeemDiscountValue)}
+              </span>
+              <span className={`relative shrink-0 w-12 h-7 rounded-full transition-colors ${usePoints ? 'bg-[var(--accent)]' : 'bg-[var(--border-strong)]'}`} aria-hidden="true">
+                <span className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow-[var(--elev-1)] transition-transform ${usePoints ? 'translate-x-5' : ''}`} />
+              </span>
+            </button>
+          )}
 
-            {pointsRewardsEnabled && member && getEligibleRewards(pointsRewards, memberPoints).length > 0 && (
-              <div className="mt-2 space-y-2">
-                {getEligibleRewards(pointsRewards, memberPoints).map(reward => (
+          {eligibleRewards.length > 0 && (
+            <div className="space-y-2" role="radiogroup">
+              {eligibleRewards.map((reward) => {
+                const selected = redeemRewardId === reward.id;
+                return (
                   <label
                     key={reward.id}
-                    className={`w-full flex items-center justify-between px-4 py-3 rounded-[var(--radius)] border-2 transition-all cursor-pointer ${
-                      redeemRewardId === reward.id
-                        ? 'bg-emerald-50 border-emerald-400'
-                        : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] hover:border-[var(--accent-emerald)]'
+                    className={`w-full min-h-14 flex items-center justify-between gap-3 px-4 py-3 rounded-[var(--radius)] border-2 cursor-pointer transition-colors ${
+                      selected ? 'bg-[var(--accent-soft)] border-[var(--accent)]' : 'bg-[var(--bg-surface)] border-[var(--border-strong)]'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${redeemRewardId === reward.id ? 'border-emerald-500' : 'border-gray-300'}`}>
-                        {redeemRewardId === reward.id && <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full" />}
-                      </div>
-                      <span className={`text-sm font-semibold ${redeemRewardId === reward.id ? 'text-[var(--accent-emerald-dark)]' : 'text-[var(--text-primary)]'}`}>
-                        ??? {reward.name}
+                    <span className="flex items-center gap-3 min-w-0">
+                      <span className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${selected ? 'border-[var(--accent)]' : 'border-[var(--border-strong)]'}`} aria-hidden="true">
+                        {selected && <span className="w-2.5 h-2.5 rounded-full bg-[var(--accent)]" />}
                       </span>
-                    </div>
-                    <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
-                      ??? {reward.cost} ????
+                      <span className={`font-semibold ${selected ? 'text-[var(--accent-soft-fg)]' : 'text-[var(--text-primary)]'}`}>
+                        {t('rewardRedeem', reward.name)}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs font-bold text-[var(--state-warn)] bg-[var(--state-warn-soft)] px-2 py-1 rounded-full num">
+                      {t('rewardCost', reward.cost)}
                     </span>
                     <input
                       type="radio"
-                      className="hidden"
-                      checked={redeemRewardId === reward.id}
+                      className="sr-only"
+                      checked={selected}
                       onChange={() => onToggleReward(reward.id)}
                     />
                   </label>
-                ))}
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Order summary */}
+        <section className={`${panel} overflow-hidden`}>
+          <div className="px-4 pt-4 pb-2 flex items-baseline justify-between gap-2">
+            <h2 className="font-bold text-[var(--text-primary)]">{t('orderedItems')}</h2>
+            <button type="button" onClick={onBack} className="min-h-11 -my-2 px-2 text-sm font-semibold text-[var(--accent-soft-fg)]">{t('editCart')}</button>
+          </div>
+          <ul className="divide-y divide-[var(--border-color)]">
+            {cart.map((line) => {
+              const id = line.cartId || line.id;
+              const options = lineOptionSummary(line, t, lang);
+              const customNote = line.note && line.note !== defaultOptionNote(line) ? line.note : '';
+              return (
+                <li key={id} className="px-4 py-3 flex items-start gap-3">
+                  <span className="shrink-0 min-w-7 h-7 px-1.5 rounded-full bg-[var(--bg-sunken)] text-sm font-bold text-[var(--text-secondary)] flex items-center justify-center num">{line.quantity}×</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-[var(--text-primary)] leading-snug">{dispField(line, lang)}</p>
+                    {options && <p className="text-sm text-[var(--text-secondary)] leading-snug">{options}</p>}
+                    {customNote && <p className="text-sm text-[var(--text-muted)] leading-snug">{customNote}</p>}
+                  </div>
+                  <span className="shrink-0 font-semibold text-[var(--text-primary)] num">
+                    {formatCurrency(Number(line.price) * Number(line.quantity))}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Totals */}
+          <dl className="px-4 py-3 space-y-1.5 border-t border-[var(--border-color)] bg-[var(--bg-sunken)] text-sm">
+            <div className="flex justify-between text-[var(--text-secondary)]">
+              <dt>{t('itemsPrice')}</dt>
+              <dd className="num">{formatCurrency(subtotal)}</dd>
+            </div>
+            {comboDiscount > 0 && (
+              <div className="flex justify-between text-[var(--state-danger)]">
+                <dt>{t('comboDiscountLabel')}</dt>
+                <dd className="num">-{formatCurrency(comboDiscount)}</dd>
               </div>
             )}
-          </div>
-
-          {/* Error message */}
-          <AnimatePresence>
-            {submitError && (
-              <motion.div
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-              className="bg-red-50 border border-[var(--state-danger)] rounded-[var(--radius)] px-4 py-3 flex items-center gap-2 text-[var(--state-danger)]"
-              >
-                <AlertCircle size={16} />
-                <span className="text-sm font-medium">{submitError}</span>
-              </motion.div>
+            {pointsDiscount > 0 && (
+              <div className="flex justify-between text-[var(--accent)]">
+                <dt>{t('pointsDiscountLabel')}</dt>
+                <dd className="num">-{formatCurrency(pointsDiscount)}</dd>
+              </div>
             )}
-          </AnimatePresence>
-        </div>
-      </div>
+            {spendDiscount > 0 && (
+              <div className="flex justify-between text-[var(--state-warn)]">
+                <dt>{t('spendDiscountLabel')}</dt>
+                <dd className="num">-{formatCurrency(spendDiscount)}</dd>
+              </div>
+            )}
+            {vatEnabled && (
+              <div className="flex justify-between text-[var(--text-secondary)]">
+                <dt>{t('vatLabel')}</dt>
+                <dd className="num">{formatCurrency(vat)}</dd>
+              </div>
+            )}
+            <div className="flex justify-between items-baseline pt-2 mt-1 border-t border-[var(--border-color)] text-[var(--text-primary)]">
+              <dt className="font-bold text-base">{t('grandTotal')}</dt>
+              <dd className="font-bold text-xl text-[var(--accent)] num">{formatCurrency(total)}</dd>
+            </div>
+          </dl>
+        </section>
 
-      {/* Submit button (fixed) */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[var(--bg-secondary)] border-t border-[var(--border-color)] shadow-[var(--elev-3)] flex justify-center">
-        <div className="w-full md:max-w-2xl px-4 py-4">
-        <Button
-          variant="primary"
-          size="lg"
-          fullWidth
-          onClick={onSubmit}
-          loading={submitting}
-          disabled={!canSubmit}
-        >
-          {submitting ? t('submitting') : t('submitOrder')}
-        </Button>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sub-component: SuccessScreen
-// ---------------------------------------------------------------------------
-const LINE_OA_URL = 'https://line.me/R/ti/p/@siwara';
-
-function SuccessScreen({ customerName, onReset, reviewUrl, queueNumber, redeemedRewardName, t }) {
-  const hasReviewUrl = typeof reviewUrl === 'string' && reviewUrl.trim() !== '';
-  const [reviewDone, setReviewDone] = useState(false);
-
-  // Hosts we'll hand off to the Google Maps app. reviewUrl is admin-set but the
-  // settings doc is writable by any anonymous client, so treat it as untrusted.
-  const MAPS_HOSTS = ['maps.app.goo.gl', 'g.page', 'goo.gl', 'maps.google.com', 'www.google.com', 'search.google.com'];
-
-  const handleReviewClick = () => {
-    const url = reviewUrl.trim();
-    // Many customers aren't signed into Google in their (in-app) browser, which
-    // makes leaving a review painful. On Android, force the link into the Google
-    // Maps app — where they're usually already signed in — and fall back to the
-    // browser if Maps isn't installed. iOS/desktop open normally (a Maps
-    // universal link still opens the app when it's installed).
-    if (/Android/i.test(navigator.userAgent || '')) {
-      try {
-        const u = new URL(url);
-        if (u.protocol === 'https:' && MAPS_HOSTS.includes(u.host)) {
-          // Rebuild from parsed pieces (no hash / userinfo) so the untrusted URL
-          // can't inject extra intent params, and confine it to Google Maps.
-          const safeHostPath = u.host + u.pathname + u.search;
-          window.location.href =
-            `intent://${safeHostPath}#Intent;scheme=https;package=com.google.android.apps.maps;` +
-            `S.browser_fallback_url=${encodeURIComponent(u.toString())};end`;
-          setReviewDone(true);
-          return;
-        }
-      } catch {
-        // invalid URL — fall through to opening a normal tab
-      }
-    }
-    window.open(url, '_blank', 'noopener,noreferrer');
-    setReviewDone(true);
-  };
-
-  return (
-    <motion.div
-      key="success"
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0 }}
-      className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-emerald-50 to-white px-6 text-center"
-    >
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.1 }}
-            className="w-24 h-24 bg-[var(--accent-emerald)] rounded-full flex items-center justify-center mb-6 shadow-[var(--elev-1)]"
-      >
-        <Check size={44} className="text-white" strokeWidth={3} />
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-        className="space-y-3"
-      >
-              <p className="text-[var(--text-secondary)] font-medium text-sm">{t('orderOf')}</p>
-              <h1 className="font-bold text-3xl text-[var(--text-primary)]">{customerName}</h1>
-
-        {/* Big number = position in today's kitchen line (pending orders of this
-            business day, ours included) — what the customer actually cares about.
-            The order/ticket number (same one on the kitchen screen and receipt,
-            restarts every day at 10:00) is shown small so staff can match it. */}
-        {queueNumber?.pending > 1 ? (
-            <div className="bg-[var(--accent-emerald)] text-white rounded-[var(--radius)] px-5 py-4 inline-block shadow-[var(--elev-1)] my-4">
-            <p className="text-sm font-medium opacity-80 mb-1">{t('kitchenPosition')}</p>
-              {/* Thai tone marks sit above the line box — give them room */}
-              <p className="text-5xl font-bold tracking-tight num leading-[1.3] pt-1">{t('positionN', queueNumber.pending)}</p>
-              <p className="text-sm font-medium opacity-90 mt-1">{t('ordersAhead', queueNumber.pending - 1)}</p>
-          </div>
-        ) : (
-              <p className="text-[var(--accent-emerald)] font-bold text-2xl leading-relaxed mt-4">
-            {t('preparingDrink')}
-          </p>
-        )}
-        {queueNumber?.number > 0 && (
-              <p className="text-[var(--text-muted)] text-sm">{t('orderNumber', queueNumber.number)}</p>
-        )}
-              <p className="text-[var(--text-secondary)] font-semibold text-base leading-relaxed">
-          {t('payAtCounter')}
-        </p>
-        {redeemedRewardName && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-[var(--radius)] px-4 py-3 mt-4 text-emerald-800">
-            <p className="text-sm font-semibold mb-1">????????????????</p>
-            <p className="text-xl font-bold">{redeemedRewardName}</p>
+        {/* Error message */}
+        {submitError && (
+          <div role="alert" className="bg-[var(--state-danger-soft)] border border-[var(--state-danger)] rounded-[var(--radius)] px-4 py-3 flex items-start gap-2 text-[var(--state-danger)]">
+            <AlertCircle size={18} className="shrink-0 mt-0.5" aria-hidden="true" />
+            <span className="text-sm font-medium">{submitError}</span>
           </div>
         )}
-              <p className="text-[var(--text-muted)] text-sm">
-          {t('staffWillCall')}
-        </p>
-      </motion.div>
+      </div>
 
-      {/* LINE OA card */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="mt-8 w-full max-w-xs bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 text-center"
-      >
-        <p className="font-bold text-[var(--text-primary)] text-base mb-1">{t('lineTitle')}</p>
-        <p className="text-[var(--text-secondary)] text-sm mb-4 leading-relaxed">
-          {t('lineDesc')}
-        </p>
-        <a
-          href={LINE_OA_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-[var(--radius-sm)] font-bold text-white text-sm"
-          style={{ backgroundColor: '#06C755' }}
-        >
-          <MessageCircle size={16} />
-          {t('lineButton')}
-        </a>
-      </motion.div>
-
-      {/* Review prompt card */}
-      {hasReviewUrl && (
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-              className="mt-4 w-full max-w-xs bg-[var(--bg-secondary)] rounded-[var(--radius)] shadow-[var(--elev-1)] border border-[var(--border-color)] px-4 py-4 text-center"
-        >
-          {reviewDone ? (
-            <p className="font-bold text-emerald-600 text-base py-2">{t('reviewThanks')}</p>
-          ) : (
-            <>
-                <p className="font-bold text-[var(--text-primary)] text-base mb-1">{t('reviewPrompt')}</p>
-                <p className="text-[var(--text-secondary)] text-sm mb-4 leading-relaxed">
-                {t('reviewDesc')}
-              </p>
-              <Button
-                variant="primary"
-                size="md"
-                fullWidth
-                leftIcon={<Star size={16} />}
-                onClick={handleReviewClick}
-                noUppercase
-              >
-                {t('writeReview')}
-              </Button>
-            </>
-          )}
-          {/* Review is verified in person — show the review, then staff applies 5% at payment */}
-          <p className="text-emerald-700 text-sm font-semibold mt-3 leading-relaxed">
-            {t('reviewDiscountNote')}
-          </p>
-        </motion.div>
-      )}
-
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.45 }}
-        className="mt-6 w-full max-w-xs"
-      >
-        <Button
-          variant="outline"
-          size="lg"
-          fullWidth
-          onClick={onReset}
-          leftIcon={<RefreshCw size={18} />}
-          noUppercase
-        >
-          {t('orderAgain')}
-        </Button>
-      </motion.div>
-    </motion.div>
+      {/* Submit bar (fixed) */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-[var(--bg-surface)] border-t border-[var(--border-color)] shadow-[var(--elev-3)] pb-[env(safe-area-inset-bottom)]">
+        <div className="max-w-2xl mx-auto px-4 pt-3 pb-3 space-y-2">
+          <p className="text-center text-xs text-[var(--text-muted)]">{t('payAtCounterHint')}</p>
+          <Button
+            variant="primary"
+            size="xl"
+            fullWidth
+            onClick={onSubmit}
+            loading={submitting}
+            disabled={!canSubmit}
+          >
+            {submitting ? t('submitting') : (
+              <span className="flex w-full items-center justify-between gap-3">
+                <span>{t('submitOrder')}</span>
+                <span className="num">{formatCurrency(total)}</span>
+              </span>
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1623,25 +880,10 @@ function CustomerOrderApp() {
   const [hasPainted, setHasPainted] = useState(false);
 
   // --- UI state ---
-  const [activeCategory, setActiveCategory] = useState('ทั้งหมด');
+  // The menu is one page of category sections; the sticky chip bar follows the
+  // section being read (scroll-spy) and jumps to a section on tap.
   const [searchQuery, setSearchQuery] = useState('');
-  // Show a curated short list per category first (less choice paralysis); the
-  // customer expands to the full list on demand. Resets when the view changes.
-  const [showAllItems, setShowAllItems] = useState(false);
-  useEffect(() => { setShowAllItems(false); }, [activeCategory, searchQuery]);
-  const [previewCount, setPreviewCount] = useState(8);
-  useEffect(() => {
-    const updatePreviewCount = () => {
-      const w = window.innerWidth;
-      if (w >= 1280) setPreviewCount(15);      // 5 cols * 3 rows
-      else if (w >= 1024) setPreviewCount(12); // 4 cols * 3 rows
-      else if (w >= 768) setPreviewCount(12);  // 3 cols * 4 rows
-      else setPreviewCount(8);                 // 2 cols * 4 rows
-    };
-    updatePreviewCount();
-    window.addEventListener('resize', updatePreviewCount);
-    return () => window.removeEventListener('resize', updatePreviewCount);
-  }, []);
+  const stickyBarRef = useRef(null);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [beanModalOpen, setBeanModalOpen] = useState(false);
   const [pendingItem, setPendingItem] = useState(null);
@@ -1651,9 +893,7 @@ function CustomerOrderApp() {
   const [menuReady, setMenuReady] = useState(false);
   const [suggestedLine, setSuggestedLine] = useState(null);
   const draftRestoredRef = useRef(false);
-  const cakeRailRef = useRef(null);
-  const menuGridRef = useRef(null);
-  const [scrollTarget, setScrollTarget] = useState(null);
+  const [scrollTarget, setScrollTarget] = useState(null); // section key to jump to after the next render
   const [detailItem, setDetailItem] = useState(null); // full-screen image/poster view
 
   // --- Cart & checkout state ---
@@ -1893,26 +1133,16 @@ function CustomerOrderApp() {
     [menu],
   );
 
-  const filteredMenu = useMemo(() => availableMenu
-    .filter((item) => {
-      const q = searchQuery.trim().toLowerCase();
-      // A search looks through the whole menu, even if a category chip is
-      // still selected — otherwise "not found" really means "wrong tab".
-      const matchCat = q !== '' || activeCategory === 'ทั้งหมด' || item.category === activeCategory;
-      const matchSearch = q === '' ||
-        item.name.toLowerCase().includes(q) ||
-        (item.description || '').toLowerCase().includes(q) ||
-        (item.nameEn || '').toLowerCase().includes(q) ||
-        (item.descriptionEn || '').toLowerCase().includes(q);
-      return matchCat && matchSearch;
-    })
-    // Popular first: most-ordered (soldCount) at the top, least at the back, so
-    // the preview slice and the top of the list surface what customers order
-    // most. Ties fall back to name for a stable order.
-    .sort((a, b) =>
-      (Number(b.soldCount || 0) - Number(a.soldCount || 0)) ||
-      String(a.name || '').localeCompare(String(b.name || ''), 'th'),
-    ), [availableMenu, activeCategory, searchQuery]);
+  const searchTerm = searchQuery.trim().toLowerCase();
+  const isSearching = searchTerm !== '';
+  // A search looks through the whole menu (every section).
+  const searchResults = useMemo(() => (!searchTerm ? [] : availableMenu
+    .filter((item) =>
+      item.name.toLowerCase().includes(searchTerm) ||
+      (item.description || '').toLowerCase().includes(searchTerm) ||
+      (item.nameEn || '').toLowerCase().includes(searchTerm) ||
+      (item.descriptionEn || '').toLowerCase().includes(searchTerm))
+    .sort(byPopularity)), [availableMenu, searchTerm]);
 
   // ---------------------------------------------------------------------------
   // Highlights: ขายดี (by soldCount) + แนะนำ (isFeatured)
@@ -1934,13 +1164,59 @@ function CustomerOrderApp() {
     ((!Array.isArray(settingsData?.cakeSaleCategories) || settingsData.cakeSaleCategories.length === 0) && /เค้ก|cake/i.test(item.category || ''))
   ), [availableMenu, settingsData]);
 
-  const showHighlights = activeCategory === 'ทั้งหมด' && searchQuery.trim() === '';
+  // ---------------------------------------------------------------------------
+  // Category sections, ordered by the category `order` field so the shop
+  // controls the sequence (e.g. มัทฉะ pinned to the front). We sort here rather
+  // than trusting the bundle's array order · the published order can be
+  // clobbered by an older POS tab republishing. Categories without `order` fall
+  // to the end; items whose category is not in the list get a trailing section.
+  // ---------------------------------------------------------------------------
+  const categoryEnByName = useMemo(() => Object.fromEntries(
+    categories.filter((c) => c.name && c.nameEn).map((c) => [c.name, c.nameEn]),
+  ), [categories]);
+  const menuSections = useMemo(() => {
+    const byCategory = new Map();
+    for (const item of availableMenu) {
+      const name = item.category || '';
+      if (!byCategory.has(name)) byCategory.set(name, []);
+      byCategory.get(name).push(item);
+    }
+    const ordered = [...categories]
+      .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
+      .map((c) => c.name)
+      .filter(Boolean);
+    const names = [...new Set([...ordered, ...byCategory.keys()])].filter((name) => byCategory.get(name)?.length);
+    return names.map((name, i) => ({ key: `c${i}`, name, items: [...byCategory.get(name)].sort(byPopularity) }));
+  }, [availableMenu, categories]);
+  const sectionLabel = (name) => (!name ? t('otherCategory') : (lang === 'en' && categoryEnByName[name]) || name);
+
+  const hasHighlights = cakeItems.length > 0 || bestSellers.length > 0 || featuredItems.length > 0;
+  const navItems = useMemo(() => [
+    ...(hasHighlights ? [{ key: 'featured', label: t('featuredChip') }] : []),
+    ...menuSections.map((section) => ({
+      key: section.key,
+      label: !section.name ? t('otherCategory') : (lang === 'en' && categoryEnByName[section.name]) || section.name,
+      count: section.items.length,
+    })),
+  ], [hasHighlights, menuSections, t, lang, categoryEnByName]);
+  const navKeys = useMemo(() => navItems.map((n) => n.key), [navItems]);
+  const getStickyOffset = useCallback(() => stickyBarRef.current?.offsetHeight ?? 0, []);
+  const { active: activeSection, jumpTo } = useScrollSpy(navKeys, getStickyOffset, !isSearching && view === 'menu' && hasPainted);
 
   useEffect(() => {
     if (!scrollTarget) return;
-    (scrollTarget === 'cake' ? cakeRailRef.current : menuGridRef.current)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    jumpTo(scrollTarget);
     setScrollTarget(null);
-  }, [scrollTarget, activeCategory, searchQuery]);
+  }, [scrollTarget, jumpTo]);
+
+  const selectSection = useCallback((key) => {
+    if (isSearching) {
+      setSearchQuery('');
+      setScrollTarget(key); // jump once the sections are back on the page
+    } else {
+      jumpTo(key);
+    }
+  }, [isSearching, jumpTo]);
 
   useEffect(() => {
     if (!menuReady || loading || !authed || draftRestoredRef.current) return;
@@ -2038,24 +1314,6 @@ function CustomerOrderApp() {
   const happyHourLeftText = happyHourLeft >= 60
     ? `${Math.floor(happyHourLeft / 60)} ${t('hoursShort')} ${happyHourLeft % 60} ${t('minutesShort')}`
     : `${happyHourLeft} ${t('minutesShort')}`;
-
-  // ---------------------------------------------------------------------------
-  // Category list: "ทั้งหมด" + each category, ordered by the `order` field so the
-  // shop controls the tab sequence (e.g. มัทฉะ pinned to the front). We sort here
-  // rather than trusting the bundle's array order — the published order can be
-  // clobbered by an older POS tab republishing, so the tab bar owns its own sort.
-  // Categories without `order` fall to the end, keeping their relative order.
-  // ---------------------------------------------------------------------------
-  const orderedCategories = [...categories].sort(
-    (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
-  );
-  const categoryNames = ['ทั้งหมด', ...new Set(orderedCategories.map((c) => c.name).filter(Boolean))];
-  // Thai category name → English (only where the owner filled `nameEn`), used to
-  // localise the category tabs in EN mode. The tab VALUE stays the Thai name so
-  // it still matches `item.category`; only the label is swapped.
-  const categoryEnByName = Object.fromEntries(
-    categories.filter((c) => c.name && c.nameEn).map((c) => [c.name, c.nameEn])
-  );
 
   // ---------------------------------------------------------------------------
   // Membership / points derivations
@@ -2173,14 +1431,14 @@ function CustomerOrderApp() {
   );
 
   const navigateCombo = () => {
+    // Missing a cake → the cake rail (or the cake section); missing a drink →
+    // the first section that is not cake.
     setSearchQuery('');
-    if (!combo.hasCake && showHighlights && cakeItems.length) {
-      setScrollTarget('cake');
-    } else {
-      setActiveCategory(!combo.hasCake ? cakeItems[0]?.category || settingsData.cakeSaleCategories?.[0] || 'ทั้งหมด' : 'ทั้งหมด');
-      setShowAllItems(true);
-      setScrollTarget('menu');
-    }
+    const cakeCategories = new Set(cakeItems.map((item) => item.category));
+    const target = !combo.hasCake
+      ? (cakeItems.length ? 'cake' : menuSections.find((s) => cakeCategories.has(s.name))?.key)
+      : menuSections.find((s) => !cakeCategories.has(s.name))?.key;
+    if (target) setScrollTarget(target);
   };
 
   // ---------------------------------------------------------------------------
@@ -2195,6 +1453,12 @@ function CustomerOrderApp() {
     return whenIdle(() => { trackStep('view'); loadCheckoutFallback().catch(() => {}); });
   }, [authed, menuReady, hasPainted]);
   useEffect(() => { if (cartDrawerOpen) trackStep('cart'); }, [cartDrawerOpen]);
+  // Checkout and success start at the top; going back to the menu returns to
+  // where the customer was browsing.
+  const menuScrollRef = useRef(0);
+  useEffect(() => {
+    window.scrollTo(0, view === 'menu' ? menuScrollRef.current : 0);
+  }, [view]);
   useEffect(() => {
     if (view === 'checkout') trackStep('checkout');
     if (view === 'success') trackStep('order');
@@ -2366,6 +1630,7 @@ function CustomerOrderApp() {
     setSubmitError('');
     setSuccessQueue(null);
     checkoutRequestIdRef.current = null;
+    menuScrollRef.current = 0;
     setView('menu');
   };
 
@@ -2416,15 +1681,13 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   if (view === 'success') {
     return (
-      <AnimatePresence mode="wait">
-        <SuccessScreen
-          queueNumber={successQueue}
-          customerName={customerName}
-          onReset={handleReset}
-          reviewUrl={settingsData.reviewUrl}
-          t={t}
-        />
-      </AnimatePresence>
+      <SuccessScreen
+        queueNumber={successQueue}
+        customerName={customerName}
+        onReset={handleReset}
+        reviewUrl={settingsData.reviewUrl}
+        t={t}
+      />
     );
   }
 
@@ -2433,50 +1696,48 @@ function CustomerOrderApp() {
   // ---------------------------------------------------------------------------
   if (view === 'checkout') {
     return (
-      <AnimatePresence mode="wait">
-        <CheckoutStep
-          cart={cart}
-          subtotal={subtotal}
-          vat={vat}
-          total={total}
-          vatEnabled={settings.vatEnabled}
-          customerName={customerName}
-          onNameChange={handleNameChange}
-          onSubmit={handleSubmit}
-          onBack={() => setView('menu')}
-          submitting={submitting}
-          submitError={submitError}
-          customerPhone={customerPhone}
-          onPhoneChange={setCustomerPhone}
-          member={member}
-          memberPoints={memberPoints}
-          pointsEligible={pointsEligible}
-          usePoints={usePoints}
-          onTogglePoints={() => {
-            const res = toggleRewardSelection(usePoints, redeemRewardId, 'discount');
-            setUsePoints(res.usePoints);
-            setRedeemRewardId(res.redeemRewardId);
-          }}
-          lookupStatus={lookupStatus}
-          nameSource={nameAutofill.nameSource}
-          onNotMe={handleNotMe}
-          redeemPointsThreshold={redeemPointsThreshold}
-          redeemDiscountValue={redeemDiscountValue}
-          pointsRewardsEnabled={settingsData.pointsRewardsEnabled}
-          pointsRewards={settingsData.pointsRewards}
-          redeemRewardId={redeemRewardId}
-          onToggleReward={(id) => {
-            const res = toggleRewardSelection(usePoints, redeemRewardId, 'reward', id);
-            setUsePoints(res.usePoints);
-            setRedeemRewardId(res.redeemRewardId);
-          }}
-          comboDiscount={comboDiscount}
-          pointsDiscount={pointsDiscount}
-          spendDiscount={spendDiscount}
-          t={t}
-          lang={lang}
-        />
-      </AnimatePresence>
+      <CheckoutStep
+        cart={cart}
+        subtotal={subtotal}
+        vat={vat}
+        total={total}
+        vatEnabled={settings.vatEnabled}
+        customerName={customerName}
+        onNameChange={handleNameChange}
+        onSubmit={handleSubmit}
+        onBack={() => setView('menu')}
+        submitting={submitting}
+        submitError={submitError}
+        customerPhone={customerPhone}
+        onPhoneChange={setCustomerPhone}
+        member={member}
+        memberPoints={memberPoints}
+        pointsEligible={pointsEligible}
+        usePoints={usePoints}
+        onTogglePoints={() => {
+          const res = toggleRewardSelection(usePoints, redeemRewardId, 'discount');
+          setUsePoints(res.usePoints);
+          setRedeemRewardId(res.redeemRewardId);
+        }}
+        lookupStatus={lookupStatus}
+        nameSource={nameAutofill.nameSource}
+        onNotMe={handleNotMe}
+        redeemPointsThreshold={redeemPointsThreshold}
+        redeemDiscountValue={redeemDiscountValue}
+        pointsRewardsEnabled={settingsData.pointsRewardsEnabled}
+        pointsRewards={settingsData.pointsRewards}
+        redeemRewardId={redeemRewardId}
+        onToggleReward={(id) => {
+          const res = toggleRewardSelection(usePoints, redeemRewardId, 'reward', id);
+          setUsePoints(res.usePoints);
+          setRedeemRewardId(res.redeemRewardId);
+        }}
+        comboDiscount={comboDiscount}
+        pointsDiscount={pointsDiscount}
+        spendDiscount={spendDiscount}
+        t={t}
+        lang={lang}
+      />
     );
   }
 
@@ -2484,258 +1745,251 @@ function CustomerOrderApp() {
   // Menu browsing view
   // ---------------------------------------------------------------------------
   const itemCount = cart.reduce((s, i) => s + Number(i.quantity), 0);
+  const spendReached = subtotal >= spendThreshold;
 
   return (
-    <div className="min-h-screen bg-[var(--bg-tertiary)]">
-      {/* ---- Header ---- */}
-        <header className="bg-[var(--bg-secondary)] border-b border-[var(--border-color)] sticky top-0 z-20 backdrop-blur-sm">
-        <div className="px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="font-bold text-[var(--text-primary)] text-xl leading-tight">{settings.shopName}</h1>
-            <p className="text-emerald-500 text-xs font-semibold mt-0.5">{t('orderViaQr')}</p>
-          </div>
-          <div className="flex items-center gap-2">
+    <div className="min-h-dvh bg-[var(--bg-canvas)]">
+      {/* ---- Shopfront header (scrolls away; the chip bar below stays) ---- */}
+      <header className="bg-[var(--bg-surface)]">
+        <div className="max-w-5xl mx-auto px-4 pt-4 pb-3 space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="shrink-0 w-12 h-12 rounded-[var(--radius)] bg-[var(--surface-inverse)] text-[var(--text-on-inverse)] flex items-center justify-center" aria-hidden="true">
+              <Coffee size={24} strokeWidth={1.8} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-[length:var(--fs-2xl)] leading-[var(--lh-2xl)] font-bold text-[var(--text-primary)] truncate">{settings.shopName}</h1>
+              <p className="text-sm text-[var(--text-secondary)] leading-snug">{t('orderViaQr')}</p>
+            </div>
             <LanguageToggle lang={lang} onToggle={toggleLang} />
-            {itemCount > 0 && (
-              <button
-                onClick={() => setCartDrawerOpen(true)}
-              className="relative w-12 h-12 bg-[var(--accent-emerald-light)] rounded-[var(--radius-sm)] flex items-center justify-center text-[var(--accent-emerald)] hover:bg-[var(--accent-emerald-light)] transition-colors"
-              >
-                <ShoppingCart size={22} />
-                <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
-                  {itemCount}
-                </span>
-              </button>
-            )}
           </div>
-        </div>
-
-        {/* Search */}
-        <div className="px-4 pb-3">
           <div className="relative">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+            <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" aria-hidden="true" />
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('searchPlaceholder')}
-            className="w-full bg-[var(--bg-tertiary)] rounded-[var(--radius-sm)] py-2.5 pl-9 pr-4 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-emerald)]"
+              aria-label={t('searchPlaceholder')}
+              enterKeyHint="search"
+              className="w-full min-h-12 bg-[var(--bg-sunken)] rounded-full pl-10 pr-12 text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] border border-transparent focus:outline-none focus:border-[var(--accent)] focus:bg-[var(--bg-surface)] [&::-webkit-search-cancel-button]:hidden"
             />
+            {isSearching && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label={t('clearSearch')}
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center text-[var(--text-secondary)]"
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
-        </div>
-
-        {/* Category tabs */}
-        <div className="flex gap-2 overflow-x-auto px-4 pb-3 scrollbar-hide">
-          {categoryNames.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${
-                activeCategory === cat
-                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200'
-            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)]'
-              }`}
-            >
-              {cat === 'ทั้งหมด' ? t('categoryAll') : (lang === 'en' && categoryEnByName[cat] ? categoryEnByName[cat] : cat)}
-            </button>
-          ))}
         </div>
       </header>
 
-      {/* ---- Happy Hour banner (only when a cake is actually available) ---- */}
-      {draftNotice && <p role="status" className="mx-4 mt-3 text-sm text-[var(--accent-emerald)]">{t('draftRestored')}{draftNotice === 'dropped' ? ` · ${t('draftDropped')}` : ''}</p>}
-      <AnimatePresence>
-        {happyHourActive && (
-          <motion.div
-            key="happy-hour"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="mx-4 mt-3 rounded-[var(--radius)] px-4 py-3 bg-gradient-to-r from-amber-400 to-orange-500 shadow-[var(--elev-1)] flex items-center gap-3"
-          >
-            <span className="text-2xl">🍰</span>
-            <div className="leading-tight flex-1">
-            <p className="text-white font-bold text-sm">{t('happyHourBanner', happyHourPercent, happyHourLeftText)}</p>
-              <p className="text-white/90 font-semibold text-xs">
-                {t('happyHourUntil', settingsData.cakeSaleEnd)}
-              </p>
+      {/* ---- Sticky category bar (scroll-spy) ---- */}
+      <div ref={stickyBarRef} className="sticky top-0 z-20 bg-[var(--bg-surface)] border-b border-[var(--border-color)] shadow-[var(--elev-1)]">
+        <div className="max-w-5xl mx-auto">
+          {isSearching ? (
+            <div className="px-4 py-2 min-h-[60px] flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[var(--text-secondary)]" role="status">{t('searchResults', searchResults.length)}</p>
+              <Button variant="secondary" size="md" onClick={() => setSearchQuery('')}>{t('clearSearch')}</Button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ---- Combo nudge banner ---- */}
-      <AnimatePresence>
-        {combo.enabled && combo.percent > 0 && (combo.hasCake !== combo.hasDrink) && !happyHourActive && !(spendActive && subtotal >= spendThreshold) && (
-          <motion.button
-            key="combo-nudge"
-            type="button"
-            onClick={navigateCombo}
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="mx-4 mt-3 min-h-[44px] text-left bg-[var(--accent-emerald-light)] border border-[var(--border-color)] rounded-[var(--radius)] px-4 py-3 flex items-center gap-2"
-          >
-            <span className="text-emerald-700 font-semibold text-sm">
-              {combo.hasCake
-                ? t('comboNudgeCake', combo.percent)
-                : t('comboNudgeDrink', combo.percent)}
-            </span>
-            <span aria-hidden="true" className="text-[var(--text-muted)]">›</span>
-          </motion.button>
-        )}
-        {comboDiscount > 0 && (
-          <motion.div
-            key="combo-applied"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="mx-4 mt-3 bg-[var(--accent-emerald)] rounded-[var(--radius)] px-4 py-3 flex items-center gap-2"
-          >
-            <span className="text-white font-semibold text-sm">
-              {t('comboApplied', combo.percent)}
-            </span>
-          </motion.div>
-        )}
-        {spendActive && comboDiscount === 0 && (
-          <motion.div
-            key="spend-progress"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className={`mx-4 mt-3 rounded-[var(--radius)] px-4 py-3 border border-[var(--border-color)] ${subtotal >= spendThreshold ? 'bg-[var(--accent-emerald-light)]' : 'bg-amber-50'}`}
-          >
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className={`font-bold text-sm ${subtotal >= spendThreshold ? 'text-emerald-600' : 'text-amber-700'}`}>
-                {subtotal >= spendThreshold
-                  ? (spendDiscount > 0
-                      ? t('spendReachedWithDiscount', spendDiscountPercent)
-                      : t('spendReachedNoDiscount', formatCurrency(spendThreshold)))
-                  : subtotal === 0
-                    ? t('spendStart', formatCurrency(spendThreshold), spendDiscountPercent)
-                    : t('spendRemaining', formatCurrency(spendRemaining), spendDiscountPercent)}
-              </span>
-            <span className="text-[11px] font-bold text-[var(--text-muted)] shrink-0 num">
-                {formatCurrency(Math.min(subtotal, spendThreshold))}/{formatCurrency(spendThreshold)}
-              </span>
-            </div>
-            <div className="h-2 bg-black/5 rounded-full overflow-hidden">
-              <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-amber-400 to-emerald-500"
-                initial={false}
-                animate={{ width: `${Math.min(100, spendThreshold > 0 ? (subtotal / spendThreshold) * 100 : 0)}%` }}
-                transition={{ type: 'spring', stiffness: 120, damping: 20 }}
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ---- Highlight rails: ขายดี + แนะนำ ---- */}
-      {showHighlights && (cakeItems.length > 0 || bestSellers.length > 0 || featuredItems.length > 0) && (
-        <div className="pt-4 space-y-5">
-          {/* อยู่บนสุดเพื่อให้ลูกค้าเห็นก่อน แต่คุมน้ำหนักให้อยู่ในภาษาเดียวกับแถบอื่น
-              แถบขายดี/แนะนำ ใช้หัวข้อ text-sm การ์ด w-40 · เค้กขยับขึ้นแค่หนึ่งขั้น
-              (หัวข้อ text-base การ์ด w-48) ไม่ใส่กรอบหนาหรือเงา เพราะกล่องใหญ่ที่มี
-              เค้กใบเดียวอ่านแล้วเหมือนโฆษณาแทรก ไม่ใช่ส่วนหนึ่งของเมนู */}
-          {cakeItems.length > 0 && <section ref={cakeRailRef} className="scroll-mt-56" aria-label={t('cakeRailTitle')}>
-            <div className="px-4 mb-2">
-              <h2 className="text-base font-bold text-[var(--text-primary)]">🍰 {t('cakeRailTitle')}</h2>
-              <p className="text-xs text-[var(--text-muted)]">{t('cakeRailSubtitle')}</p>
-            </div>
-            <div className="flex gap-3 overflow-x-auto px-4 pb-1 snap-x">
-              {cakeItems.map((item, i) => (
-                <div key={item.id} className="w-48 flex-shrink-0 snap-start">
-                  <MenuItemCard item={item} onAdd={handleMenuItemClick} onView={setDetailItem} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} priority={i < 2} />
-                </div>
-              ))}
-            </div>
-          </section>}
-          {bestSellers.length > 0 && (
-            <HighlightRail
-              title={t('bestSellerRailTitle')}
-              items={bestSellers}
-              onAdd={handleMenuItemClick}
-              onView={setDetailItem}
-              settingsData={settingsData}
-              autoScroll
-              t={t}
-              lang={lang}
-            />
-          )}
-          {featuredItems.length > 0 && (
-            <HighlightRail
-              title={t('featuredRailTitle')}
-              items={featuredItems}
-              onAdd={handleMenuItemClick}
-              onView={setDetailItem}
-              settingsData={settingsData}
-              bestSellerIds={bestSellerIds}
-              t={t}
-              lang={lang}
-            />
+          ) : (
+            <CategoryChips items={navItems} active={activeSection} onSelect={selectSection} ariaLabel={t('menuSections')} />
           )}
         </div>
-      )}
+      </div>
 
-      {/* ---- Menu grid ---- */}
-      <main ref={menuGridRef} className="px-4 py-4 pb-32 scroll-mt-56">
-        {showHighlights && (cakeItems.length > 0 || bestSellers.length > 0 || featuredItems.length > 0) && (
-          <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3 px-0.5">{t('allMenuHeading')}</h2>
+      <div className="max-w-5xl mx-auto">
+        {/* ---- Notices & promotions ---- */}
+        {draftNotice && (
+          <p role="status" className="mx-4 mt-3 rounded-[var(--radius)] bg-[var(--accent-soft)] px-4 py-2.5 text-sm font-medium text-[var(--accent-soft-fg)]">
+            {t('draftRestored')}{draftNotice === 'dropped' ? ` · ${t('draftDropped')}` : ''}
+          </p>
         )}
-        {filteredMenu.length === 0 ? (
-          <EmptyState
-            icon={searchQuery ? 'search' : 'default'}
-            title={searchQuery ? t('noMenuFound') : t('noMenuYet')}
-            description={searchQuery ? t('noMenuFoundDesc', searchQuery) : t('noMenuYetDesc')}
-          />
-        ) : (
-          <>
+        <AnimatePresence>
+          {/* Happy Hour (only when a cake is actually available) */}
+          {happyHourActive && (
             <motion.div
-              layout
-              className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"
+              key="happy-hour"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mx-4 mt-3 rounded-[var(--radius)] px-4 py-3 bg-[var(--state-warn-soft)] border border-[var(--state-warn)] flex items-center gap-3"
             >
-              <AnimatePresence>
-                {(showAllItems || searchQuery.trim() ? filteredMenu : filteredMenu.slice(0, previewCount)).map((item) => (
-                  <MenuItemCard
-                    key={item.id}
-                    item={item}
+              <Cake size={24} className="shrink-0 text-[var(--state-warn)]" aria-hidden="true" />
+              <div className="flex-1 leading-snug">
+                <p className="text-[var(--text-primary)] font-bold text-sm">{t('happyHourBanner', happyHourPercent, happyHourLeftText)}</p>
+                <p className="text-[var(--text-secondary)] text-xs">{t('happyHourUntil', settingsData.cakeSaleEnd)}</p>
+              </div>
+            </motion.div>
+          )}
+          {combo.enabled && combo.percent > 0 && (combo.hasCake !== combo.hasDrink) && !happyHourActive && !(spendActive && spendReached) && (
+            <motion.button
+              key="combo-nudge"
+              type="button"
+              onClick={navigateCombo}
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mx-4 mt-3 w-[calc(100%-2rem)] min-h-12 text-left bg-[var(--accent-soft)] rounded-[var(--radius)] px-4 py-3 flex items-center gap-2"
+            >
+              <span className="flex-1 text-[var(--accent-soft-fg)] font-semibold text-sm">
+                {combo.hasCake ? t('comboNudgeCake', combo.percent) : t('comboNudgeDrink', combo.percent)}
+              </span>
+              <span aria-hidden="true" className="text-[var(--accent-soft-fg)] text-lg">›</span>
+            </motion.button>
+          )}
+          {comboDiscount > 0 && (
+            <motion.div
+              key="combo-applied"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mx-4 mt-3 bg-[var(--accent)] rounded-[var(--radius)] px-4 py-3"
+            >
+              <span className="text-[var(--text-on-accent)] font-semibold text-sm">{t('comboApplied', combo.percent)}</span>
+            </motion.div>
+          )}
+          {spendActive && comboDiscount === 0 && (
+            <motion.div
+              key="spend-progress"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className={`mx-4 mt-3 rounded-[var(--radius)] px-4 py-3 ${spendReached ? 'bg-[var(--accent-soft)]' : 'bg-[var(--state-warn-soft)]'}`}
+            >
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className={`font-bold text-sm ${spendReached ? 'text-[var(--accent-soft-fg)]' : 'text-[var(--text-primary)]'}`}>
+                  {spendReached
+                    ? (spendDiscount > 0
+                        ? t('spendReachedWithDiscount', spendDiscountPercent)
+                        : t('spendReachedNoDiscount', formatCurrency(spendThreshold)))
+                    : subtotal === 0
+                      ? t('spendStart', formatCurrency(spendThreshold), spendDiscountPercent)
+                      : t('spendRemaining', formatCurrency(spendRemaining), spendDiscountPercent)}
+                </span>
+                <span className="text-xs font-semibold text-[var(--text-secondary)] shrink-0 num">
+                  {formatCurrency(Math.min(subtotal, spendThreshold))}/{formatCurrency(spendThreshold)}
+                </span>
+              </div>
+              <div className="h-2 bg-[var(--bg-surface)] rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-[width] duration-300 ${spendReached ? 'bg-[var(--accent)]' : 'bg-[var(--state-warn)]'}`}
+                  style={{ width: `${Math.min(100, spendThreshold > 0 ? (subtotal / spendThreshold) * 100 : 0)}%` }}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <main className="pb-36">
+          {isSearching ? (
+            /* ---- Search results (whole menu) ---- */
+            <section className="px-4 pt-4" aria-label={t('searchResults', searchResults.length)}>
+              {searchResults.length === 0 ? (
+                <EmptyState icon="search" title={t('noMenuFound')} description={t('noMenuFoundDesc', searchQuery.trim())} />
+              ) : (
+                <div className="grid gap-2.5 md:grid-cols-2">
+                  {searchResults.map((item) => (
+                    <MenuRow key={item.id} item={item} onAdd={handleMenuItemClick} onView={setDetailItem} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} />
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : (
+            <>
+              {/* ---- Featured: cake of the day, best sellers, shop picks ---- */}
+              {hasHighlights && (
+                <section id={sectionDomId('featured')} aria-labelledby="featured-heading" className="pt-5 space-y-5">
+                  <h2 id="featured-heading" className="sr-only">{t('featuredChip')}</h2>
+                  {/* The cake rail comes first: its first photos are the page's LCP image */}
+                  <div id={sectionDomId('cake')}>
+                    <FeaturedRail
+                      title={t('cakeRailTitle')}
+                      subtitle={t('cakeRailSubtitle')}
+                      icon={Cake}
+                      items={cakeItems}
+                      onAdd={handleMenuItemClick}
+                      onView={setDetailItem}
+                      settingsData={settingsData}
+                      bestSellerIds={bestSellerIds}
+                      t={t}
+                      lang={lang}
+                      wide
+                      priorityCount={2}
+                    />
+                  </div>
+                  <FeaturedRail
+                    title={t('bestSellerRailTitle')}
+                    icon={Flame}
+                    items={bestSellers}
                     onAdd={handleMenuItemClick}
                     onView={setDetailItem}
                     settingsData={settingsData}
-                    isBestSeller={bestSellerIds.has(item.id)}
+                    bestSellerIds={bestSellerIds}
                     t={t}
                     lang={lang}
                   />
-                ))}
-              </AnimatePresence>
-            </motion.div>
-            {!showAllItems && !searchQuery.trim() && filteredMenu.length > previewCount && (
-              <button
-                onClick={() => setShowAllItems(true)}
-            className="mt-4 w-full py-3 rounded-[var(--radius-sm)] border-2 border-[var(--border-color)] text-[var(--accent-emerald)] font-bold text-sm bg-[var(--bg-secondary)] hover:bg-[var(--accent-emerald-light)] transition-colors active:scale-[0.98] min-h-[44px]"
-              >
-                {t('viewAllMenu', filteredMenu.length - previewCount)}
-              </button>
-            )}
-          </>
-        )}
-      </main>
+                  <FeaturedRail
+                    title={t('featuredRailTitle')}
+                    icon={Star}
+                    items={featuredItems}
+                    onAdd={handleMenuItemClick}
+                    onView={setDetailItem}
+                    settingsData={settingsData}
+                    bestSellerIds={bestSellerIds}
+                    t={t}
+                    lang={lang}
+                  />
+                </section>
+              )}
+
+              {/* ---- One section per category ---- */}
+              {menuSections.length === 0 && !hasHighlights ? (
+                <div className="px-4 pt-8">
+                  <EmptyState icon="default" title={t('noMenuYet')} description={t('noMenuYetDesc')} />
+                </div>
+              ) : menuSections.map((section) => (
+                <section key={section.key} id={sectionDomId(section.key)} aria-labelledby={`${sectionDomId(section.key)}-h`} className="px-4 pt-7">
+                  <h2 id={`${sectionDomId(section.key)}-h`} className="mb-3 flex items-baseline gap-2 text-[length:var(--fs-xl)] leading-[var(--lh-xl)] font-bold text-[var(--text-primary)]">
+                    {sectionLabel(section.name)}
+                    <span className="text-sm font-medium text-[var(--text-muted)] num">{section.items.length}</span>
+                  </h2>
+                  <div className="grid gap-2.5 md:grid-cols-2">
+                    {section.items.map((item) => (
+                      <MenuRow key={item.id} item={item} onAdd={handleMenuItemClick} onView={setDetailItem} settingsData={settingsData} isBestSeller={bestSellerIds.has(item.id)} t={t} lang={lang} />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </>
+          )}
+        </main>
+      </div>
 
       {/* ---- Sticky cart bar ---- */}
-      <AnimatePresence>
-        {itemCount > 0 && (
-          <StickyCartBar
-            cart={cart}
-            total={total}
+      {itemCount > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pt-2 pb-[max(12px,env(safe-area-inset-bottom))] pointer-events-none">
+          <button
+            type="button"
             onClick={() => setCartDrawerOpen(true)}
-            t={t}
-          />
-        )}
-      </AnimatePresence>
+            aria-label={`${t('cartButton', itemCount)} · ${formatCurrency(total)}`}
+            className="pointer-events-auto w-full max-w-xl mx-auto min-h-14 flex items-center gap-3 px-4 rounded-[var(--radius)] bg-[var(--accent)] text-[var(--text-on-accent)] shadow-[var(--elev-3)] active:scale-[0.99] transition-transform"
+          >
+            <span className="relative shrink-0" aria-hidden="true">
+              <ShoppingCart size={22} />
+              <span className="absolute -top-2 -right-2.5 min-w-5 h-5 px-1 rounded-full bg-[var(--bg-surface)] text-[var(--accent-soft-fg)] text-xs font-bold flex items-center justify-center num">{itemCount}</span>
+            </span>
+            <span className="flex-1 text-left font-bold text-base pl-1">{t('viewCart')}</span>
+            <span className="font-bold text-lg num">{formatCurrency(total)}</span>
+          </button>
+        </div>
+      )}
 
-      {/* ---- Cart drawer ---- */}
-      <CartDrawer
+      {/* ---- Cart ---- */}
+      <CartSheet
         crossSell={crossSell}
         comboPercent={combo.percent}
         onAdd={(item) => {
@@ -2759,6 +2013,7 @@ function CustomerOrderApp() {
         onUpdateNote={updateNote}
         onProceed={() => {
           setCartDrawerOpen(false);
+          menuScrollRef.current = window.scrollY;
           setView('checkout');
         }}
         t={t}
@@ -2777,18 +2032,19 @@ function CustomerOrderApp() {
         />
       )}
 
-      {/* ---- Full-screen menu view (whole image / story poster + description) ---- */}
-      <MenuDetailSheet
+      {/* ---- Menu detail: whole photo / story poster + description ---- */}
+      <ItemDetailSheet
         item={detailItem}
         settingsData={settingsData}
+        isBestSeller={detailItem ? bestSellerIds.has(detailItem.id) : false}
         onAdd={handleDetailAdd}
         onClose={() => setDetailItem(null)}
         t={t}
         lang={lang}
       />
 
-      {/* ---- Bean modifier modal ---- */}
-      <BeanModifierModal
+      {/* ---- Options (bean / sweetness / milk) ---- */}
+      <OptionSheet
         preset={editingLine || suggestedLine}
         editing={!!editingLine}
         isOpen={beanModalOpen}
