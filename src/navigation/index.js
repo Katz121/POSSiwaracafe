@@ -5,7 +5,7 @@
 //   navigate('stock_audit', { tab: 'links' });  // → #/stock-audit?tab=links
 //   navigate('bills', { date }, { replace: true }); // sync a filter without a history entry
 export { default as useHashRoute, RouteProvider, useRouteParams, useNavigate, useRoute } from './useHashRoute';
-export { parseHash, buildHash } from './routes';
+export { parseHash, buildHash, gateRoute } from './routes';
 export {
   NAV_ITEMS, NAV_SECTIONS, NAV_BY_KEY, PROTECTED_VIEWS, AUTO_COLLAPSE_VIEWS, DEFAULT_VIEW,
   isProtectedView, navSections,

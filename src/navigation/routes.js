@@ -1,4 +1,4 @@
-import { NAV_ITEMS, NAV_BY_KEY, DEFAULT_VIEW } from './navConfig';
+import { NAV_ITEMS, NAV_BY_KEY, DEFAULT_VIEW, isProtectedView } from './navConfig';
 
 // Pure hash <-> route helpers (no window access) so they are unit-testable.
 
@@ -53,4 +53,19 @@ export function buildHash(view, params = {}) {
   });
   const qs = query.toString();
   return `#/${path}${qs ? `?${qs}` : ''}`;
+}
+
+/**
+ * PIN gate for the routed view.
+ *  blocked · lock is on and this protected view was not granted → PIN prompt
+ *  held    · settings (pinEnabled/adminPin) not loaded yet, so nobody knows
+ *            whether the lock is on → render a loader instead of the protected
+ *            view (it used to render for 1-13 s before the lock appeared).
+ */
+export function gateRoute({ view, needsLock, settingsReady, grantedView = null }) {
+  const guarded = isProtectedView(view);
+  return {
+    blocked: Boolean(needsLock && guarded && grantedView !== view),
+    held: Boolean(guarded && !settingsReady),
+  };
 }

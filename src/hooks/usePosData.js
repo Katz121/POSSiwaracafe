@@ -3,7 +3,6 @@ import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { publishPublicMenu } from '../utils/publicMenu';
 import { nextQueueNumber, queueDayKey } from '../utils/queueDay';
-import { createReadyGate } from '../utils/readyGate';
 import {
   DEFAULT_ADMIN_PIN,
   DEFAULT_REDEEM_POINTS_THRESHOLD,
@@ -38,6 +37,7 @@ function mapDocsReusing(s, cache, { includeMetadataChanges = false, extra } = {}
 
 export default function usePosData(user, appId) {
   const [isSyncing, setIsSyncing] = useState(true);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [syncError, setSyncError] = useState(null);
   const [orders, setOrders] = useState([]);
   const [menu, setMenu] = useState([]);
@@ -105,13 +105,14 @@ export default function usePosData(user, appId) {
     expensesCache.current = new Map();
     membersCache.current = new Map();
 
-    // Loader clears once categories (first tiny collection) AND settings have
-    // arrived · settings carries pinEnabled/adminPin, so the PIN lock is known
-    // before any view renders (a protected page used to flash for ~1.5 s).
-    const markReady = createReadyGate(['categories', 'settings'], () => setIsSyncing(false));
+    // pinEnabled/adminPin live in config/settings, which Firestore can deliver
+    // after the multi-MB orders snapshot (10+ s on a cold device). App holds
+    // PIN-protected views until this flips, instead of holding the whole loader.
+    setSettingsLoaded(false);
 
     const handleSnapshotError = (err) => {
       console.error("Firestore Error:", err);
+      setSettingsLoaded(true); // never strand the owner on a spinner
       setSyncError(err.code === 'permission-denied' ? 'ไม่มีสิทธิ์เข้าถึงข้อมูล' : 'เชื่อมต่อฐานข้อมูลไม่สำเร็จ');
       setIsSyncing(false);
     };
@@ -127,9 +128,9 @@ export default function usePosData(user, appId) {
           .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
       );
       // Unblock the full-screen loader as soon as the first (tiny) collection
-      // (and the settings doc) arrive. Don't wait for the 887-doc orders + multi-MB
-      // base64 menu — each view shows its own skeleton while its data streams in.
-      markReady('categories');
+      // arrives. Don't wait for the 887-doc orders + multi-MB base64 menu — each
+      // view shows its own skeleton while its data streams in behind the shell.
+      setIsSyncing(false);
     }, handleSnapshotError);
     const unsubMenu = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'menu'), (s) => setMenu(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
     const unsubStock = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'stock'), (s) => setStock(s.docs.map(d => ({ id: d.id, ...d.data() }))), handleSnapshotError);
@@ -201,7 +202,7 @@ export default function usePosData(user, appId) {
         setSpendThreshold(Number(data.spendThreshold) || 0);
         setSpendDiscount(Number(data.spendDiscount) || 0);
       }
-      markReady('settings');
+      setSettingsLoaded(true);
     }, handleSnapshotError);
 
     return () => { unsubCats(); unsubMenu(); unsubStock(); unsubOrders(); unsubExp(); unsubMem(); unsubBeans(); unsubQuickExp(); unsubRecipes(); unsubQueue(); unsubSettings(); };
@@ -232,5 +233,5 @@ export default function usePosData(user, appId) {
     return () => clearTimeout(timeout);
   }, [menu, dynamicCategories, beanModifiers, settingsRaw, appId, isSyncing]);
 
-  return { pointsRewardsEnabled, pointsRewards, isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
+  return { pointsRewardsEnabled, pointsRewards, isSyncing, settingsLoaded, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes, pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount, geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent, spendThreshold, spendDiscount };
 }

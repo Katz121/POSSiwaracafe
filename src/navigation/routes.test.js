@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseHash, buildHash } from './routes';
+import { parseHash, buildHash, gateRoute } from './routes';
 import { NAV_ITEMS, PROTECTED_VIEWS } from './navConfig';
 
 describe('hash routes', () => {
@@ -51,5 +51,24 @@ describe('hash routes', () => {
       'members_manage', 'menu_manage', 'merchant', 'pos', 'profitability', 'recipes',
       'sales_history', 'stock', 'stock_audit',
     ]);
+  });
+});
+
+describe('gateRoute (PIN gate)', () => {
+  it('holds protected views until settings are known', () => {
+    expect(gateRoute({ view: 'admin', needsLock: false, settingsReady: false })).toEqual({ blocked: false, held: true });
+    expect(gateRoute({ view: 'menu_manage', needsLock: false, settingsReady: false })).toEqual({ blocked: false, held: true });
+  });
+  it('never holds or blocks open views', () => {
+    expect(gateRoute({ view: 'pos', needsLock: true, settingsReady: false })).toEqual({ blocked: false, held: false });
+    expect(gateRoute({ view: 'stock', needsLock: true, settingsReady: true })).toEqual({ blocked: false, held: false });
+  });
+  it('blocks a protected view when the lock is on, unless the PIN was granted for it', () => {
+    expect(gateRoute({ view: 'admin', needsLock: true, settingsReady: true })).toEqual({ blocked: true, held: false });
+    expect(gateRoute({ view: 'admin', needsLock: true, settingsReady: true, grantedView: 'admin' })).toEqual({ blocked: false, held: false });
+    expect(gateRoute({ view: 'admin', needsLock: true, settingsReady: true, grantedView: 'menu_manage' })).toEqual({ blocked: true, held: false });
+  });
+  it('lets protected views through once settings say the lock is off', () => {
+    expect(gateRoute({ view: 'admin', needsLock: false, settingsReady: true })).toEqual({ blocked: false, held: false });
   });
 });

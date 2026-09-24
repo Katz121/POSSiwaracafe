@@ -7,7 +7,7 @@ import { Modal, Button, Spinner, Input, ErrorBoundary, Banner, useToast, useMedi
 // Navigation (hash router + shell) · UX v2 spec §5
 import {
   useHashRoute, RouteProvider, AppSidebar, MobileTabBar, NavMenuSheet,
-  isProtectedView, AUTO_COLLAPSE_VIEWS, NAV_ITEMS,
+  isProtectedView, gateRoute, AUTO_COLLAPSE_VIEWS, NAV_ITEMS,
 } from './navigation';
 
 // Firebase Imports
@@ -114,7 +114,7 @@ export default function App() {
 
   // Data States from hook
   const {
-    isSyncing, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes,
+    isSyncing, settingsLoaded, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes,
     pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, geminiApiKey, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
     comboEnabled, comboPercent, spendThreshold, spendDiscount
@@ -173,12 +173,14 @@ export default function App() {
     if (!pinGrant.reached && routeView === pinGrant.view) setPinGrant({ view: pinGrant.view, reached: true });
     else if (pinGrant.reached && routeView !== pinGrant.view) setPinGrant(null);
   }
-  const routeBlocked = Boolean(needsLock && isProtectedView(routeView) && pinGrant?.view !== routeView);
+  const { blocked: routeBlocked, held: routeHeld } = gateRoute({
+    view: routeView, needsLock, settingsReady: settingsLoaded, grantedView: pinGrant?.view,
+  });
   // Last view the user was allowed to see · rendered behind the PIN prompt and
   // restored if the prompt is cancelled.
   const [safeView, setSafeView] = useState(() => (isProtectedView(routeView) || routeView === '__ui' ? 'pos' : routeView));
-  if (!routeBlocked && routeView !== safeView && routeView !== '__ui') setSafeView(routeView);
-  const view = routeBlocked ? safeView : routeView;
+  if (!routeBlocked && !routeHeld && routeView !== safeView && routeView !== '__ui') setSafeView(routeView);
+  const view = routeBlocked || routeHeld ? safeView : routeView;
   const pinModalOpen = showPinModal || routeBlocked;
 
   // Get today's date for alerts
@@ -686,6 +688,12 @@ export default function App() {
             {/* View Router - Lazy Loaded with Suspense + Error Boundary */}
             <main id="main" className="relative flex-1 min-h-0 overflow-y-auto pb-tabbar">
               <ErrorBoundary resetKey={view}>
+                {routeHeld ? (
+                  <div className="h-full flex flex-col items-center justify-center gap-3" role="status" aria-live="polite">
+                    <Spinner size="lg" />
+                    <p className="text-[var(--text-muted)] font-medium text-sm">กำลังตรวจสอบสิทธิ์…</p>
+                  </div>
+                ) : (
                 <Suspense fallback={
                   <div className="h-full flex flex-col items-center justify-center gap-3">
                     <Spinner size="lg" />
@@ -710,6 +718,7 @@ export default function App() {
                   {view === 'stock_audit' && <StockAuditView />}
                   {view === '__ui' && UiGallery && <UiGallery />}
                 </Suspense>
+                )}
               </ErrorBoundary>
             </main>
           </div>
