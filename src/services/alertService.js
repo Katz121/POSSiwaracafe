@@ -37,7 +37,8 @@ export const generateSmartAlerts = (data) => {
     menu = [],
     beanModifiers = [],
     today,
-    currentMonth
+    currentMonth,
+    milkSwap,
   } = data;
 
   const alerts = [];
@@ -116,7 +117,7 @@ export const generateSmartAlerts = (data) => {
 
   // 1c. วันนี้มีบิลที่ตัดสต็อกไม่ครบหรือไม่ตรงสูตร
   if (orders.length && stock.length && today) {
-    const { summary } = auditDay({ orders, stock, menu, date: today });
+    const { summary } = auditDay({ orders, stock, menu, date: today, milkSwap });
     if (summary.billsMissed || summary.billsMismatch) {
       alerts.push({
         id: 'stock_audit_today',

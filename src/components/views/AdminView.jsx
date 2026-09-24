@@ -20,6 +20,7 @@ import ShopTab from './settings/ShopTab';
 import PromotionsTab from './settings/PromotionsTab';
 import ModifiersTab from './settings/ModifiersTab';
 import ModifierSheet from './settings/ModifierSheet';
+import MilkSwapCard from './settings/MilkSwapCard';
 import QuickExpensesTab, { QuickExpenseSheet } from './settings/QuickExpensesTab';
 import PointsTab from './settings/PointsTab';
 import SecurityTab from './settings/SecurityTab';
@@ -60,7 +61,7 @@ export default function AdminView() {
     vatEnabled, pinEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount,
     geminiApiKey, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
     cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd, comboEnabled, comboPercent,
-    spendThreshold, spendDiscount, pointsRewardsEnabled, pointsRewards,
+    spendThreshold, spendDiscount, pointsRewardsEnabled, pointsRewards, milkSwapSetting,
   } = useConfigContext();
   const { adminTab, setAdminTab, runDbAction, aiUtils, lockApp } = useUIContext();
   const params = useRouteParams();
@@ -427,6 +428,12 @@ export default function AdminView() {
     }, 'บันทึกการตั้งค่าไม่สำเร็จ');
   };
 
+  // นมโอ๊ตตัดแทนนมวัว · เขียนเฉพาะฟิลด์ milkSwap (ไม่ผ่าน draft ของแท็บอื่น)
+  const saveMilkSwap = (milkSwap) => runDbAction(async () => {
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), { milkSwap }, { merge: true });
+    toast.success('บันทึกการตัดนมโอ๊ตแล้ว');
+  }, 'บันทึกการตัดนมโอ๊ตไม่สำเร็จ');
+
   const handleTestAI = async () => {
     const key = settingsDraft.geminiApiKey;
     if (!key) {
@@ -489,14 +496,17 @@ export default function AdminView() {
         return <PromotionsTab {...draftProps('promotions')} dynamicCategories={dynamicCategories} />;
       case 'modifiers':
         return (
-          <ModifiersTab
-            beanModifiers={beanModifiers}
-            health={modifierHealth}
-            onAdd={openNewModifier}
-            onEdit={openEditModifier}
-            onDelete={(mod) => { setBeanToDelete(mod); setShowDeleteBeanConfirm(true); }}
-            onToggleAvailable={toggleModifierAvailable}
-          />
+          <div className="flex flex-col gap-4">
+            <MilkSwapCard stock={stock} setting={milkSwapSetting} onSave={saveMilkSwap} />
+            <ModifiersTab
+              beanModifiers={beanModifiers}
+              health={modifierHealth}
+              onAdd={openNewModifier}
+              onEdit={openEditModifier}
+              onDelete={(mod) => { setBeanToDelete(mod); setShowDeleteBeanConfirm(true); }}
+              onToggleAvailable={toggleModifierAvailable}
+            />
+          </div>
         );
       case 'quick':
         return (

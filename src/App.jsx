@@ -42,6 +42,7 @@ import useNewQrOrderAlert from './hooks/useNewQrOrderAlert';
 import useDarkMode from './hooks/useDarkMode';
 import { getISODate, getOrderDate } from './utils/calculations';
 import { planOrderDeduction, auditMenuLinks } from './utils/stockAudit';
+import { resolveMilkSwap } from './utils/milkSwap';
 import { runDeleteOrderTransaction } from './utils/pointsActions';
 
 // View Components (Lazy Loaded for Performance)
@@ -117,8 +118,10 @@ export default function App() {
     isSyncing, settingsLoaded, syncError, orders, menu, stock, expenses, members, dynamicCategories, beanModifiers, quickExpenses, queueCounter, queueInfo, recipes,
     pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, geminiApiKey, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
-    comboEnabled, comboPercent, spendThreshold, spendDiscount
+    comboEnabled, comboPercent, spendThreshold, spendDiscount, milkSwapSetting
   } = usePosData(user, appId);
+  // นมโอ๊ตตัดแทนนมวัว · ค่าที่ใช้จริง (ตั้งไว้ หรือค่าเริ่มต้นจากชื่อสต็อก)
+  const milkSwap = useMemo(() => resolveMilkSwap(milkSwapSetting, stock), [milkSwapSetting, stock]);
 
   // App-level lock state — persisted in sessionStorage so a page refresh within the tab stays unlocked
   const [appUnlocked, setAppUnlocked] = useState(() => sessionStorage.getItem('pos_unlocked') === '1');
@@ -196,8 +199,9 @@ export default function App() {
     menu,
     beanModifiers,
     today,
-    currentMonth
-  }), [orders, expenses, stock, members, menu, beanModifiers, today, currentMonth]);
+    currentMonth,
+    milkSwap,
+  }), [orders, expenses, stock, members, menu, beanModifiers, today, currentMonth, milkSwap]);
 
   // Database action wrapper (memoized to prevent context changes every render)
   //
@@ -243,7 +247,7 @@ export default function App() {
         // วางแผนตัดครั้งเดียวแล้วเก็บผลลงบิล (stockDeduction) · หน้า "สรุปการขาย & สต็อก"
         // ใช้เทียบย้อนหลังว่าตัดอะไรไปจริง ข้ามอะไรไป (สต็อกถูกลบ / เมนูไม่ผูก)
         const stockById = new Map(stock.map(s => [s.id, s]));
-        const plan = planOrderDeduction(order, stockById);
+        const plan = planOrderDeduction(order, stockById, { milkSwap });
 
         const batch = writeBatch(db);
         Object.entries(plan.applied).forEach(([stockId, used]) => {
@@ -268,7 +272,7 @@ export default function App() {
 
       await updateDoc(orderRef, { status: newStatus });
     }, 'อัปเดตสถานะไม่สำเร็จ');
-  }, [runDbAction, orders, stock]);
+  }, [runDbAction, orders, stock, milkSwap]);
 
   // Delete order
   const executeDeleteOrder = async () => {
@@ -467,10 +471,11 @@ export default function App() {
     shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
     cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
     comboEnabled, comboPercent, spendThreshold, spendDiscount,
+    milkSwap, milkSwapSetting,
   }), [pinEnabled, vatEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths,
     redeemDiscountValue, pointsRewardsEnabled, pointsRewards, ownGlassDiscount, geminiApiKey, startingCash,
     reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth, cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
-    comboEnabled, comboPercent, spendThreshold, spendDiscount]);
+    comboEnabled, comboPercent, spendThreshold, spendDiscount, milkSwap, milkSwapSetting]);
 
   // ── Shell state ─────────────────────────────────────────────────────────
   const isWide = useMediaQuery('(min-width: 1024px)');

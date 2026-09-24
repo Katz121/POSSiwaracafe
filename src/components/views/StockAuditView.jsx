@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ClipboardCheck, Download, Link2, Package, ShoppingBag } from 'lucide-react';
-import { useDataContext, useUIContext } from '../../context/AppContext';
+import { useConfigContext, useDataContext, useUIContext } from '../../context/AppContext';
 import { useNavigate, useRouteParams } from '../../navigation';
 import { getISODate } from '../../utils/calculations';
 import { addDaysISO, formatNumber, formatThaiDate } from '../../utils/format';
@@ -44,6 +44,7 @@ const STRIP = {
 export default function StockAuditView() {
   const { orders = [], stock = [], menu = [], beanModifiers = [] } = useDataContext();
   const { handleViewChange } = useUIContext();
+  const { milkSwap } = useConfigContext();
   const params = useRouteParams();
   const navigate = useNavigate();
   const today = getISODate();
@@ -80,12 +81,12 @@ export default function StockAuditView() {
     box.scrollTo({ left: Math.max(0, left) });
   }, [tab]);
 
-  const audit = useMemo(() => auditDay({ orders, stock, menu, date }), [orders, stock, menu, date]);
+  const audit = useMemo(() => auditDay({ orders, stock, menu, date, milkSwap }), [orders, stock, menu, date, milkSwap]);
   const week = useMemo(() => {
     const end = date > today ? today : date;
     const dates = Array.from({ length: 7 }, (_, i) => addDaysISO(end, i - 6));
-    return auditDays({ orders, stock, menu, dates });
-  }, [orders, stock, menu, date, today]);
+    return auditDays({ orders, stock, menu, dates, milkSwap });
+  }, [orders, stock, menu, date, today, milkSwap]);
   const links = useMemo(() => auditMenuLinks({ menu, stock, beanModifiers }), [menu, stock, beanModifiers]);
   const negatives = useMemo(() => negativeStock(stock), [stock]);
 
