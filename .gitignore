@@ -32,3 +32,6 @@ dist-ssr
 # สำเนาข้อมูลร้านสำหรับ emulator (มีเบอร์สมาชิก)
 .claude/snapshot/
 dist-emu
+
+# muse-bridge (รหัสพนักงาน)
+scripts/.muse-bridge.env

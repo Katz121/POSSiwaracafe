@@ -188,6 +188,21 @@ service cloud.firestore {
       match /financial_plans/{id} {
         allow read, write: if isStaff();
       }
+
+      // ── AI ผ่าน Muse (คอมที่ร้าน · ดู scripts/MUSE_BRIDGE.md) ─────────────
+      // แอปสร้างงาน queued · muse-bridge ล็อกอินด้วยบัญชีพนักงานมารับงานและเขียนผล
+      match /aiJobs/{id} {
+        allow read, update, delete: if isStaff();
+        allow create: if isStaff()
+                      && request.resource.data.status == 'queued'
+                      && request.resource.data.type in ['stockSuggest', 'text', 'json']
+                      && request.resource.data.prompt is string
+                      && request.resource.data.prompt.size() < 150000;
+      }
+      // heartbeat ของ muse-bridge (aiRunner/status)
+      match /aiRunner/{docId} {
+        allow read, write: if isStaff();
+      }
     }
   }
 }
