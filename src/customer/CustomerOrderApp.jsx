@@ -4,6 +4,7 @@
  * Customers scan a QR code, browse the menu, add to cart, enter their name, and submit.
  */
 
+import useAutoScrollRail from './useAutoScrollRail';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -415,9 +416,11 @@ function LanguageToggle({ lang, onToggle }) {
 // ---------------------------------------------------------------------------
 // Sub-component: FeaturedRail · horizontal, swipeable row of photo cards.
 // (The best-seller rail used to auto-scroll as a marquee; moving targets are
-// hard to tap and ignore reduced-motion, so every rail is now static.)
+// hard to tap and ignore reduced-motion, so rails are static · the best-seller rail
+// auto-scrolls via useAutoScrollRail, which stops for good on the first touch.)
 // ---------------------------------------------------------------------------
-function FeaturedRail({ title, subtitle, icon: Icon, items, onAdd, onView, settingsData, bestSellerIds, t, lang, sectionRef, wide = false, priorityCount = 0 }) {
+function FeaturedRail({ title, subtitle, icon: Icon, items, onAdd, onView, settingsData, bestSellerIds, t, lang, sectionRef, wide = false, priorityCount = 0, autoScroll = false }) {
+  const railRef = useAutoScrollRail(autoScroll && (items?.length || 0) > 2);
   if (!items || items.length === 0) return null;
   return (
     <section ref={sectionRef} aria-label={title}>
@@ -428,7 +431,7 @@ function FeaturedRail({ title, subtitle, icon: Icon, items, onAdd, onView, setti
         </h3>
         {subtitle && <p className="text-xs text-[var(--text-muted)] truncate">{subtitle}</p>}
       </div>
-      <div className="flex gap-3 overflow-x-auto px-4 pb-2 snap-x scroll-px-4 scrollbar-hide">
+      <div ref={railRef} className="flex gap-3 overflow-x-auto px-4 pb-2 snap-x scroll-px-4 scrollbar-hide">
         {items.map((item, i) => (
           <div key={item.id} className={`${wide ? 'w-48' : 'w-40'} shrink-0 snap-start`}>
             <MenuCard
@@ -1925,6 +1928,7 @@ function CustomerOrderApp() {
                     title={t('bestSellerRailTitle')}
                     icon={Flame}
                     items={bestSellers}
+                    autoScroll
                     onAdd={handleMenuItemClick}
                     onView={setDetailItem}
                     settingsData={settingsData}
