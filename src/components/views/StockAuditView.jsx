@@ -12,6 +12,11 @@ import { auditDateFromParam, auditParams, auditTabFromParam } from './inventory/
 import ProductionAuditList from './production/ProductionAuditList';
 import useProductionBatches from './production/useProductionBatches';
 import { summarizeProduction } from '../../utils/production';
+// ── ตรวจนับสต็อกหน้างาน (stock count) ──
+import { ClipboardList } from 'lucide-react';
+import CountAuditSection from './stockcount/CountAuditSection';
+import useStockCounts from './stockcount/useStockCounts';
+import { summarizeCounts } from '../../utils/stockCount';
 
 const WEEKDAY_SHORT = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
 const dayLabel = (iso) => {
@@ -54,7 +59,7 @@ export default function StockAuditView() {
   // `#/stock-audit?date=YYYY-MM-DD&tab=links` pre-selects; the URL follows
   // the date/tab (replace, so stepping days does not spam history).
   const paramDate = auditDateFromParam(params.date, today);
-  const paramTab = auditTabFromParam(params.tab);
+  const paramTab = params.tab === 'count' ? 'count' : auditTabFromParam(params.tab);
   const [date, setDateState] = useState(paramDate);
   const [tab, setTabState] = useState(paramTab);
   const [seen, setSeen] = useState(`${paramDate}|${paramTab}`);
@@ -93,6 +98,8 @@ export default function StockAuditView() {
   const negatives = useMemo(() => negativeStock(stock), [stock]);
   const { batches: prodBatches, loading: prodLoading } = useProductionBatches(date);
   const producedCount = useMemo(() => summarizeProduction(prodBatches, date).count, [prodBatches, date]);
+  const stockCounts = useStockCounts(date);
+  const countedItems = useMemo(() => summarizeCounts(stockCounts.counts).items, [stockCounts.counts]);
 
   const { summary, sold, stockUsed, issues } = audit;
   const verdict = VERDICT[summary.verdict] || VERDICT.empty;
@@ -138,6 +145,7 @@ export default function StockAuditView() {
     { value: 'issues', label: 'ต้องแก้', icon: <AlertTriangle size={16} />, count: actionable },
     { value: 'menu', label: 'ผูกสต็อก', icon: <Link2 size={16} />, count: links.needsAttention + links.modifiers.length },
     { value: 'production', label: 'ผลิต', icon: <CookingPot size={16} />, count: producedCount },
+    { value: 'count', label: 'ตรวจนับ', icon: <ClipboardList size={16} />, count: countedItems },
   ];
   const searchable = tab === 'sold' || tab === 'stock';
 
@@ -249,6 +257,13 @@ export default function StockAuditView() {
                 date={date}
                 loading={prodLoading}
                 onOpen={() => handleViewChange?.('production', date === today ? undefined : { date })}
+              />
+            )}
+            {tab === 'count' && (
+              <CountAuditSection
+                {...stockCounts}
+                isToday={date === today}
+                onStartCount={() => handleViewChange?.('stock', { filter: 'uncounted' })}
               />
             )}
           </div>

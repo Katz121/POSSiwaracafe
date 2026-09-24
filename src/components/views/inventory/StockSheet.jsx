@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PackagePlus, PackageMinus, Pencil, Trash2, ArrowRight } from 'lucide-react';
+import { PackagePlus, PackageMinus, Pencil, Trash2, ArrowRight, ClipboardCheck } from 'lucide-react';
 import { Banner, Button, Money, NumberStepper, SearchSelect, SegmentedControl, Sheet } from '../../ui';
 import { STOCK_CATEGORIES, getStockCategory } from '../../../config/constants';
 import { formatNumber, formatThaiDate, formatTime } from '../../../utils/format';
@@ -23,7 +23,7 @@ function Fact({ label, children }) {
 }
 
 // ── detail ──────────────────────────────────────────────────────────────────
-function Detail({ item, onStep, onMode, onDelete }) {
+function Detail({ item, onStep, onMode, onDelete, onCount }) {
   const status = stockStatus(item);
   const unitCost = Number(item.unitCost) || 0;
   const onHand = Number(item.quantity) || 0;
@@ -65,6 +65,7 @@ function Detail({ item, onStep, onMode, onDelete }) {
 
       <div className="flex flex-col gap-2">
         <Button size="xl" fullWidth leftIcon={<PackagePlus size={20} />} onClick={() => onMode('intake')}>รับของเข้า</Button>
+        {onCount && <Button variant="secondary" size="lg" fullWidth leftIcon={<ClipboardCheck size={18} />} onClick={() => onCount(item)}>ตรวจนับ (เทียบของจริง)</Button>}
         <div className="grid grid-cols-2 gap-2">
           <Button variant="secondary" size="lg" leftIcon={<PackageMinus size={18} />} onClick={() => onMode('adjust')}>ตัดของเสีย</Button>
           <Button variant="secondary" size="lg" leftIcon={<Pencil size={18} />} onClick={() => onMode('edit')}>แก้ไข</Button>
@@ -285,7 +286,7 @@ const TITLES = { detail: null, intake: 'รับของเข้า', adjust:
  * (`back` = return to the detail view on cancel). The item is looked up live
  * from `stock`, so quantities update while the sheet is open.
  */
-export default function StockSheet({ state, stock, onClose, onMode, onStep, onDelete, onSaveItem, onAdjust, onIntake, busy, intakeDate }) {
+export default function StockSheet({ state, stock, onClose, onMode, onStep, onDelete, onSaveItem, onAdjust, onIntake, onCount, busy, intakeDate }) {
   const open = !!state;
   const item = state?.id ? stock.find((s) => s.id === state.id) || null : null;
   const mode = state?.mode || 'detail';
@@ -334,7 +335,7 @@ export default function StockSheet({ state, stock, onClose, onMode, onStep, onDe
   let body = null;
   let footer = null;
   if (mode === 'detail' && item) {
-    body = <Detail item={item} onStep={onStep} onMode={onMode} onDelete={onDelete} />;
+    body = <Detail item={item} onStep={onStep} onMode={onMode} onDelete={onDelete} onCount={onCount} />;
   } else if (mode === 'intake') {
     body = (
       <Intake
