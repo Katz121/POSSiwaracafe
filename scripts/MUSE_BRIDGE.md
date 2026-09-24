@@ -6,67 +6,22 @@ The app writes jobs to Firestore `artifacts/siwara-pos-v1/public/data/aiJobs/{id
 writes `done` with `result`, or `error`. It writes a heartbeat to `aiRunner/status` every 30 s.
 The app treats AI as online when `lastSeen` is less than 90 s old.
 
-## Status (WIP · 2026-09-24)
+## Status (done · 2026-09-24)
 
-Done and committed:
-- `src/utils/museJobs.js`: queue constants, `extractJson`, `isRunnerFresh`, `redactPII` (phone numbers), `wrapPromptForMuse`, and `effortForJobType`. Tests are in `museJobs.test.js`.
-- `src/utils/stockSuggest.js`: the reasoned stock-suggestion prompt (standard recipe, unit conversion, a reason for each line, confidence, missing items, packaging presets and related shop recipes), `normalizeStockSuggestions`, `applyStockSuggestions` (new rows go at the top; in whole-cake mode `perWhole = usage × pieces`), and `selectedSuggestionCost`. Tests are in `stockSuggest.test.js`.
-- `scripts/muse-bridge.mjs` (`--emulator`, `--once`): heartbeat, claim transaction, stale-`running` recovery, expiry of queued jobs older than 4 min, pruning of jobs older than 14 days, a 5 min hard kill (taskkill /T), Muse `--timeout 225`, JSON extraction (nested arrays are stored as a JSON string with `resultFormat: 'json-string'`), and a log at `.claude/muse-bridge.log`.
-- `firestore.rules`: `aiJobs` and `aiRunner` are staff-only, and job creation is validated. **Not deployed.**
-- `scripts/.muse-bridge.env.example`. `scripts/.muse-bridge.env` is gitignored.
+App side:
+- `src/services/aiQueue.js`: `enqueueAiJob` (addDoc, then `onSnapshot`; after 4 min a transaction sets `queued → error`), `subscribeRunnerStatus`, and `subscribeAiActivity`.
+- `src/hooks/useAiRunner.js`: `aiReady` comes from a heartbeat seen within 90 s (clock ticks every 15 s). It also exposes `pending` for the "Muse กำลังคิด…" pill.
+- `aiService.callAiSecure` replaces all Gemini code. `callGeminiAPI(prompt, parseAsJson, options)` in `App.jsx` keeps its signature, with a new `options.jobType`.
+- `components/AiButton.jsx`: the button is disabled when offline and shows the hint "AI ออฟไลน์ · เปิดคอมที่ร้านเพื่อใช้ AI". Used for: AI แนะนำ, Magic Write, ถาม AI, วิเคราะห์ด้วย AI, แผนการเงิน and โปรโมชั่น. Translate is also disabled when offline.
+- `menu/StockSuggestReview.jsx`: a review panel with a reason, a confidence badge, checkboxes and the cost per serving. "ใส่ที่เลือก" adds the ticked lines at the top of the recipe.
+- Removed: the Gemini key field, "ทดสอบการเชื่อมต่อ" and "AI เจนรูปเมนู". Settings shows "สถานะ AI (Muse)" instead.
+- The worker's `POST /` returns 410. `GEMINI_API_KEY` stays, because the Telegram OCR uses it.
 
-Verified: Muse health check works through `muse_task.py --solo --effort low` in about 32 s. The unit tests pass (24).
-
-## Remaining steps (not done yet)
-
-1. **App service** `src/services/aiQueue.js`:
-   - `enqueueAiJob({type, prompt, onStatus})`: `addDoc` with `{type, prompt, status:'queued', createdAt: serverTimestamp(), createdBy: auth.currentUser.email}`, then resolve through `onSnapshot` on the job doc.
-   - Timeout is 4 min. On timeout, run a transaction that sets `queued → error`.
-   - If `resultFormat === 'json-string'`, parse the result with `extractJson`.
-   - `subscribeRunnerStatus(cb)` on `aiRunner/status`.
-2. **aiService.js**:
-   - Rename `callGeminiAPISecure(apiKey, …)` to `callAiSecure(prompt, opts)`. Keep the cache, rate limit and chat history. Drop the retries.
-   - Delete the direct Gemini fetch, the `VITE_GEMINI_PROXY_URL` branch, `generateMenuImage` and `createGeminiCaller`.
-   - Add a pending-job activity emitter for a global pill that shows `AI_THINKING_TEXT`.
-3. **App.jsx**:
-   - Delete `activeApiKey`.
-   - Subscribe to runner status only when a staff user is signed in. Tick every 15 s.
-   - Set `aiReady = isRunnerFresh(status)` and expose `aiStatus` in the config context.
-   - `callGeminiAPI(prompt, parseAsJson, options)` keeps its signature. It returns `{success:false, offline:true, error: AI_OFFLINE_HINT}` straight away when offline. `options.jobType` passes `'stockSuggest'`.
-4. **AiButton** (`src/components/AiButton.jsx`): wraps `<Button variant="ai">`, disables itself when `!aiReady`, and shows `AI_OFFLINE_HINT` underneath. Use it for these buttons:
-   - MenuEditorSheet: AI แนะนำ, Magic Write
-   - PromotionSheet: เริ่มคิดโปรโมชั่น
-   - DashboardView: ถาม AI (also disable the consultant sheet's send button)
-   - ExpensesView: วิเคราะห์ด้วย AI
-   - FinancialView: generatePlan
-   - the menu tools translate action
-5. **MenuEditorSheet**:
-   - Remove `generateImage` and the "AI เจนรูปเมนู" button, and the `geminiApiKey` prop (also in MenuManageView and useMenuTools).
-   - Rewrite `suggestStock` with `buildStockSuggestPrompt` (+ `relatedRecipes(newItem, menu, stockById)`, `packagingPresets`, `perPiece = wholeMode`), `callGeminiAPI(prompt, true, {useCache:false, jobType:'stockSuggest'})` and then `normalizeStockSuggestions`.
-   - Show a new `StockSuggestReview` panel inline in the stock section. It shows:
-     - the recipe summary
-     - one row per line: checkbox, stock name, usage and unit, ingredient, reason, confidence badge, cost. Already-linked lines are marked "มีแล้ว" and disabled.
-     - missing items and notes
-     - the selected cost per serving
-     - the "ใส่ที่เลือก" button, which calls `applyStockSuggestions`
-   - While waiting, show `AI_THINKING_TEXT`. Nothing is applied without the owner clicking.
-6. **Prompts**: in DashboardView's consultant, replace "ใช้ Emoji ประกอบ" with concise, data-grounded answers that say when the data is insufficient. Update the Gemini wording in useMenuTools' toasts.
-7. **Settings**:
-   - Remove the `geminiApiKey` input, `handleTestAI` and `onTestAI` from ShopTab and AdminView, and remove `geminiApiKey` from `TAB_FIELDS.shop`, `draftFromConfig` and `buildSettingsPayload`. Update `settings.test.js`.
-   - Show a "สถานะ AI (Muse)" line with online or offline and the last-seen time.
-   - Keep `SENSITIVE_SETTINGS_KEYS` stripping, and do not delete the Firestore field.
-   - In `usePosData`, stop reading `VITE_GEMINI_API_KEY`.
-8. **Worker** `api-proxy/worker.js`:
-   - Make the final `POST /` Gemini block return `410 {error:'AI ย้ายไปใช้ Muse แล้ว'}` and remove `AI_MODELS`.
-   - **Keep `GEMINI_API_KEY`**, because `api-proxy/src/telegram/ocr.js` (Telegram expense OCR) still uses it.
-   - Run `npx vitest run api-proxy`.
-9. **Verify**:
-   1. Run `npx vitest run`, `npx eslint src` and `npm run build`.
-   2. Run the E2E on the emulator with `node scripts/muse-bridge.mjs --emulator`:
-      - With the bridge offline, check the disabled button and hint.
-      - With it online, open `#/menu?focus=vVS8s1Pwc7nD2bpvw9FB` (ชาไทยปั่น), click "AI แนะนำ", check the review panel, click apply, and confirm the new links are at the top.
-      - Ask the consultant a question.
-      - Confirm every job doc ends `done`.
+E2E on the emulator passed:
+- Offline: buttons disabled with the hint.
+- Online: stock suggestions for ชาไทยปั่น took 34–98 s and returned 8 reasoned lines, which were applied at the top of the recipe.
+- Consultant: answered in 15–24 s.
+- Every job doc ended `done`.
 
 ## Run
 
