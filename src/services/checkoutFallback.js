@@ -17,7 +17,7 @@
  */
 
 import {
-  collection, doc, getCountFromServer, query, runTransaction, where,
+  doc, runTransaction,
 } from 'firebase/firestore';
 import { nextQueueNumber } from '../utils/queueDay';
 import { notifyNewOrderToLine } from './lineNotify';
@@ -134,17 +134,10 @@ export async function submitCheckoutDirect(db, appId, {
     time: orderTime,
   });
 
-  // จำนวนคิวที่รออยู่ ใช้โชว์บนหน้าสำเร็จเท่านั้น · นับนอกทรานแซกชันเพราะ Web SDK
-  // ทำ query ในทรานแซกชันไม่ได้ · พังก็ไม่เป็นไร ออเดอร์บันทึกไปแล้ว
-  let pendingCount = 0;
-  try {
-    const snapshot = await getCountFromServer(
-      query(collection(db, ...base, 'orders'), where('status', '==', 'pending')),
-    );
-    pendingCount = snapshot.data().count;
-  } catch {
-    pendingCount = 0;
-  }
+  // จำนวนคิวที่รออยู่: ทางสำรองนับไม่ได้ · rules ให้ลูกค้าอ่านได้เฉพาะบิลตัวเอง
+  // (71b7b68) query นับบิล pending ทั้งร้านจึงโดน 403 ทุกครั้ง เลยไม่ยิงเลย
+  // หน้าสำเร็จรับ 0 ได้อยู่แล้ว (ซ่อนบรรทัดจำนวนคิวที่รอ)
+  const pendingCount = 0;
 
   return { orderId: orderRef.id, queueNumber, pendingCount, total };
 }
