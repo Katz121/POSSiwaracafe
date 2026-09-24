@@ -35,7 +35,7 @@ export default function Toolbar({ search, filters, actions, sticky = false, clas
                 type="button"
                 aria-label="ล้างคำค้น"
                 onClick={() => search.onChange?.('')}
-                className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 min-h-0 flex items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
+                className="absolute right-0 top-1/2 -translate-y-1/2 w-11 h-11 min-h-0 flex items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
               >
                 <X size={16} />
               </button>
