@@ -1,5 +1,5 @@
 import { ArrowUp, ArrowDown, Coffee, Star } from 'lucide-react';
-import { Banner, Button, EmptyState, Input, Money, Sheet } from '../../ui';
+import { Banner, Button, EmptyState, Input, Money, SegmentedControl, Sheet } from '../../ui';
 
 /** จัดลำดับเมนูแนะนำ · the draft list lives in MenuManageView (featuredOrder writes unchanged). */
 export function FeaturedOrderSheet({ draft, setDraft, saving, onSave, onClose, moveItem }) {
@@ -46,35 +46,50 @@ export function FeaturedOrderSheet({ draft, setDraft, saving, onSave, onClose, m
   );
 }
 
-/** บันทึกของเสีย · cost + stock usage preview; the batch write stays in MenuManageView. */
+/** บันทึกของเสีย / เจ้าของ-พนักงานกิน · reason เลือกเหตุผลที่ตัดสต็อก; cost + stock usage preview; the batch write stays in MenuManageView. */
 export function WasteSheet({
   open, onClose, menuItem, quantity, setQuantity, saving, waste, unitWaste, validQuantity, stockById, onConfirm, onGoLink,
+  reason, setReason,
 }) {
+  const isStaff = reason === 'staff';
   return (
     <Sheet
       open={open}
       onClose={() => { if (!saving) onClose(); }}
-      title="บันทึกของเสีย"
+      title={isStaff ? 'บันทึกเจ้าของ/พนักงานกิน' : 'บันทึกของเสีย'}
       description={menuItem?.name || 'เมนูนี้ถูกลบแล้ว'}
       width={480}
       footer={(
         <>
           <Button variant="secondary" disabled={saving} onClick={onClose}>ยกเลิก</Button>
-          <Button variant="danger" disabled={!menuItem || !validQuantity || !waste.costed || saving} loading={saving} onClick={onConfirm}>ยืนยันบันทึกของเสีย</Button>
+          <Button variant={isStaff ? 'primary' : 'danger'} disabled={!menuItem || !validQuantity || !waste.costed || saving} loading={saving} onClick={onConfirm}>{isStaff ? 'ยืนยันบันทึก' : 'ยืนยันบันทึกของเสีย'}</Button>
         </>
       )}
     >
       <div className="flex flex-col gap-4">
+        <SegmentedControl
+          fullWidth
+          ariaLabel="เหตุผลการบันทึก"
+          value={reason}
+          onChange={setReason}
+          options={[
+            { value: 'waste', label: 'ของเสีย (ทิ้ง)' },
+            { value: 'staff', label: 'เจ้าของ/พนักงานกิน' },
+          ]}
+        />
+        {isStaff && (
+          <p className="text-sm text-[var(--text-secondary)]">ตัดสต็อกตามสูตร · ลงรายจ่ายตามราคาทุน · ไม่นับเป็นยอดขาย</p>
+        )}
         {waste.costed
           ? <p className="text-[var(--text-secondary)]">ต้นทุนต่อชิ้น <Money value={unitWaste.costPerUnit} decimals={2} className="font-semibold text-[var(--text-primary)]" /></p>
           : (
-            <Banner tone="warn" title="ต้องผูกสต็อกก่อนถึงจะรู้มูลค่าของเสีย" action={menuItem ? { label: 'ไปผูกสต็อก', onClick: onGoLink } : undefined} />
+            <Banner tone="warn" title={isStaff ? 'ต้องผูกสต็อกก่อนถึงจะตัดสต็อกและรู้ต้นทุน' : 'ต้องผูกสต็อกก่อนถึงจะรู้มูลค่าของเสีย'} action={menuItem ? { label: 'ไปผูกสต็อก', onClick: onGoLink } : undefined} />
           )}
-        {waste.missingLinks > 0 && <Banner tone="danger" title={`มีลิงก์ชี้ไปสต็อกที่ถูกลบแล้ว ${waste.missingLinks} รายการ · มูลค่าของเสียจะต่ำกว่าจริง`} />}
-        <Input label="จำนวนชิ้นที่ทิ้ง" type="number" inputMode="decimal" min="0" step="any" value={quantity} disabled={saving} onChange={(e) => setQuantity(e.target.value)} />
+        {waste.missingLinks > 0 && <Banner tone="danger" title={`มีลิงก์ชี้ไปสต็อกที่ถูกลบแล้ว ${waste.missingLinks} รายการ · มูลค่าจะต่ำกว่าจริง`} />}
+        <Input label={isStaff ? 'จำนวนที่กิน' : 'จำนวนชิ้นที่ทิ้ง'} type="number" inputMode="decimal" min="0" step="any" value={quantity} disabled={saving} onChange={(e) => setQuantity(e.target.value)} />
         {validQuantity && waste.costed && (
           <div aria-live="polite" className="rounded-[var(--radius)] bg-[var(--bg-sunken)] p-4 flex flex-col gap-1">
-            <p className="text-[var(--text-primary)]">มูลค่าของเสีย <Money value={waste.cost} decimals={2} className="font-semibold" /></p>
+            <p className="text-[var(--text-primary)]">{isStaff ? 'มูลค่าตามราคาทุน' : 'มูลค่าของเสีย'} <Money value={waste.cost} decimals={2} className="font-semibold" /></p>
             <p className="text-sm text-[var(--text-secondary)]">จะตัดสต็อก:</p>
             <ul className="text-sm text-[var(--text-secondary)]">
               {Object.entries(waste.usageByStock).map(([id, used]) => <li key={id} className="num">{stockById.get(id)?.name} {used} {stockById.get(id)?.unit}</li>)}

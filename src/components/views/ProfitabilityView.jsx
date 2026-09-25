@@ -209,6 +209,9 @@ export default function ProfitabilityView() {
                                 hint={`หลังหักค่าใช้จ่าย ${money(profitability.fixedCosts)}`}
                             />
                             <StatCard label="กำไรขั้นต้นต่อแก้ว" icon={Receipt} value={money(profitability.contributionPerUnit)} hint={`ขายไป ${number(profitability.unitsSold)} หน่วย`} />
+                            {profitability.staffMealCost > 0 && (
+                                <StatCard label="เจ้าของ/พนักงานกิน" icon={Package} value={money(profitability.staffMealCost)} hint="ราคาทุน · หักจากกำไรแล้ว · ไม่ใช่เงินสดจ่ายออก" />
+                            )}
                         </div>
 
                         {/* จุดคุ้มทุน · ตัวเลขที่ใช้ตัดสินใจได้จริงที่สุดจากทั้งหน้านี้ */}

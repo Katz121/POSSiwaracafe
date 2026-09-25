@@ -65,7 +65,7 @@ const MenuRow = memo(function MenuRow({ item, status, selected, actions }) {
     { key: 'featured', label: 'เมนูแนะนำ', hint: 'แถบแนะนำหน้า QR + หน้าร้าน', icon: Star, checked: item.isFeatured === true, onSelect: () => actions.onToggleHighlight(item, 'isFeatured') },
     { key: 'pinned', label: 'ปักหมุดขายดี', hint: 'แสดงบนสุดหน้า QR', icon: TrendingUp, checked: item.isPinnedBest === true, onSelect: () => actions.onToggleHighlight(item, 'isPinnedBest') },
     { key: 'hh', label: 'ยกเว้นลด Happy Hour', hint: 'เค้กใหม่ ไม่ลดราคา', icon: Clock, checked: Boolean(item.excludeFromSale), onSelect: () => actions.onToggleExcludeFromSale(item) },
-    { key: 'waste', label: 'บันทึกของเสีย', icon: PackageX, onSelect: () => actions.onWaste(item) },
+    { key: 'waste', label: 'ของเสีย / กินเอง', icon: PackageX, onSelect: () => actions.onWaste(item) },
     !item.stockLinks?.length && { key: 'cake', label: 'สร้างสต็อกก้อน', hint: 'เค้ก/ขนมที่ตัดเป็นชิ้น', icon: PackagePlus, onSelect: () => actions.onCakeStock(item) },
     { key: 'delete', label: 'ลบเมนู', icon: Trash2, danger: true, onSelect: () => actions.onDelete(item) },
   ];

@@ -133,6 +133,10 @@ export const MENU_PAGE_OPTIONS = [3, 6, 9, 12];      // ตัวเลือก
 
 // ==================== EXPENSE CATEGORIES ====================
 export const DEFAULT_EXPENSE_CATEGORY = 'วัตถุดิบ';
+export const WASTE_CATEGORY = 'ของเสีย (Waste)';
+export const STAFF_MEAL_CATEGORY = 'เจ้าของ/พนักงานกิน';
+// หมวดที่บันทึกเป็นรายจ่ายตามราคาทุน แต่ไม่ใช่เงินไหลออก (จ่ายไปแล้วตอนซื้อวัตถุดิบ)
+export const NON_CASH_EXPENSE_CATEGORIES = [WASTE_CATEGORY, STAFF_MEAL_CATEGORY];
 export const EXPENSE_CATEGORIES = [
   'วัตถุดิบ',
   ...STOCK_CATEGORIES,
@@ -142,7 +146,7 @@ export const EXPENSE_CATEGORIES = [
   'ค่าไฟ',
   'อุปกรณ์',
   'การตลาด',
-  'ของเสีย (Waste)'
+  WASTE_CATEGORY
 ];
 
 // ==================== UI ====================

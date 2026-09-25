@@ -135,6 +135,16 @@ describe('splitExpenses', () => {
   it('หมวดที่ไม่รู้จักถือเป็นค่าใช้จ่ายดำเนินงาน ไม่ใช่ของเข้าคลัง', () => {
     expect(splitExpenses([{ category: 'ค่าซ่อมเครื่อง', amount: 800 }]).operating).toBe(800);
   });
+
+  it('เจ้าของ/พนักงานกินแยกเป็นกองของตัวเอง ไม่ปนกับค่าใช้จ่ายดำเนินงาน', () => {
+    const result = splitExpenses([
+      { category: 'เจ้าของ/พนักงานกิน', amount: 100 },
+      { category: 'ค่าเช่า', amount: 500 },
+    ]);
+    expect(result.staffMeal).toBe(100);
+    expect(result.operating).toBe(500);
+    expect(result.waste).toBe(0);
+  });
 });
 
 describe('computeProfitability', () => {
@@ -185,6 +195,22 @@ describe('computeProfitability', () => {
     expect(r.netProfit).toBe(240 - 57 - 200);
     // เงินสด: 240 − 1000 · ของเสีย 200 ไม่ถูกหักซ้ำ
     expect(r.cashFlow).toBe(-760);
+  });
+
+  it('เจ้าของ/พนักงานกินหักจากกำไรแต่ไม่หักจากเงินสด และแยกยอดจากของเสีย', () => {
+    const base = {
+      orders, expenses: [{ category: 'ค่าเช่า', amount: 610 }], menu, stock,
+    };
+    const clean = computeProfitability(base);
+    const meal = computeProfitability({
+      ...base,
+      expenses: [...base.expenses, { category: 'เจ้าของ/พนักงานกิน', amount: 100 }],
+    });
+    expect(meal.staffMealCost).toBe(100);
+    expect(meal.wasteCost).toBe(clean.wasteCost);
+    expect(meal.netProfit).toBe(clean.netProfit - 100);
+    expect(meal.cashFlow).toBe(clean.cashFlow);
+    expect(meal.unitsSold * meal.contributionPerUnit - meal.fixedCosts).toBeCloseTo(meal.netProfit, 6);
   });
 
   it('เดือนที่ตุนของหนัก เงินสดติดลบได้ทั้งที่กำไรเป็นบวก', () => {

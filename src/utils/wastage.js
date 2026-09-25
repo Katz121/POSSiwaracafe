@@ -119,3 +119,8 @@ export function computeMenuWaste({ menuItem, quantity = 1, stockById = new Map()
 export function buildWasteExpenseTitle(menuName, quantity, unitLabel = 'ชิ้น') {
   return `ของเสีย: ${String(menuName || 'ไม่ระบุ')} (x${num(quantity)} ${unitLabel})`;
 }
+
+/** ข้อความสำหรับบันทึกรายจ่ายเจ้าของ/พนักงานกิน ตีมูลค่าด้วยราคาทุนเหมือนของเสีย */
+export function buildStaffMealExpenseTitle(menuName, quantity, unitLabel = 'ชิ้น') {
+  return `เจ้าของ/พนักงานกิน: ${String(menuName || 'ไม่ระบุ')} (x${num(quantity)} ${unitLabel})`;
+}

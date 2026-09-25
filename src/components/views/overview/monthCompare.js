@@ -7,15 +7,17 @@
 //
 // The money rules are the same as the dashboard's month cards and must stay so:
 //  - revenue  = sum of `total` of completed orders
-//  - cost     = expenses excluding the waste category (waste is already paid
-//               for when the ingredients were bought · see DashboardView)
+//  - cost     = expenses excluding non-cash categories (waste + เจ้าของ/พนักงานกิน,
+//               already paid for when the ingredients were bought · see DashboardView)
 //  - net cash = revenue − cost
 // Pure functions only (no React, no Firestore) so they are unit-tested.
 import { getOrderDate } from '../../../utils/calculations';
 import { countUnits } from '../../../utils/salesHistory';
 import { matchingMonthRanges, toISODateLocal } from '../../../utils/format';
+import { NON_CASH_EXPENSE_CATEGORIES, WASTE_CATEGORY } from '../../../config/constants';
 
-export const WASTE_CATEGORY = 'ของเสีย (Waste)';
+// WASTE_CATEGORY เคยนิยามในไฟล์นี้ · re-export จาก constants เพื่อให้ไฟล์ที่เคย import จากที่นี่ยังใช้ได้
+export { WASTE_CATEGORY };
 
 const lastDayOfMonth = (isoMonth) => {
   const [y, m] = isoMonth.split('-').map(Number);
@@ -62,7 +64,7 @@ export function summarizeRange({ orders = [], expenses = [], range }) {
   const rangeExpenses = expenses.filter((e) => inRange(String(e.date || '').slice(0, 10), range));
   const revenue = rangeOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
   const cost = rangeExpenses
-    .filter((e) => e.category !== WASTE_CATEGORY)
+    .filter((e) => !NON_CASH_EXPENSE_CATEGORIES.includes(e.category))
     .reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const units = rangeOrders.reduce((acc, o) => {
     const { cups, pieces } = countUnits(o);

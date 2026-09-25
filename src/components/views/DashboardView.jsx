@@ -8,11 +8,11 @@ import { getISODate, getOrderDate } from '../../utils/calculations';
 import { countUnits } from '../../utils/salesHistory';
 import { computeProfitability } from '../../utils/profitability';
 import { formatThaiDate } from '../../utils/format';
-import { INVENTORY_CATEGORIES } from '../../config/constants';
+import { INVENTORY_CATEGORIES, NON_CASH_EXPENSE_CATEGORIES } from '../../config/constants';
 import AiButton from '../AiButton';
 import { AI_OFFLINE_HINT } from '../../utils/museJobs';
 import { Button, ConfirmModal, DateStepper, IconButton, ListRow, PageHeader, Sheet, useMediaQuery, useToast } from '../ui';
-import { compareMonths, WASTE_CATEGORY } from './overview/monthCompare';
+import { compareMonths } from './overview/monthCompare';
 import { computeTodayStats } from './overview/todayStats';
 import { buildMenuImageLookup } from './overview/menuImage';
 import TodayRow from './overview/TodayRow';
@@ -77,11 +77,11 @@ const DashboardView = ({ onNavigate }) => {
         const monthExpenses = expenses.filter(e => String(e.date || '').startsWith(currentMonth));
 
         const revenue = monthOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
-        // ของเสียถูกบันทึกเป็นรายจ่ายซ้ำอีกรอบตอนตัดสต็อก (ดู StockView) ทั้งที่เงิน
+        // ของเสียกับเจ้าของ/พนักงานกินถูกบันทึกเป็นรายจ่ายซ้ำอีกรอบตอนตัดสต็อก (ดู StockView) ทั้งที่เงิน
         // ไหลออกไปแล้วตอนซื้อวัตถุดิบ · ตัวเลขฝั่งเงินสดจึงต้องไม่นับมันอีก ไม่งั้น
         // ซื้อ 1,000 แล้วทิ้ง 200 จะกลายเป็นรายจ่าย 1,200 ทั้งที่จ่ายจริง 1,000
         const expenseTotal = monthExpenses
-            .filter(e => e.category !== WASTE_CATEGORY)
+            .filter(e => !NON_CASH_EXPENSE_CATEGORIES.includes(e.category))
             .reduce((s, e) => s + (Number(e.amount) || 0), 0);
         const count = monthOrders.length;
 

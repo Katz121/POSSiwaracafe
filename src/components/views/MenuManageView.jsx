@@ -4,11 +4,11 @@ import {
   ClipboardList, Plus, Wrench, FolderCog, Zap, Languages, ListOrdered, Upload, Star,
 } from 'lucide-react';
 import { doc, collection, addDoc, updateDoc, deleteDoc, writeBatch, increment, serverTimestamp, arrayUnion } from 'firebase/firestore';
-import { computeMenuWaste, buildWasteExpenseTitle, usageFromPortions } from '../../utils/wastage';
+import { computeMenuWaste, buildWasteExpenseTitle, buildStaffMealExpenseTitle, usageFromPortions } from '../../utils/wastage';
 import { db, appId } from '../../services/firebase';
 import { useDataContext, useConfigContext, useUIContext } from '../../context/AppContext';
 import { getISODate, compressImage } from '../../utils/calculations';
-import { STOCK_CATEGORIES, getStockCategory, DEFAULT_STOCK_UNIT, DEFAULT_MIN_QUANTITY } from '../../config/constants';
+import { STOCK_CATEGORIES, getStockCategory, DEFAULT_STOCK_UNIT, DEFAULT_MIN_QUANTITY, WASTE_CATEGORY, STAFF_MEAL_CATEGORY } from '../../config/constants';
 import { uploadImageToR2 } from '../../services/imageUpload';
 import { sortByFeaturedOrder, moveItem, featuredOrderUpdates } from '../../utils/featuredOrder';
 import { auditMenuLinks } from '../../utils/stockAudit';
@@ -119,6 +119,7 @@ export default function MenuManageView() {
   // ── Waste ──────────────────────────────────────────────────────────────
   const [wasteMenuId, setWasteMenuId] = useState(null);
   const [wasteQuantity, setWasteQuantity] = useState('');
+  const [wasteReason, setWasteReason] = useState('waste');
   const [savingWaste, setSavingWaste] = useState(false);
   const wasteLock = useRef(false);
 
@@ -246,11 +247,12 @@ export default function MenuManageView() {
           batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), { quantity: increment(-used) });
         });
         const expenseRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'));
-        batch.set(expenseRef, { title: buildWasteExpenseTitle(wasteMenu.name, Number(wasteQuantity)), amount: waste.cost, category: 'ของเสีย (Waste)', date: getISODate(), createdAt: serverTimestamp() });
+        const isStaffMeal = wasteReason === 'staff';
+        batch.set(expenseRef, { title: isStaffMeal ? buildStaffMealExpenseTitle(wasteMenu.name, Number(wasteQuantity)) : buildWasteExpenseTitle(wasteMenu.name, Number(wasteQuantity)), amount: waste.cost, category: isStaffMeal ? STAFF_MEAL_CATEGORY : WASTE_CATEGORY, date: getISODate(), createdAt: serverTimestamp() });
         await batch.commit();
-        toast.success('บันทึกของเสียสำเร็จ');
+        toast.success(wasteReason === 'staff' ? 'บันทึกเจ้าของ/พนักงานกินแล้ว' : 'บันทึกของเสียสำเร็จ');
         setWasteMenuId(null);
-      }, 'บันทึกของเสียไม่สำเร็จ');
+      }, 'บันทึกไม่สำเร็จ');
     } finally { wasteLock.current = false; setSavingWaste(false); }
   };
   const toggleHighlight = useCallback(async (item, field) => {
@@ -418,7 +420,7 @@ export default function MenuManageView() {
     onToggleAvailability: toggleAvailability,
     onToggleHighlight: toggleHighlight,
     onToggleExcludeFromSale: toggleExcludeFromSale,
-    onWaste: (item) => { setWasteMenuId(item.id); setWasteQuantity(''); },
+    onWaste: (item) => { setWasteMenuId(item.id); setWasteQuantity(''); setWasteReason('waste'); },
     onCakeStock: openCakeStock,
     onDelete: askDeleteMenu,
   }), [editMenu, toggleAvailability, toggleHighlight, toggleExcludeFromSale, openCakeStock, askDeleteMenu]);
@@ -632,6 +634,8 @@ export default function MenuManageView() {
         validQuantity={validWasteQuantity}
         stockById={stockById}
         onConfirm={confirmWaste}
+        reason={wasteReason}
+        setReason={setWasteReason}
         onGoLink={() => { const item = wasteMenu; setWasteMenuId(null); if (item) editMenu(item, 'stock'); }}
       />
 

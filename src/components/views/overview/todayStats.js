@@ -3,11 +3,11 @@
 // Same money rules as the rest of the dashboard:
 //  - sales    = completed orders dated today (sum of `total`)
 //  - unpaid   = not paid, not cancelled, dated today (same rule as the nav badge)
-//  - expenses = today's expenses excluding waste (cash view, see monthCompare.js)
+//  - expenses = today's expenses excluding non-cash categories (waste + เจ้าของ/พนักงานกิน · cash view, see monthCompare.js)
 import { getOrderDate } from '../../../utils/calculations';
 import { countUnits } from '../../../utils/salesHistory';
 import { addDaysISO } from '../../../utils/format';
-import { WASTE_CATEGORY } from './monthCompare';
+import { NON_CASH_EXPENSE_CATEGORIES } from '../../../config/constants';
 
 const orderTimeMs = (o) => {
   if (o?.createdAt?.seconds) return o.createdAt.seconds * 1000;
@@ -73,7 +73,7 @@ export function computeTodayStats({ orders = [], expenses = [], today, now = new
   }
 
   const expenseTotal = expenses
-    .filter((e) => String(e.date || '').slice(0, 10) === today && e.category !== WASTE_CATEGORY)
+    .filter((e) => String(e.date || '').slice(0, 10) === today && !NON_CASH_EXPENSE_CATEGORIES.includes(e.category))
     .reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
   // Only offer a delta when last week actually had sales by this time.

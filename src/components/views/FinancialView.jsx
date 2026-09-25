@@ -219,7 +219,7 @@ const FinancialView = () => {
                 <div className="max-w-[1400px] mx-auto flex flex-col gap-6">
                     <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                         <StatCard label="รายรับ" icon={TrendingUp} tone="ok" value={<Money value={currentFinancials.revenue} />} hint={formatThaiDate(selectedMonth, { style: 'month' })} />
-                        <StatCard label="รายจ่ายในระบบ" icon={Wallet} value={<Money value={currentFinancials.recordedExpenses} />} hint="ทุกหมวดรวมของเสีย" />
+                        <StatCard label="รายจ่ายในระบบ" icon={Wallet} value={<Money value={currentFinancials.recordedExpenses} />} hint="ทุกหมวด รวมของเสียและเจ้าของ/พนักงานกิน" />
                         <StatCard
                             className="col-span-2 lg:col-span-1"
                             label="กำไรสุทธิ (โดยประมาณ)"

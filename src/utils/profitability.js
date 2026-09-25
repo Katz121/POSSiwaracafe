@@ -28,6 +28,7 @@
 import { mergeStockLinks } from './stockLinks';
 
 const WASTE_CATEGORY = 'ของเสีย (Waste)';
+const STAFF_MEAL_CATEGORY = 'เจ้าของ/พนักงานกิน';
 
 /**
  * ต่ำกว่านี้ถือว่าน่าสงสัยว่าผูกสต็อกไม่ครบ · เครื่องดื่มที่ต้นทุนวัตถุดิบต่ำกว่า 8%
@@ -144,19 +145,21 @@ export function computeUnitCost(orderItem, menuByName, stockById, modifiersByNam
 }
 
 /**
- * แยกรายจ่ายเป็น 3 กอง เพราะแต่ละกองเข้าสมการคนละที่
+ * แยกรายจ่ายเป็น 4 กอง เพราะแต่ละกองเข้าสมการคนละที่
  *  - inventory : ซื้อของเข้าคลัง · เข้าเฉพาะฝั่งเงินสด ห้ามเข้าฝั่งกำไร
  *  - waste     : ของเสีย · เข้าเฉพาะฝั่งกำไร ห้ามเข้าฝั่งเงินสด
+ *  - staffMeal : เจ้าของ/พนักงานกิน · เข้าฝั่งกำไรอย่างเดียว ไม่เข้าฝั่งเงินสด เหมือนของเสีย
  *  - operating : ที่เหลือ (เช่า ไฟ ค่าแรง การตลาด) · เข้าทั้งสองฝั่ง
  */
 export function splitExpenses(expenses = [], inventoryCategories = DEFAULT_INVENTORY_CATEGORIES) {
   const inventorySet = new Set(inventoryCategories);
-  const result = { inventory: 0, waste: 0, operating: 0 };
+  const result = { inventory: 0, waste: 0, staffMeal: 0, operating: 0 };
 
   expenses.forEach((expense) => {
     const amount = num(expense?.amount);
     const category = String(expense?.category || '');
     if (category === WASTE_CATEGORY) result.waste += amount;
+    else if (category === STAFF_MEAL_CATEGORY) result.staffMeal += amount;
     else if (inventorySet.has(category)) result.inventory += amount;
     else result.operating += amount;
   });
@@ -242,19 +245,21 @@ export function computeProfitability({
   // เยอะขึ้นถึงจะคุ้มค่าเช่า" ซึ่งผิดหลัก · ที่ถูกคือของเสียไปลด **กำไรส่วนเกินต่อหน่วย**
   // เพราะมันคือวัตถุดิบที่จ่ายไปแล้วแต่ไม่ได้กลายเป็นของขาย
   const fixedCosts = split.operating + num(extraFixedCosts);
-  const periodCosts = fixedCosts + split.waste;
+  // ของที่เจ้าของ/พนักงานกิน = วัตถุดิบที่จ่ายไปแล้วแต่ไม่ได้กลายเป็นยอดขาย
+  // · วาเลือกให้หักเป็นต้นทุนร้าน (สวัสดิการ) · ไม่ใช่เงินสดไหลออก
+  const periodCosts = fixedCosts + split.waste + split.staffMeal;
 
   const grossProfit = revenue - cogs;
   const netProfit = grossProfit - periodCosts;
 
-  // ฝั่งเงินสด: ของเสียไม่ใช่เงินไหลออก (จ่ายไปแล้วตอนซื้อ) จึงไม่นับ
+  // ฝั่งเงินสด: ของเสียกับเจ้าของ/พนักงานกินไม่ใช่เงินไหลออก (จ่ายไปแล้วตอนซื้อ) จึงไม่นับ
   const cashOut = split.inventory + split.operating + num(extraFixedCosts);
   const cashFlow = revenue - cashOut;
 
   // กำไรส่วนเกินต่อหน่วย = (รายได้ − ต้นทุนผันแปรทั้งหมด) ÷ จำนวนที่ขาย
-  // ต้นทุนผันแปร = COGS + ของเสีย · นิยามนี้ทำให้สมการปิดพอดี:
+  // ต้นทุนผันแปร = COGS + ของเสีย + เจ้าของ/พนักงานกิน · นิยามนี้ทำให้สมการปิดพอดี:
   //   netProfit = unitsSold × contributionPerUnit − fixedCosts
-  const variableCosts = cogs + split.waste;
+  const variableCosts = cogs + split.waste + split.staffMeal;
   const contributionPerUnit = unitsSold > 0 ? (revenue - variableCosts) / unitsSold : 0;
   const averagePrice = unitsSold > 0 ? revenue / unitsSold : 0;
 
@@ -286,6 +291,7 @@ export function computeProfitability({
     cogsRatio: revenue > 0 ? Math.round((cogs / revenue) * 100) : 0,
 
     wasteCost: split.waste,
+    staffMealCost: split.staffMeal,
     vatCollected,
     operatingExpenses: split.operating,
     inventoryPurchases: split.inventory,
@@ -301,7 +307,7 @@ export function computeProfitability({
 
     cashFlow,
     // ส่วนต่างระหว่างกำไรกับเงินสด = ของที่ตุนเพิ่ม (บวก) หรือกินสต็อกเก่า (ลบ)
-    inventoryMovement: split.inventory - cogs - split.waste,
+    inventoryMovement: split.inventory - cogs - split.waste - split.staffMeal,
 
     unitsSold,
     averagePrice,

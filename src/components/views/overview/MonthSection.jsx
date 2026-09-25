@@ -92,7 +92,7 @@ export default function MonthSection({
           label="รายจ่าย"
           icon={Wallet}
           value={<Money value={monthlyStats.cost} />}
-          hint="เงินที่จ่ายออก ไม่รวมของเสีย"
+          hint="เงินที่จ่ายออก ไม่รวมของเสียและเจ้าของ/พนักงานกิน"
           onClick={() => onNavigate?.('expenses')}
         />
         <StatCard
