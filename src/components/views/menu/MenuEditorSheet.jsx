@@ -10,6 +10,7 @@ import { formatNumber } from '../../../utils/format';
 import { getModifierGroups } from '../../../config/constants';
 import { supportsSweetnessChoice } from '../../../utils/promotions';
 import { SheetSection, ToggleRow } from './parts';
+import { repieceLinks, toWholeMode, wholeFromUsage } from './menuModel';
 import { applyPackagingPreset } from '../../../utils/packagingPresets';
 import { buildStockSuggestPrompt, normalizeStockSuggestions, applyStockSuggestions, relatedRecipes } from '../../../utils/stockSuggest';
 import AiButton from '../../AiButton';
@@ -63,27 +64,16 @@ export default function MenuEditorSheet({
   // the per-cake amounts live only in the form (`perWhole`) and are stripped on save.
   const wholeMode = newItem.recipeMode === 'whole';
   const pieces = Number(newItem.recipePieces) || 0;
-  const wholeFromUsage = (usage, n) => (n > 0 && Number(usage) > 0 ? String(Math.round(Number(usage) * n * 1000) / 1000) : '');
   const perWholeOf = (link) => (link.perWhole !== undefined ? link.perWhole : wholeFromUsage(link.usage, pieces));
+  // Old "ต่อ 1 ที่" recipes carry over ×10 (editable) instead of starting blank
   const setLinkMode = (mode) => setNewItem((p) => {
-    if (mode === 'whole') {
-      const n = Number(p.recipePieces) || 0;
-      return {
-        ...p,
-        recipeMode: 'whole',
-        recipePieces: p.recipePieces || '',
-        stockLinks: (p.stockLinks || []).map((l) => ({ ...l, perWhole: wholeFromUsage(l.usage, n) })),
-      };
-    }
+    if (mode === 'whole') return toWholeMode(p);
     return { ...p, recipeMode: null, recipePieces: null, stockLinks: (p.stockLinks || []).map((l) => { const { perWhole: _pw, ...rest } = l; return rest; }) };
   });
   const setPieces = (value) => setNewItem((p) => ({
     ...p,
     recipePieces: value,
-    stockLinks: (p.stockLinks || []).map((l) => {
-      const whole = l.perWhole !== undefined ? l.perWhole : wholeFromUsage(l.usage, Number(p.recipePieces) || 0);
-      return { ...l, perWhole: whole, usage: usagePerPiece(whole, value) };
-    }),
+    stockLinks: repieceLinks(p.stockLinks || [], p.recipePieces, value),
   }));
   const setPerWhole = (i, value) => setNewItem((p) => {
     const next = [...p.stockLinks];
@@ -277,7 +267,7 @@ export default function MenuEditorSheet({
                   value={newItem.recipePieces ?? ''}
                   placeholder="เช่น 10"
                   onChange={(e) => setPieces(e.target.value)}
-                  hint={pieces > 0 ? 'กรอกปริมาณวัตถุดิบทั้งก้อนด้านล่าง ระบบหารเป็นต่อชิ้นให้' : undefined}
+                  hint={pieces > 0 ? 'ตัวเลขด้านล่างคือทั้งก้อน (สูตรต่อ 1 ที่เดิมคูณจำนวนชิ้นให้แล้ว ตรวจก่อนบันทึก) · ระบบหารเป็นต่อชิ้นให้' : undefined}
                   error={pieces > 0 ? undefined : 'ใส่จำนวนชิ้นที่ตัดได้จากเค้ก 1 ก้อน'}
                 />
                 <div className="mt-3">

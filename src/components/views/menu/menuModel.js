@@ -1,4 +1,5 @@
 import { auditMenuLinks, LINK_STATUS } from '../../../utils/stockAudit.js';
+import { usagePerPiece } from '../../../utils/production.js';
 
 // Pure helpers for the menu page (no React, no Firestore) · tested in menu.test.js
 
@@ -105,4 +106,47 @@ export function groupMenu(items, categories = []) {
       items: groups.get(name).slice().sort((a, b) => ((a.available === false ? 1 : 0) - (b.available === false ? 1 : 0))
         || String(a.name || '').localeCompare(String(b.name || ''), 'th')),
     }));
+}
+
+// ── "สูตรทั้งก้อน ÷ ชิ้น" in the editor ─────────────────────────────────────────
+// usage (per piece) is what the POS deducts · perWhole is a form-only helper.
+
+/** Most cakes are cut into 10 slices · used when switching an old "ต่อ 1 ที่" recipe to whole-cake mode */
+export const DEFAULT_CAKE_PIECES = 10;
+
+/** per-piece usage × pieces as the form's text value ('' when there is nothing to show) */
+export const wholeFromUsage = (usage, pieces) => {
+  const n = Number(pieces) || 0;
+  const u = Number(usage) || 0;
+  return n > 0 && u > 0 ? String(Math.round(u * n * 1000) / 1000) : '';
+};
+
+/**
+ * Switch the form to whole-cake mode without losing the per-piece recipe:
+ * every line's perWhole = usage × pieces (pieces defaults to 10), usage untouched.
+ */
+export function toWholeMode(item) {
+  const pieces = Number(item?.recipePieces) > 0 ? Number(item.recipePieces) : DEFAULT_CAKE_PIECES;
+  return {
+    ...item,
+    recipeMode: 'whole',
+    recipePieces: String(pieces),
+    stockLinks: (item?.stockLinks || []).map((l) => ({ ...l, perWhole: wholeFromUsage(l.usage, pieces) })),
+  };
+}
+
+/**
+ * Change "ตัดได้กี่ชิ้น": the whole-cake amounts stay, per-piece usage is re-divided.
+ * A line with no whole amount yet (pieces was blank) is rebuilt from its per-piece
+ * usage first, so an existing recipe is scaled instead of wiped to 0.
+ */
+export function repieceLinks(links = [], prevPieces, nextPieces) {
+  const prev = Number(prevPieces) || 0;
+  const next = Number(nextPieces) || 0;
+  return links.map((l) => {
+    const hasWhole = l.perWhole !== undefined && l.perWhole !== '';
+    const whole = hasWhole ? l.perWhole : wholeFromUsage(l.usage, prev || next);
+    if (!(next > 0)) return { ...l, perWhole: whole };
+    return { ...l, perWhole: whole, usage: whole === '' ? l.usage : usagePerPiece(whole, next) };
+  });
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildMenuStatus, countStockFilters, groupMenu, matchesHighlight, matchesSearch, matchesStockFilter, stockFilterFromParam,
+  buildMenuStatus, countStockFilters, DEFAULT_CAKE_PIECES, groupMenu, matchesHighlight, matchesSearch, matchesStockFilter, repieceLinks, stockFilterFromParam, toWholeMode,
 } from './menuModel.js';
 
 const stock = [
@@ -76,5 +76,51 @@ describe('groupMenu', () => {
     expect(groups.map((g) => g.name).slice(0, 2)).toEqual(['ชา', 'กาแฟ']);
     const coffee = groups.find((g) => g.name === 'กาแฟ').items.map((i) => i.id);
     expect(coffee[coffee.length - 1]).toBe('mod');
+  });
+});
+
+describe('whole-cake recipe mode', () => {
+  const cake = {
+    name: 'เค้กมะพร้าว',
+    stockLinks: [
+      { stockId: 'egg', usage: 0.4 },
+      { stockId: 'flour', usage: 12 },
+      { stockId: 'sugar', usage: 13.3 },
+      { stockId: 'new', usage: 0 },
+    ],
+  };
+
+  it('carries the old per-piece recipe over ×10 by default without touching usage', () => {
+    const w = toWholeMode(cake);
+    expect(w.recipeMode).toBe('whole');
+    expect(w.recipePieces).toBe(String(DEFAULT_CAKE_PIECES));
+    expect(w.stockLinks.map((l) => l.perWhole)).toEqual(['4', '120', '133', '']);
+    expect(w.stockLinks.map((l) => l.usage)).toEqual([0.4, 12, 13.3, 0]);
+  });
+
+  it('keeps a piece count that was already set', () => {
+    const w = toWholeMode({ ...cake, recipePieces: 8 });
+    expect(w.recipePieces).toBe('8');
+    expect(w.stockLinks[1].perWhole).toBe('96');
+  });
+
+  it('changing pieces keeps the whole-cake amounts and re-divides per piece', () => {
+    const w = toWholeMode(cake);
+    const links = repieceLinks(w.stockLinks, '10', '8');
+    expect(links[1]).toMatchObject({ perWhole: '120', usage: 15 });
+    expect(links[0]).toMatchObject({ perWhole: '4', usage: 0.5 });
+  });
+
+  it('typing pieces into a blank count scales the per-piece recipe instead of zeroing it', () => {
+    const links = repieceLinks(cake.stockLinks.map((l) => ({ ...l, perWhole: '' })), '', '10');
+    expect(links[1]).toMatchObject({ perWhole: '120', usage: 12 });
+    expect(links[3]).toMatchObject({ perWhole: '', usage: 0 });
+  });
+
+  it('clearing the count keeps the whole amounts for when it is typed again', () => {
+    const cleared = repieceLinks(toWholeMode(cake).stockLinks, '10', '');
+    expect(cleared[1].perWhole).toBe('120');
+    const again = repieceLinks(cleared, '', '12');
+    expect(again[1]).toMatchObject({ perWhole: '120', usage: 10 });
   });
 });
