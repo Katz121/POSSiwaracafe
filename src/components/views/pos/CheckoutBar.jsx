@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { CheckCircle2, Clock3 } from 'lucide-react';
+import { CheckCircle2, Clock3, UtensilsCrossed } from 'lucide-react';
 import { Button, SegmentedControl } from '../../ui';
 import { formatBaht } from '../../../utils/format';
 
@@ -14,10 +14,12 @@ const SAVE_LABEL = <><CheckCircle2 size={20} className="shrink-0" /> บัน�
 /**
  * The CTA row. New sale: split action, one tap each · "ค้างจ่าย" (secondary) /
  * "รับเงินแล้ว" (primary) → onCheckout(false|true). Edit mode: paid toggle + one
- * "บันทึกการแก้ไข" → onCheckout(isPaid). Memoised: `onCheckout` is stable, so a
- * cart tap does not re-render these buttons.
+ * "บันทึกการแก้ไข" → onCheckout(isPaid). Optional `onStaffMeal` adds a quiet
+ * "เจ้าของ/พนักงานกิน" row under the CTAs (new sale only, never edit mode).
+ * Memoised: `onCheckout`/`onStaffMeal` are stable, so a cart tap does not
+ * re-render these buttons.
  */
-const CheckoutActions = memo(function CheckoutActions({ disabled, editing, isPaid, onPaidChange, onCheckout }) {
+const CheckoutActions = memo(function CheckoutActions({ disabled, editing, isPaid, onPaidChange, onCheckout, onStaffMeal }) {
   if (editing) {
     return (
       <div className="space-y-2">
@@ -29,23 +31,31 @@ const CheckoutActions = memo(function CheckoutActions({ disabled, editing, isPai
     );
   }
   return (
-    <div className="grid grid-cols-[1fr_1.5fr] gap-2">
-      <Button variant="secondary" size="xl" className="whitespace-nowrap px-3" disabled={disabled} onClick={() => onCheckout(false)} data-checkout="unpaid">
-        {UNPAID_LABEL}
-      </Button>
-      <Button variant="primary" size="xl" className="whitespace-nowrap px-3" disabled={disabled} onClick={() => onCheckout(true)} data-checkout="paid">
-        {PAID_LABEL}
-      </Button>
-    </div>
+    <>
+      <div className="grid grid-cols-[1fr_1.5fr] gap-2">
+        <Button variant="secondary" size="xl" className="whitespace-nowrap px-3" disabled={disabled} onClick={() => onCheckout(false)} data-checkout="unpaid">
+          {UNPAID_LABEL}
+        </Button>
+        <Button variant="primary" size="xl" className="whitespace-nowrap px-3" disabled={disabled} onClick={() => onCheckout(true)} data-checkout="paid">
+          {PAID_LABEL}
+        </Button>
+      </div>
+      {onStaffMeal && (
+        <Button variant="ghost" size="sm" fullWidth disabled={disabled} onClick={onStaffMeal}>
+          <><UtensilsCrossed size={16} className="shrink-0" /> เจ้าของ/พนักงานกิน</>
+        </Button>
+      )}
+    </>
   );
 });
 
 /**
  * Totals + checkout, pinned to the bottom of the cart.
  * `rows`: [{ label, amount (negative = discount) }] · `hints`: strings
+ * `onStaffMeal`: optional → shows the quiet "เจ้าของ/พนักงานกิน" row (new sale only)
  */
 export default function CheckoutBar({
-  subtotal, rows = [], hints = [], netTotal, disabled, busy, editing, isPaid, onPaidChange, onCheckout,
+  subtotal, rows = [], hints = [], netTotal, disabled, busy, editing, isPaid, onPaidChange, onCheckout, onStaffMeal,
 }) {
   return (
     <div className="shrink-0 border-t border-[var(--border-color)] bg-[var(--bg-surface)] px-4 pt-3 pb-4 space-y-3">
@@ -67,7 +77,7 @@ export default function CheckoutBar({
           </span>
         </div>
       </div>
-      <CheckoutActions disabled={disabled || busy} editing={editing} isPaid={isPaid} onPaidChange={onPaidChange} onCheckout={onCheckout} />
+      <CheckoutActions disabled={disabled || busy} editing={editing} isPaid={isPaid} onPaidChange={onPaidChange} onCheckout={onCheckout} onStaffMeal={onStaffMeal} />
     </div>
   );
 }

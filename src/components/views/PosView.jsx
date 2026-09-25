@@ -19,7 +19,8 @@ import {
   DEFAULT_REDEEM_DISCOUNT_VALUE,
   DEFAULT_OWN_GLASS_DISCOUNT,
   MEMBER_MIN_PHONE_LENGTH,
-  ALLOW_NAME_ONLY_MEMBERS
+  ALLOW_NAME_ONLY_MEMBERS,
+  STAFF_MEAL_CATEGORY
 } from '../../config/constants';
 import CategoryRail from './pos/CategoryRail';
 import MenuHeader from './pos/MenuHeader';
@@ -32,18 +33,20 @@ import DiscountMemberPanel from './pos/DiscountMemberPanel';
 import {
   needsOptionSheet, buildPlainLine, buildOptionLine, addPlainLine, addOptionLine, toOrderItems, repeatLines,
 } from './pos/posCart';
+import { planStaffMeal } from '../../utils/staffMeal';
+import StaffMealSheet from './pos/StaffMealSheet';
 
 const DENSITY_KEY = 'pos-menu-density';
 const orderMillis = (o) => (o?.createdAt?.toMillis ? o.createdAt.toMillis() : Number(o?.createdAt?.seconds || 0) * 1000);
 
 export default function PosView() {
   const {
-    user, menu, members, orders, beanModifiers, dynamicCategories, queueCounter, queueInfo, isSyncing,
+    user, menu, members, orders, beanModifiers, dynamicCategories, queueCounter, queueInfo, isSyncing, stock,
   } = useDataContext();
   const {
     vatEnabled, redeemPointsThreshold, redeemDiscountValue, ownGlassDiscount,
     cakeSaleEnabled, cakeSaleCategories, cakeSalePercent, cakeSaleStart, cakeSaleEnd,
-    comboEnabled, comboPercent, spendThreshold, spendDiscount, pointsRewardsEnabled, pointsRewards,
+    comboEnabled, comboPercent, spendThreshold, spendDiscount, pointsRewardsEnabled, pointsRewards, milkSwap,
   } = useConfigContext();
   const {
     activePromotion, setActivePromotion, runDbAction, callGeminiAPI, editingOrderId, setEditingOrderId,
@@ -369,6 +372,61 @@ export default function PosView() {
   };
   handleClearCartRef.current = handleClearCart;
 
+  // ---- เจ้าของ/พนักงานกิน: ring up the cart like a normal sale, then record it
+  // as a costed staff meal instead of taking payment. The option-sheet choices
+  // ("#" modifiers, milk, sweetness) are already merged into each cart line's
+  // stockLinks, so planStaffMeal sees the same recipe a real bill would deduct.
+  // Writes stock + one expense doc only: no order doc, no queue bump, no member
+  // points, no bumpMenuSoldCount.
+  const [staffMealOpen, setStaffMealOpen] = useState(false);
+  const [staffMealSaving, setStaffMealSaving] = useState(false);
+  const staffMealLock = useRef(false);
+  const stockById = useMemo(() => new Map((stock || []).map((s) => [s.id, s])), [stock]);
+  const staffMealPlan = useMemo(
+    () => (staffMealOpen ? planStaffMeal(toOrderItems(cart), stockById, { milkSwap }) : null),
+    [staffMealOpen, cart, stockById, milkSwap],
+  );
+  const openStaffMeal = useCallback(() => {
+    if (cartRef.current.length === 0 || editingOrderId) return;
+    setStaffMealOpen(true);
+    setIsMobileCartOpen(false);
+  }, [editingOrderId]);
+  const confirmStaffMeal = useCallback(async () => {
+    if (!staffMealPlan || staffMealLock.current) return;
+    staffMealLock.current = true;
+    setStaffMealSaving(true);
+    try {
+      await runDbAction(async () => {
+        const batch = writeBatch(db);
+        Object.entries(staffMealPlan.applied).forEach(([stockId, used]) => {
+          batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), { quantity: increment(-used) });
+        });
+        batch.set(doc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses')), {
+          title: staffMealPlan.title,
+          amount: staffMealPlan.cost,
+          category: STAFF_MEAL_CATEGORY,
+          date: getISODate(),
+          createdAt: serverTimestamp(),
+          staffMeal: {
+            lines: staffMealPlan.lines,
+            applied: staffMealPlan.applied,
+            skipped: staffMealPlan.skipped,
+            unlinked: staffMealPlan.unlinked,
+            milkSwapApplied: Boolean(milkSwap),
+            by: auth.currentUser?.email || '',
+          },
+        });
+        await batch.commit();
+        toast.success('บันทึกเจ้าของ/พนักงานกินแล้ว');
+        setStaffMealOpen(false);
+        handleClearCartRef.current();
+      }, 'บันทึกไม่สำเร็จ');
+    } finally {
+      staffMealLock.current = false;
+      setStaffMealSaving(false);
+    }
+  }, [staffMealPlan, milkSwap, runDbAction, toast]);
+
   // `paidArg` comes from the split CTA (รับเงินแล้ว = true / ค้างจ่าย = false). The
   // keyboard shortcut and edit mode pass nothing → the current `isPaid` state.
   const handleCheckout = (paidArg) => withInFlightGuard(checkoutInFlight.current, ['checkout'], async () => {
@@ -670,7 +728,7 @@ export default function PosView() {
     <CheckoutBar
       subtotal={subtotal} rows={totalRows} hints={totalHints} netTotal={netTotal}
       disabled={cart.length === 0} busy={checkoutBusy} editing={!!editingOrderId}
-      isPaid={isPaid} onPaidChange={setIsPaid} onCheckout={onCheckout}
+      isPaid={isPaid} onPaidChange={setIsPaid} onCheckout={onCheckout} onStaffMeal={openStaffMeal}
     />
   );
 
@@ -772,6 +830,14 @@ export default function PosView() {
         saleSettings={saleSettings}
         onAdd={addFromSheet}
         onClose={closeSheet}
+      />
+      <StaffMealSheet
+        open={staffMealOpen}
+        onClose={() => setStaffMealOpen(false)}
+        plan={staffMealPlan}
+        stockById={stockById}
+        saving={staffMealSaving}
+        onConfirm={confirmStaffMeal}
       />
     </>
   );
