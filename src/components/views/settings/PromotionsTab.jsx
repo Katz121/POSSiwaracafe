@@ -19,7 +19,7 @@ export default function PromotionsTab({ draft, patch, dirty, onSave, dynamicCate
             onChange={(v) => patch({ cakeSaleEnabled: v })}
           />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Input label="ส่วนลด" type="number" inputMode="decimal" min={0} max={100} suffix="%" inputClassName="num" placeholder="20"
+            <Input label="ส่วนลด" type="number" step="any" inputMode="decimal" min={0} max={100} suffix="%" inputClassName="num" placeholder="20"
               value={draft.cakeSalePercent} onChange={(e) => patch({ cakeSalePercent: e.target.value })} />
             <Input label="เริ่ม" type="time" value={draft.cakeSaleStart} onChange={(e) => patch({ cakeSaleStart: e.target.value })} inputClassName="num" />
             <Input label="สิ้นสุด" type="time" value={draft.cakeSaleEnd} onChange={(e) => patch({ cakeSaleEnd: e.target.value })} inputClassName="num" />
@@ -55,22 +55,22 @@ export default function PromotionsTab({ draft, patch, dirty, onSave, dynamicCate
       <Section title="คอมโบ เค้ก + เครื่องดื่ม" description="ลูกค้าสั่งเค้กและเครื่องดื่มในออเดอร์เดียว ระบบลดราคาให้อัตโนมัติ (ทั้งหน้า POS และหน้า QR ลูกค้า)">
         <div className="flex flex-col gap-4">
           <Toggle label="เปิดใช้งานส่วนลดคอมโบ" checked={draft.comboEnabled} onChange={(v) => patch({ comboEnabled: v })} />
-          <Input label="ส่วนลดคอมโบ" type="number" inputMode="decimal" min={0} max={100} suffix="%" inputClassName="num" placeholder="10" className="sm:max-w-xs"
+          <Input label="ส่วนลดคอมโบ" type="number" step="any" inputMode="decimal" min={0} max={100} suffix="%" inputClassName="num" placeholder="10" className="sm:max-w-xs"
             value={draft.comboPercent} onChange={(e) => patch({ comboPercent: e.target.value })} />
         </div>
       </Section>
 
       <Section title="ส่วนลดเมื่อสั่งครบยอด (หน้า QR)" description={'สั่งครบยอดที่กำหนด รับส่วนลดทันที และมีข้อความกระตุ้น "สั่งอีก ฿X รับส่วนลด Y%" บนหน้า QR · ใส่ 0 = ปิด'}>
         <div className="grid grid-cols-2 gap-3">
-          <Input label="สั่งครบ" type="number" inputMode="decimal" suffix="บาท" inputClassName="num" placeholder="0"
+          <Input label="สั่งครบ" type="number" step="any" inputMode="decimal" suffix="บาท" inputClassName="num" placeholder="0"
             value={draft.spendThreshold} onChange={(e) => patch({ spendThreshold: e.target.value })} />
-          <Input label="ลด" type="number" inputMode="decimal" suffix="%" inputClassName="num" placeholder="0"
+          <Input label="ลด" type="number" step="any" inputMode="decimal" suffix="%" inputClassName="num" placeholder="0"
             value={draft.spendDiscount} onChange={(e) => patch({ spendDiscount: e.target.value })} />
         </div>
       </Section>
 
       <Section title="ส่วนลดแก้วส่วนตัว" description="ลดให้ลูกค้าที่นำแก้วมาเอง (ปุ่ม &quot;แก้วตัวเอง&quot; ที่หน้าขาย)">
-        <Input label="ส่วนลดต่อบิล" type="number" inputMode="decimal" suffix="บาท" inputClassName="num" className="sm:max-w-xs"
+        <Input label="ส่วนลดต่อบิล" type="number" step="any" inputMode="decimal" suffix="บาท" inputClassName="num" className="sm:max-w-xs"
           value={draft.ownGlassDiscount} onChange={(e) => patch({ ownGlassDiscount: e.target.value })} />
       </Section>
 

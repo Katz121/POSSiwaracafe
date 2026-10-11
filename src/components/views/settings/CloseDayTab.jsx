@@ -34,7 +34,7 @@ export default function CloseDayTab({
       </div>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        <StatCard label="กำไรวันนี้" value={<Money value={daily.profit} />} tone={profitTone} icon={TrendingUp} hint="รายรับ − รายจ่าย ของวันที่เลือก" />
+        <StatCard label="กำไรวันนี้" value={<Money value={daily.profit} />} tone={profitTone} icon={TrendingUp} hint="รายรับ − รายจ่าย ของวันที่เลือก · ไม่นับของเสีย/พนักงานกิน (เป็นต้นทุนของที่ซื้อแล้ว)" />
         <StatCard label="รายรับ" value={<Money value={daily.revenue} />} icon={Wallet} hint={`${formatNumber(dayCount)} บิลที่ปิดแล้ว`} />
         <StatCard label="รายจ่าย" value={<Money value={daily.cost} />} icon={Receipt} hint={`${formatNumber(dayExpenses.length)} รายการ`} />
         <StatCard
@@ -60,7 +60,7 @@ export default function CloseDayTab({
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label="จำนวนเงิน"
-                type="number"
+                type="number" step="any"
                 inputMode="decimal"
                 required
                 value={newExpense.amount}
@@ -116,7 +116,7 @@ export default function CloseDayTab({
           <Section title="เงินทอนตั้งต้น" description="เงินสำรองไว้ทอน ไม่นับรวมกับยอดขาย แสดงแยกในรายงาน">
             <Input
               label="จำนวนเงิน"
-              type="number"
+              type="number" step="any"
               inputMode="decimal"
               value={draft.startingCash}
               onChange={(e) => patch({ startingCash: e.target.value })}

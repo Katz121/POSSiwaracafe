@@ -285,7 +285,7 @@ export default function MenuEditorSheet({
               <div className="rounded-[var(--radius)] border-2 border-[var(--accent)] p-3">
                 <Input
                   label="ตัดได้กี่ชิ้น"
-                  type="number"
+                  type="number" step="any"
                   inputMode="numeric"
                   min="1"
                   value={newItem.recipePieces ?? ''}
@@ -297,7 +297,7 @@ export default function MenuEditorSheet({
                 <div className="mt-3">
                   <Input
                     label="ราคาขายทั้งก้อน (บาท)"
-                    type="number"
+                    type="number" step="any"
                     inputMode="decimal"
                     min="0"
                     value={newItem.recipeWholePrice ?? ''}
@@ -542,7 +542,7 @@ export default function MenuEditorSheet({
 
               <Input
                 label="ราคาส่วนเพิ่มเมื่อเลือกเมล็ด (เช่น น้ำช่อ)"
-                type="number"
+                type="number" step="any"
                 inputMode="decimal"
                 value={newItem.beanExtra ?? ''}
                 placeholder="0"

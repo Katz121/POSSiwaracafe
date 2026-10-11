@@ -195,7 +195,7 @@ const FinancialView = () => {
     const fixedField = (key, label) => (
         <Input
             label={label}
-            type="number"
+            type="number" step="any"
             inputMode="decimal"
             min={0}
             prefix="฿"

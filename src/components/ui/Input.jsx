@@ -101,7 +101,7 @@ const Input = forwardRef(({
           autoComplete={autoComplete}
           min={min}
           max={max}
-          step={step}
+          step={step ?? (type === 'number' ? 'any' : undefined)} // ทศนิยมไม่ติดตัวตรวจฟอร์ม (iPhone บันทึกเงียบ)
           maxLength={maxLength}
           aria-invalid={!!error}
           aria-describedby={error || hint ? describedById : undefined}

@@ -30,7 +30,7 @@ export function QuickExpenseSheet({ open, onClose, editing, value, onChange, onS
         <Input label="ชื่อปุ่ม" required placeholder="#ค่าไฟ" value={value.label} onChange={(e) => onChange({ ...value, label: e.target.value })} />
         <Input label="ชื่อที่บันทึก" required placeholder="ค่าไฟประจำเดือน" value={value.title} onChange={(e) => onChange({ ...value, title: e.target.value })} />
         <div className="grid grid-cols-2 gap-3">
-          <Input label="ยอดเงิน (ถ้ามี)" type="number" inputMode="decimal" suffix="บาท" inputClassName="num"
+          <Input label="ยอดเงิน (ถ้ามี)" type="number" step="any" inputMode="decimal" suffix="บาท" inputClassName="num"
             placeholder="เว้นว่างได้" value={value.amount} onChange={(e) => onChange({ ...value, amount: e.target.value })}
             hint="ไม่ต้องใส่ถ้ายอดเปลี่ยนทุกวัน" />
           <Input label="หน่วย" placeholder="บิล" value={value.unit} onChange={(e) => onChange({ ...value, unit: e.target.value })} />

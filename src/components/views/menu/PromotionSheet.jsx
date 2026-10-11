@@ -80,7 +80,7 @@ export default function PromotionSheet({
               <Input label="โค้ดโปรโมชั่น" value={manualPromo.code} placeholder="เช่น SAVE20" onChange={(e) => setManualPromo({ ...manualPromo, code: e.target.value.toUpperCase() })} />
               <Input
                 label="ส่วนลด (%)"
-                type="number"
+                type="number" step="any"
                 inputMode="decimal"
                 min="0"
                 max="100"

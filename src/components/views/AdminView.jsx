@@ -11,7 +11,9 @@ import { recomputeAllSoldCounts } from '../../utils/menuSales';
 import { queueDayKey } from '../../utils/queueDay';
 import { clearUpsellStats, exportUpsellStats } from '../../services/upsellTracker';
 import { ConfirmModal, PageHeader, useMediaQuery, useToast } from '../ui';
-import { DEFAULT_EXPENSE_CATEGORY, STOCK_CATEGORIES, getStockCategory } from '../../config/constants';
+import { DEFAULT_EXPENSE_CATEGORY, NON_CASH_EXPENSE_CATEGORIES, STOCK_CATEGORIES, getStockCategory } from '../../config/constants';
+// ของเสีย/เจ้าของ-พนักงานกิน = ต้นทุนของที่ซื้อมาแล้ว ไม่ใช่เงินออกซ้ำ · กติกาเดียวกับหน้าภาพรวม (DashboardView)
+const cashOut = (list) => list.filter((e) => !NON_CASH_EXPENSE_CATEGORIES.includes(e.category)).reduce((s, e) => s + (Number(e.amount) || 0), 0);
 import { DEFAULT_SETTINGS_TAB, normalizeSettingsTab, tabByKey } from './settings/tabs';
 import { buildSettingsPayload, draftFromConfig, modifierLinkHealth } from './settings/settingsModel';
 import { exportToExcel, downloadBackupJson } from './settings/exportData';
@@ -148,14 +150,14 @@ export default function AdminView() {
     const monthOrders = orders.filter(o => o.status === 'completed' && getOrderDate(o).startsWith(targetMonth));
     const monthExpenses = expenses.filter(e => e.date?.startsWith(targetMonth));
     const revenue = monthOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
-    const cost = monthExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const cost = cashOut(monthExpenses);
     return { revenue, cost, profit: revenue - cost, count: monthOrders.length };
   }, [orders, expenses, selectedHistoryDate]);
 
   const dayExpenses = useMemo(() => expenses.filter(e => e.date === selectedHistoryDate), [expenses, selectedHistoryDate]);
   const dailyNetStats = useMemo(() => {
     const revenue = statsForSelectedDate.revenue;
-    const cost = dayExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const cost = cashOut(dayExpenses);
     return { revenue, cost, profit: revenue - cost };
   }, [statsForSelectedDate.revenue, dayExpenses]);
 
@@ -250,6 +252,7 @@ export default function AdminView() {
     }, 'บันทึกค่าใช้จ่ายไม่สำเร็จ');
   };
 
+  const [expenseToDelete, setExpenseToDelete] = useState(null);
   const deleteExpense = async (expense) => {
     await runDbAction(async () => {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'expenses', expense.id));
@@ -461,7 +464,7 @@ export default function AdminView() {
             newExpense={newExpense}
             onNewExpense={setNewExpense}
             onAddExpense={addExpense}
-            onDeleteExpense={deleteExpense}
+            onDeleteExpense={setExpenseToDelete}
             {...draftProps('close')}
           />
         );
@@ -601,6 +604,16 @@ export default function AdminView() {
         onSubmit={saveQuickExpense}
       />
 
+      <ConfirmModal
+        isOpen={!!expenseToDelete}
+        onClose={() => setExpenseToDelete(null)}
+        onConfirm={() => { const e = expenseToDelete; setExpenseToDelete(null); if (e) deleteExpense(e); }}
+        title="ลบรายจ่าย"
+        message={`ลบ "${expenseToDelete?.title || ''}" ฿${Number(expenseToDelete?.amount || 0).toLocaleString('th-TH')} ใช่ไหม? ลบแล้วกู้คืนไม่ได้${expenseToDelete?.stockId ? ' · ยอดสต็อกที่รับเข้าไว้จะไม่ถูกหักออก ต้องปรับที่หน้าสต็อกเอง' : ''}`}
+        confirmText="ลบ"
+        cancelText="ยกเลิก"
+        variant="danger"
+      />
       <ConfirmModal
         isOpen={showResetConfirm}
         onClose={() => setShowResetConfirm(false)}

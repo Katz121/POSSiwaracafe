@@ -15,16 +15,16 @@ export default function PointsTab({ draft, patch, dirty, onSave }) {
     <div className="flex flex-col gap-5">
       <Section title="แลกแต้มเป็นส่วนลด" description="฿10 = 1 แต้ม · ครบเกณฑ์แล้วลูกค้าแลกเป็นส่วนลดเงินสดได้">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="แต้มขั้นต่ำที่แลกได้" type="number" inputMode="numeric" suffix="แต้ม" inputClassName="num"
+          <Input label="แต้มขั้นต่ำที่แลกได้" type="number" step="any" inputMode="numeric" suffix="แต้ม" inputClassName="num"
             value={draft.redeemPointsThreshold} onChange={(e) => patch({ redeemPointsThreshold: e.target.value })} />
-          <Input label="ส่วนลดเมื่อแลก" type="number" inputMode="decimal" suffix="บาท" inputClassName="num"
+          <Input label="ส่วนลดเมื่อแลก" type="number" step="any" inputMode="decimal" suffix="บาท" inputClassName="num"
             value={draft.redeemDiscountValue} onChange={(e) => patch({ redeemDiscountValue: e.target.value })} />
         </div>
       </Section>
 
       <Section title="แต้มหมดอายุ" description="แต้มหมดอายุถ้าลูกค้าไม่มาซื้อตามจำนวนเดือนนี้ · 0 = ไม่หมดอายุ">
         <div className="flex flex-col gap-3">
-          <Input label="ไม่มาซื้อนานเกิน" type="number" inputMode="numeric" suffix="เดือน" inputClassName="num" className="sm:max-w-xs"
+          <Input label="ไม่มาซื้อนานเกิน" type="number" step="any" inputMode="numeric" suffix="เดือน" inputClassName="num" className="sm:max-w-xs"
             value={draft.pointsExpiryMonths} onChange={(e) => patch({ pointsExpiryMonths: e.target.value })} />
           {expiring && <Banner tone="warn" compact title="ควรประกาศให้ลูกค้ารู้ก่อนเปิดใช้" />}
         </div>
@@ -51,7 +51,7 @@ export default function PointsTab({ draft, patch, dirty, onSave }) {
                     />
                     <Input
                       label="ใช้แต้ม"
-                      type="number"
+                      type="number" step="any"
                       inputMode="numeric"
                       value={reward.cost}
                       onChange={(e) => setReward(idx, { cost: e.target.value })}

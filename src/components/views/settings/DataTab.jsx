@@ -46,7 +46,7 @@ export default function DataTab({
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="ยอดเงิน"
-              type="number"
+              type="number" step="any"
               inputMode="decimal"
               required
               suffix="บาท"

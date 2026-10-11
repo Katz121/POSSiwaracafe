@@ -138,11 +138,11 @@ export default function PrepSheet({ open, onClose, initialMode = 'list', initial
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Input label="เก็บได้กี่วัน" type="number" inputMode="numeric" min="0" value={form.shelfLifeDays} onChange={(e) => set({ shelfLifeDays: e.target.value })} hint="ไม่บังคับ" />
-            <Input label="เตือนเมื่อเหลือ" type="number" inputMode="decimal" min="0" value={form.minQuantity} onChange={(e) => set({ minQuantity: e.target.value })} hint={form.unit || 'หน่วย'} />
+            <Input label="เก็บได้กี่วัน" type="number" step="any" inputMode="numeric" min="0" value={form.shelfLifeDays} onChange={(e) => set({ shelfLifeDays: e.target.value })} hint="ไม่บังคับ" />
+            <Input label="เตือนเมื่อเหลือ" type="number" step="any" inputMode="decimal" min="0" value={form.minQuantity} onChange={(e) => set({ minQuantity: e.target.value })} hint={form.unit || 'หน่วย'} />
           </div>
           {isPieceUnit(form.unit) && (
-            <Input label="ราคาขายทั้งก้อน (บาท)" type="number" inputMode="decimal" min="0" value={form.wholePrice} onChange={(e) => set({ wholePrice: e.target.value })} hint="ไม่บังคับ · ตอนทำเสร็จระบบหารด้วยจำนวนชิ้นที่ตัดได้ เป็นราคาต่อชิ้น" />
+            <Input label="ราคาขายทั้งก้อน (บาท)" type="number" step="any" inputMode="decimal" min="0" value={form.wholePrice} onChange={(e) => set({ wholePrice: e.target.value })} hint="ไม่บังคับ · ตอนทำเสร็จระบบหารด้วยจำนวนชิ้นที่ตัดได้ เป็นราคาต่อชิ้น" />
           )}
           <Input label="โน้ตสูตร (ไม่บังคับ)" value={form.note} onChange={(e) => set({ note: e.target.value })} maxLength={300} placeholder="เช่น อบ 170° 25 นาที" />
         </form>
