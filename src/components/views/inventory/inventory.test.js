@@ -115,3 +115,13 @@ describe('title suggestions skip deleted stock', () => {
     expect(list).toEqual(['ค่าไฟ', 'นมสดโฟร์โมสต์']);
   });
 });
+
+describe('isStaleQuickExpense', () => {
+  it('ซ่อนคีย์ลัดซื้อวัตถุดิบที่ไม่มีในสต็อก · ค่าใช้จ่ายร้านไม่เกี่ยว', async () => {
+    const { isStaleQuickExpense } = await import('./expenseModel');
+    const stock = [{ id: 'm', name: 'นมสด', unit: 'มล.', category: 'นมและผลิตภัณฑ์นม' }];
+    expect(isStaleQuickExpense({ title: 'นมสด Meiji', category: 'วัตถุดิบ' }, stock)).toBe(true);
+    expect(isStaleQuickExpense({ title: 'นมสด', category: 'วัตถุดิบ' }, stock)).toBe(false);
+    expect(isStaleQuickExpense({ title: 'ค่าไฟรายวัน', category: 'ค่าไฟ' }, stock)).toBe(false);
+  });
+});

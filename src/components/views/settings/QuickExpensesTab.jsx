@@ -2,6 +2,7 @@ import { Pencil, Plus, Trash2, Zap } from 'lucide-react';
 import { Button, EmptyState, Input, Money, Sheet } from '../../ui';
 import { NativeSelect } from './controls';
 import { EXPENSE_CATEGORIES } from '../../../config/constants';
+import { isStaleQuickExpense } from '../inventory/expenseModel';
 
 const ICONS = [
   ['💰', 'เงิน'], ['🧊', 'น้ำแข็ง'], ['💡', 'ไฟ'], ['💧', 'น้ำ'],
@@ -48,7 +49,7 @@ export function QuickExpenseSheet({ open, onClose, editing, value, onChange, onS
 }
 
 /** "รายจ่ายด่วน" · list of quick-expense buttons used on the Expenses screen. */
-export default function QuickExpensesTab({ quickExpenses, onAdd, onEdit, onDelete, onUseDefaults }) {
+export default function QuickExpensesTab({ quickExpenses, stock = [], onAdd, onEdit, onDelete, onUseDefaults }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -73,6 +74,9 @@ export default function QuickExpensesTab({ quickExpenses, onAdd, onEdit, onDelet
                   {item.title} · {item.category}
                   {item.amount !== '' && item.amount != null && <> · <Money value={Number(item.amount)} /></>}
                 </span>
+                {isStaleQuickExpense(item, stock) && (
+                  <span className="block text-xs text-[var(--state-warn)]">ไม่มี "{item.title}" ในสต็อก · ซ่อนจากหน้ารายจ่าย แก้ชื่อให้ตรงวัตถุดิบในสต็อกก่อน</span>
+                )}
               </span>
               <Button variant="secondary" leftIcon={<Pencil size={16} />} onClick={() => onEdit(item)} aria-label={`แก้ไข ${item.label}`}>
                 <span className="hidden sm:inline">แก้ไข</span>

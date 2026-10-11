@@ -98,6 +98,15 @@ export function intakeFormFor(item) {
   };
 }
 
+/**
+ * คีย์ลัดซื้อวัตถุดิบที่ชื่อไม่ตรงของในสต็อก (ลบ/เลิกใช้ไปแล้ว) · กดแล้วบันทึกจะสร้างวัตถุดิบใหม่ซ้ำ
+ * หน้ารายจ่ายซ่อนตัวนี้ หน้าตั้งค่าติดป้ายให้แก้ชื่อ
+ */
+export function isStaleQuickExpense(item, stock = []) {
+  if (!isInventoryCategory(item?.category)) return false;
+  return resolveStockIntake({ title: String(item?.title || ''), quantity: 1, unit: String(item?.unit || ''), amount: 0, category: item.category }, stock).newStock;
+}
+
 // ── Title suggestions (moved from ExpensesView) ─────────────────────────────
 /** Names from the stock master and past expenses, de-duplicated, Thai-sorted. */
 export function buildTitleSuggestions(stock = [], expenses = []) {

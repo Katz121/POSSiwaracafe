@@ -58,7 +58,7 @@ function StatusPill({ label, on, onClick, ariaLabel }) {
 }
 
 export default function AdminView() {
-  const { orders, expenses, stock, members, menu, dynamicCategories, beanModifiers, quickExpenses } = useDataContext();
+  const { orders, expenses, stock, activeStock = [], members, menu, dynamicCategories, beanModifiers, quickExpenses } = useDataContext();
   const {
     vatEnabled, pinEnabled, adminPin, redeemPointsThreshold, pointsExpiryMonths, redeemDiscountValue, ownGlassDiscount,
     aiStatus, startingCash, reviewUrl, shopName, shopAddress, shopPhone, taxId, receiptFooter, receiptPaperWidth,
@@ -499,6 +499,7 @@ export default function AdminView() {
         return (
           <QuickExpensesTab
             quickExpenses={quickExpenses}
+            stock={activeStock}
             onAdd={openNewQuick}
             onEdit={openEditQuick}
             onDelete={(item) => { setQuickExpenseToDelete(item); setShowDeleteQuickExpenseConfirm(true); }}

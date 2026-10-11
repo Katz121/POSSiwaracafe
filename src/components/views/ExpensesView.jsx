@@ -14,7 +14,7 @@ import {
 import AiButton from '../AiButton';
 import ExpenseForm from './inventory/ExpenseForm';
 import TopConfirm from './inventory/TopConfirm';
-import { buildTitleSuggestions, emptyExpense, intakeFormFor, validateExpense } from './inventory/expenseModel';
+import { buildTitleSuggestions, emptyExpense, intakeFormFor, isStaleQuickExpense, validateExpense } from './inventory/expenseModel';
 import { saveExpense, reportSave } from './inventory/expenseSave';
 
 const MODES = [
@@ -350,7 +350,7 @@ export default function ExpensesView() {
               <div>
                 <p className="mb-2 text-sm font-medium text-[var(--text-secondary)]">คีย์ลัด</p>
                 <div className="flex flex-wrap gap-2">
-                  {quickExpenses.map((item, idx) => (
+                  {quickExpenses.filter((item) => !isStaleQuickExpense(item, stock)).map((item, idx) => (
                     <button
                       key={item.id || idx}
                       type="button"
