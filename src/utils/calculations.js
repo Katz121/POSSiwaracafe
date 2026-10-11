@@ -14,6 +14,17 @@ export const getOrderDate = (order) => {
   return '';
 };
 
+// เวลาที่เปิดบิล (ms) · null เมื่อบิลไม่มีเวลา
+export const getOrderTimeMs = (o) => {
+  if (o?.createdAt?.seconds) return o.createdAt.seconds * 1000;
+  if (typeof o?.createdAt?.toDate === 'function') return o.createdAt.toDate().getTime();
+  if (o?.timestamp) {
+    const t = new Date(o.timestamp).getTime();
+    return Number.isFinite(t) ? t : null;
+  }
+  return null;
+};
+
 export const isDateInRange = (isoDate, startDate, endDate) => {
   if (!isoDate) return false;
   if (!startDate && !endDate) return true;

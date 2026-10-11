@@ -183,6 +183,17 @@ export function computeDailySeries({
  * มักไม่ใช่ตัวเดียวกัน เค้กราคาแพงแต่ต้นทุนสูงอาจแพ้กาแฟธรรมดาที่ขายถี่
  * ถ้าดูแต่ยอดขายจะทุ่มโปรโมชั่นผิดตัว
  */
+/**
+ * ยอดสุทธิ ÷ ราคาเต็มของบิล · คูณราคาเต็มรายบรรทัดแล้วได้ยอดหลังส่วนลดท้ายบิล
+ * (ปันส่วนลดตามสัดส่วนราคา) · บิลที่ไม่มี total หรือรายการรวมเป็นศูนย์ ให้ใช้ราคาเต็ม
+ * ดีกว่าคูณด้วยศูนย์แล้วยอดหาย
+ */
+export function billNetRatio(order) {
+  const lineSum = (order?.items || []).reduce((sum, item) => sum + num(item?.price) * (num(item?.quantity) || 1), 0);
+  const billTotal = num(order?.total);
+  return lineSum > 0 && billTotal > 0 ? billTotal / lineSum : 1;
+}
+
 export function computeItemPerformance({ orders = [], menu = [], stock = [], beanModifiers = [], splitByModifier = false } = {}) {
   const menuByName = new Map(menu.map((m) => [m.name, m]));
   const stockById = new Map(stock.map((s) => [s.id, s]));
@@ -197,10 +208,7 @@ export function computeItemPerformance({ orders = [], menu = [], stock = [], bea
     // ยอดรายเมนูจะสูงกว่ารายได้จริง (ข้อมูลจริงเกินไป 1.9% จาก 300 บิลที่มีส่วนลด)
     // แล้วมาร์จิ้นรายเมนูจะดูดีเกินจริงตามไปด้วย · จึงปันส่วนลดลงแต่ละรายการตาม
     // สัดส่วนราคา ให้ผลรวมรายเมนูเท่ากับรายได้ที่รับมาจริง
-    const lineSum = lines.reduce((sum, item) => sum + num(item?.price) * (num(item?.quantity) || 1), 0);
-    const billTotal = num(order?.total);
-    // บิลที่ไม่มี total หรือรายการรวมเป็นศูนย์ ให้ใช้ราคาเต็ม ดีกว่าคูณด้วยศูนย์แล้วยอดหาย
-    const ratio = lineSum > 0 && billTotal > 0 ? billTotal / lineSum : 1;
+    const ratio = billNetRatio(order);
 
     lines.forEach((item) => {
       const baseName = String(item?.name || 'ไม่ระบุ');

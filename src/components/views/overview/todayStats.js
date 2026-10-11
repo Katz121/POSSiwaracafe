@@ -4,20 +4,11 @@
 //  - sales    = completed orders dated today (sum of `total`)
 //  - unpaid   = not paid, not cancelled, dated today (same rule as the nav badge)
 //  - expenses = today's expenses excluding non-cash categories (waste + เจ้าของ/พนักงานกิน · cash view, see monthCompare.js)
-import { getOrderDate } from '../../../utils/calculations';
+import { getOrderDate, getOrderTimeMs as orderTimeMs } from '../../../utils/calculations';
 import { countUnits } from '../../../utils/salesHistory';
 import { addDaysISO } from '../../../utils/format';
 import { NON_CASH_EXPENSE_CATEGORIES } from '../../../config/constants';
 
-const orderTimeMs = (o) => {
-  if (o?.createdAt?.seconds) return o.createdAt.seconds * 1000;
-  if (typeof o?.createdAt?.toDate === 'function') return o.createdAt.toDate().getTime();
-  if (o?.timestamp) {
-    const t = new Date(o.timestamp).getTime();
-    return Number.isFinite(t) ? t : null;
-  }
-  return null;
-};
 
 // Minutes since local midnight, or null when the order carries no time.
 const minuteOfDay = (o) => {

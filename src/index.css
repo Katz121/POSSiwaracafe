@@ -20,6 +20,9 @@
   --bg-surface:  #FFFFFF;
   --bg-sunken:   #EEF1EE;   /* inputs, table header, segmented track */
   --bg-raised:   #FFFFFF;   /* sheets / modals (pair with --elev-3) */
+  /* สีชุดข้อมูลในกราฟ (หมวด ฯลฯ) · ใช้ตามลำดับ ห้ามวนซ้ำ · ผ่าน validator สี CVD แล้ว */
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948;
   --bg-hover:    #F0F3F0;
   --bg-selected: #E6F4EE;
 
@@ -134,6 +137,8 @@ html.dark {
   --bg-surface:  #131B2B;
   --bg-sunken:   #0F1623;
   --bg-raised:   #1A2333;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
   --bg-hover:    #1A2333;
   --bg-selected: #13302A;
 

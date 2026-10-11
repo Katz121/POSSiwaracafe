@@ -1,9 +1,10 @@
-import { getISODate } from '../../../utils/calculations';
+import { getISODate } from './calculations';
+import { formatThaiDate } from './format';
 
-// ช่วงเวลาเดียวของหน้ากำไรต่อเมนู · สรุป ตารางเตือน ตัวเลือก (#) กราฟ และอันดับเมนู
-// ใช้ช่วงเดียวกันทั้งหมด จะได้เห็นว่าเมนูไหนผิดปกติในช่วงที่กำลังดู
+// ช่วงเวลาของหน้ารายงาน (กำไรต่อเมนู · ยอดขายตามหมวด) · ทุกหน้าใช้ชุดเดียวกัน
+// จะได้เลือก "7 วัน" แล้วได้ช่วงตรงกันทุกหน้า
 
-export const PROFIT_PRESETS = [
+export const PERIOD_PRESETS = [
   { value: 'today', label: 'วันนี้' },
   { value: 'week', label: '7 วัน' },
   { value: '30d', label: '30 วัน' },
@@ -24,7 +25,7 @@ const prevMonth = (month) => {
 };
 
 /** { start, end } as ISO days · '' = open end · 'custom' keeps the current range. */
-export function profitRange(preset, now = new Date(), current = {}) {
+export function periodRange(preset, now = new Date(), current = {}) {
   const today = getISODate(now);
   switch (preset) {
     case 'today': return { start: today, end: today };
@@ -69,4 +70,18 @@ export function monthsBetween(start, end) {
   const [y1, m1] = start.split('-').map(Number);
   const [y2, m2] = end.split('-').map(Number);
   return (y2 - y1) * 12 + (m2 - m1) + 1;
+}
+
+/** Same-length range right before (start, end) · null for an open range. */
+export function previousRange(start, end) {
+  const days = rangeDays(start, end);
+  if (!days) return null;
+  const shift = (iso, d) => new Date(Date.parse(iso) + d * DAY_MS).toISOString().slice(0, 10);
+  return { start: shift(start, -days), end: shift(start, -1) };
+}
+
+export function periodText(start, end) {
+  if (!start && !end) return 'ทุกช่วงเวลา';
+  if (start && end && start === end) return formatThaiDate(start, { weekday: true });
+  return `${start ? formatThaiDate(start) : 'เริ่มต้น'} – ${end ? formatThaiDate(end) : 'ล่าสุด'}`;
 }

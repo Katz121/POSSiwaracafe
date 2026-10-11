@@ -8,7 +8,7 @@ import { computeProfitability } from '../../utils/profitability';
 import { formatBaht, formatNumber, formatPercent, formatThaiDate } from '../../utils/format';
 import { INVENTORY_CATEGORIES } from '../../config/constants';
 import { Badge, Banner, Button, DataTable, PageHeader, SectionCard, SegmentedControl, StatCard, Toolbar, useMediaQuery } from '../ui';
-import { PROFIT_PRESETS, profitRange, fullMonthOf, defaultChartMode, rangeDays, monthsBetween } from './profit/profitPeriod';
+import { PERIOD_PRESETS, periodRange, periodText, fullMonthOf, defaultChartMode, rangeDays, monthsBetween } from '../../utils/periodRange';
 
 // การซื้อเข้าคลังต้องไม่ถูกหักซ้ำกับต้นทุนที่ใช้ตอนขาย
 // ปัดเป็นบาทเต็มให้ตรงกับหน้าอื่นทั้งแอป · เศษสตางค์บนยอดเฉลี่ยต่อบิลไม่ได้ช่วย
@@ -100,11 +100,6 @@ const Table = ({ rows, columns, empty, caption }) => <DataTable
 
 const MODE_OPTIONS = [{ value: 'daily', label: 'รายวัน' }, { value: 'monthly', label: 'รายเดือน' }];
 const dateInput = 'min-h-11 w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 text-sm text-[var(--text-primary)] outline-none focus-visible:shadow-[var(--focus-ring)] focus:border-[var(--accent)]';
-const periodText = (start, end) => {
-    if (!start && !end) return 'ทุกช่วงเวลา';
-    if (start === end) return formatThaiDate(start, { weekday: true });
-    return `${start ? formatThaiDate(start) : 'เริ่มต้น'} – ${end ? formatThaiDate(end) : 'ล่าสุด'}`;
-};
 const SPLIT_OPTIONS = [{ value: false, label: 'รวมทุกตัวเลือก' }, { value: true, label: 'แยกตามตัวเลือก' }];
 
 export default function ProfitabilityView() {
@@ -113,11 +108,11 @@ export default function ProfitabilityView() {
     // ช่วงเดียวป้อนทั้งหน้า · เดิมสรุปใช้เดือน ตัวเลือก (#) ใช้ทั้งหมด กราฟใช้ N วันย้อนหลัง
     // เลยเทียบกันไม่ได้ว่าเมนูไหนผิดปกติในช่วงที่ดูอยู่
     const [preset, setPreset] = useState('month');
-    const [range, setRange] = useState(() => profitRange('month'));
+    const [range, setRange] = useState(() => periodRange('month'));
     const [chartMode, setChartMode] = useState(null); // null = ตามความยาวช่วง
     const choosePreset = next => {
         setPreset(next);
-        setRange(current => profitRange(next, new Date(), current));
+        setRange(current => periodRange(next, new Date(), current));
         setChartMode(null);
     };
     const fixedMonth = fullMonthOf(range.start, range.end);
@@ -206,7 +201,7 @@ export default function ProfitabilityView() {
             <Toolbar
                 filters={(
                     <div className="max-w-full overflow-x-auto scrollbar-hide">
-                        <SegmentedControl ariaLabel="ช่วงเวลาของทั้งหน้า" options={PROFIT_PRESETS} value={preset} onChange={choosePreset} className={phone ? '[&>button]:px-2' : ''} />
+                        <SegmentedControl ariaLabel="ช่วงเวลาของทั้งหน้า" options={PERIOD_PRESETS} value={preset} onChange={choosePreset} className={phone ? '[&>button]:px-2' : ''} />
                     </div>
                 )}
             >
