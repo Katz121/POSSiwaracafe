@@ -56,3 +56,17 @@ describe('buildStockHistory', () => {
     expect(m).toMatchObject({ stockId: 'milk', delta: -2.5, before: 10, after: 7.5, date: '2026-10-11', reason: 'correction' });
   });
 });
+
+describe('ของเสีย/พนักงานกินจากหน้าเมนู', () => {
+  it('อ่านจาก waste.applied / staffMeal.applied', () => {
+    const milk = { id: 'milk', name: 'นมสด', unit: 'มล.' };
+    const rows = buildStockHistory({
+      item: milk, stock: [milk],
+      expenses: [
+        { id: 'w1', category: 'ของเสีย (Waste)', title: 'ของเสีย: ลาเต้ x2', date: '2026-10-11', waste: { applied: { milk: 300 } } },
+        { id: 's1', category: 'เจ้าของ/พนักงานกิน', title: 'พนักงานกิน: ลาเต้ x1', date: '2026-10-11', staffMeal: { applied: { milk: 150 } } },
+      ],
+    });
+    expect(rows.map((r) => [r.kind, r.qty]).sort()).toEqual([['staff', -150], ['waste', -300]]);
+  });
+});

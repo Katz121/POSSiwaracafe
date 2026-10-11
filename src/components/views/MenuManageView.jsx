@@ -248,7 +248,9 @@ export default function MenuManageView() {
         });
         const expenseRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'));
         const isStaffMeal = wasteReason === 'staff';
-        batch.set(expenseRef, { title: isStaffMeal ? buildStaffMealExpenseTitle(wasteMenu.name, Number(wasteQuantity)) : buildWasteExpenseTitle(wasteMenu.name, Number(wasteQuantity)), amount: waste.cost, category: isStaffMeal ? STAFF_MEAL_CATEGORY : WASTE_CATEGORY, date: getISODate(), createdAt: serverTimestamp() });
+        batch.set(expenseRef, { title: isStaffMeal ? buildStaffMealExpenseTitle(wasteMenu.name, Number(wasteQuantity)) : buildWasteExpenseTitle(wasteMenu.name, Number(wasteQuantity)), amount: waste.cost, category: isStaffMeal ? STAFF_MEAL_CATEGORY : WASTE_CATEGORY, date: getISODate(), createdAt: serverTimestamp(),
+          // ตัดอะไรไปเท่าไหร่ · หน้าประวัติสต็อกอ่านจากตรงนี้ (เดิมไม่มี สต็อกลดโดยไม่มีที่มา)
+          ...(isStaffMeal ? { staffMeal: { applied: waste.usageByStock, source: 'menu' } } : { waste: { applied: waste.usageByStock, source: 'menu' } }) });
         await batch.commit();
         toast.success(wasteReason === 'staff' ? 'บันทึกเจ้าของ/พนักงานกินแล้ว' : 'บันทึกของเสียสำเร็จ');
         setWasteMenuId(null);

@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { Wallet, Pencil, Trash2, Bot, PackagePlus, ReceiptText, Settings2 } from 'lucide-react';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useDataContext, useUIContext } from '../../context/AppContext';
 import { useNavigate, useRouteParams } from '../../navigation';
 import { getISODate, getOrderDate } from '../../utils/calculations';
 import { expenseCategoryOf } from '../../utils/expenseCategory';
+import { isRetiredStock } from '../../utils/stockMerge';
 import { formatNumber, formatThaiDate, toISODateLocal } from '../../utils/format';
 import {
   Badge, Banner, Button, DataTable, DateStepper, FilterChips, IconButton, Money, PageHeader, SectionCard, SegmentedControl, Sheet,
@@ -39,6 +40,14 @@ export default function ExpensesView() {
   const stock = activeStock || allStock;
   // หมวดที่แสดง = หมวดของสต็อกที่รายจ่ายลงไป (รวมตัวที่เลิกใช้/รวมแล้ว) · ดู expenseCategoryOf
   const allStockById = useMemo(() => new Map(allStock.map((s) => [s.id, s])), [allStock]);
+  const retiredStock = useMemo(() => allStock.filter(isRetiredStock), [allStock]);
+  const restoreStock = async (item) => {
+    const ok = await runDbAction(async () => {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stock', item.id), { archived: false });
+    }, 'นำกลับมาใช้ไม่สำเร็จ');
+    if (ok) toast.success(`นำ "${item.name}" กลับมาใช้แล้ว · บันทึกรายจ่ายต่อได้เลย`);
+    return ok;
+  };
   const { runDbAction, callGeminiAPI, handleViewChange, setAdminTab } = useUIContext();
   const params = useRouteParams();
   const navigate = useNavigate();
@@ -379,6 +388,8 @@ export default function ExpensesView() {
                 onSubmit={handleAddExpense}
                 suggestions={suggestions}
                 stock={stock}
+                retiredStock={retiredStock}
+                onRestoreStock={restoreStock}
               >
                 <Button type="submit" size="xl" fullWidth loading={isSaving && !editing}>บันทึกรายจ่าย</Button>
               </ExpenseForm>

@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { PackageCheck } from 'lucide-react';
 import { EXPENSE_CATEGORIES } from '../../../config/constants';
-import { isInventoryCategory } from '../../../utils/stockIntake';
+import { isInventoryCategory, normalizeName } from '../../../utils/stockIntake';
 import { applyExpenseTitle, displayTotal, displayUnitCost, rankTitleSuggestions, resolveStockIntake, toExpenseLine } from './expenseModel';
 
 const FIELD = 'w-full min-h-12 rounded-[var(--radius-sm)] border bg-[var(--bg-surface)] px-4 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] focus-visible:shadow-[var(--focus-ring)] [&:read-only:not(select)]:bg-[var(--bg-sunken)] [&:read-only:not(select)]:text-[var(--text-secondary)]';
@@ -45,6 +45,8 @@ export default function ExpenseForm({
   mode = 'expense',
   suggestions = [],
   stock = [],
+  retiredStock = [],
+  onRestoreStock,
   formId,
   autoFocusQuantity = false,
   children,
@@ -67,12 +69,25 @@ export default function ExpenseForm({
   // ซื้อวัตถุดิบที่ชื่อไม่ตรงของในสต็อก = บันทึกแล้วสร้างวัตถุดิบใหม่ · บอกก่อน กันพิมพ์ชื่อของที่ลบไปแล้ว
   const willCreate = inventory && !intake && String(value.title || '').trim() !== '' && resolveStockIntake(toExpenseLine(value), stock).newStock;
   // อื่น ๆ ที่ชื่อไม่ตรงของในสต็อก = ค่าใช้จ่ายร้าน (ไม่สร้างวัตถุดิบ ไม่นับเป็นต้นทุนวัตถุดิบ)
+  // ชื่อตรงกับวัตถุดิบที่เลิกใช้ไว้ · เสนอกลับมาใช้ตัวเดิม แทนการสร้างตัวใหม่ซ้ำ
+  const retiredMatch = willCreate && onRestoreStock
+    ? retiredStock.find((s) => normalizeName(s.name) === normalizeName(String(value.title || ''))) || null
+    : null;
+  const [restoring, setRestoring] = useState(false);
+  const restore = async () => {
+    if (!retiredMatch || restoring) return;
+    setRestoring(true);
+    try {
+      const ok = await onRestoreStock(retiredMatch);
+      if (ok) onChange(applyExpenseTitle(value, value.title, suggestions, [...stock, { ...retiredMatch, archived: false }]));
+    } finally { setRestoring(false); }
+  };
   const otherNoStock = value.category === 'อื่น ๆ' && !intake && String(value.title || '').trim() !== '' && !resolveStockIntake(toExpenseLine(value), stock).targetStock;
 
   return (
     <form id={formId} onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {!intake && (
-        <Field id={ids.title} label="ชื่อรายจ่าย" error={errors.title} hint={otherNoStock ? 'หมวด อื่น ๆ ที่ไม่ตรงของในสต็อก นับเป็นค่าใช้จ่ายร้าน ไม่เข้าสต็อก' : willCreate ? <span className="text-[var(--state-warn)]">ไม่มี "{String(value.title).trim()}" ในสต็อก · บันทึกแล้วจะสร้างวัตถุดิบใหม่ ถ้าเป็นของเดิมให้เลือกชื่อจากรายการแนะนำ</span> : (inventory && suggestions.length > 0 ? 'เลือกชื่อจากรายการแนะนำ ชื่อวัตถุดิบจะตรงกับคลัง' : undefined)}>
+        <Field id={ids.title} label="ชื่อรายจ่าย" error={errors.title} hint={otherNoStock ? 'หมวด อื่น ๆ ที่ไม่ตรงของในสต็อก นับเป็นค่าใช้จ่ายร้าน ไม่เข้าสต็อก' : retiredMatch ? undefined : willCreate ? <span className="text-[var(--state-warn)]">ไม่มี "{String(value.title).trim()}" ในสต็อก · บันทึกแล้วจะสร้างวัตถุดิบใหม่ ถ้าเป็นของเดิมให้เลือกชื่อจากรายการแนะนำ</span> : (inventory && suggestions.length > 0 ? 'เลือกชื่อจากรายการแนะนำ ชื่อวัตถุดิบจะตรงกับคลัง' : undefined)}>
           <div className="relative">
             <input
               id={ids.title}
@@ -121,6 +136,15 @@ export default function ExpenseForm({
               </ul>
             )}
           </div>
+          {retiredMatch && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--state-warn)] bg-[var(--state-warn-soft)] px-3 py-2">
+              <p className="min-w-0 flex-1 text-sm text-[var(--text-primary)]">"{retiredMatch.name}" เลิกใช้อยู่ · กลับมาใช้ตัวเดิม ของจะเข้าตัวเดิม ไม่สร้างใหม่ซ้ำ</p>
+              <button type="button" onClick={restore} disabled={restoring}
+                className="min-h-11 rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 text-sm font-semibold text-[var(--text-on-accent)] outline-none focus-visible:shadow-[var(--focus-ring)] disabled:opacity-60">
+                {restoring ? 'กำลังเปิดใช้…' : 'กลับมาใช้ตัวเดิม'}
+              </button>
+            </div>
+          )}
         </Field>
       )}
 

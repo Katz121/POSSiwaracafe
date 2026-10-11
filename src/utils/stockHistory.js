@@ -89,7 +89,8 @@ export function buildStockHistory({ item, stock = [], orders = [], expenses = []
     }
     if (e.category === WASTE_CATEGORY) {
       let q = 0;
-      if (e.stockId) q = mine(e.stockId) ? num(e.stockQuantity) : 0;
+      if (e.waste?.applied) q = Object.entries(e.waste.applied).reduce((s, [id, v]) => (mine(id) ? s + num(v) : s), 0);
+      else if (e.stockId) q = mine(e.stockId) ? num(e.stockQuantity) : 0;
       else {
         const m = String(e.title || '').match(/^ของเสีย: (.+) \(x([\d.]+) /);
         if (m && m[1] === item.name) q = num(m[2]);

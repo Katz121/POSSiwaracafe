@@ -1,3 +1,4 @@
+import { resolveStockId } from './stockMerge.js';
 /**
  * การตัดแบ่ง (yield) และของเสียของสินค้าสำเร็จรูป เช่นเค้กที่ตัดขายเป็นชิ้น
  *
@@ -92,7 +93,9 @@ export function computeMenuWaste({ menuItem, quantity = 1, stockById = new Map()
 
   links.forEach((link) => {
     if (!link?.stockId) return;
-    const stockItem = stockById.get(link.stockId);
+    // สต็อกที่ถูกรวมไปแล้ว ตัดตัวปลายทาง (เหมือนตอนขาย) ไม่ใช่ตัวที่เก็บเข้ากรุ
+    const stockId = resolveStockId(link.stockId, stockById);
+    const stockItem = stockById.get(stockId);
     if (!stockItem) {
       // ลิงก์ชี้ไปสต็อกที่ถูกลบแล้ว · นับไว้เพื่อเตือน ไม่ใช่เงียบแล้วตีเป็นศูนย์
       missingLinks += 1;
@@ -100,7 +103,7 @@ export function computeMenuWaste({ menuItem, quantity = 1, stockById = new Map()
     }
     linkedAny = true;
     costPerUnit += num(stockItem.unitCost) * num(link.usage);
-    usageByStock[link.stockId] = (usageByStock[link.stockId] || 0) + qty * num(link.usage);
+    usageByStock[stockId] = (usageByStock[stockId] || 0) + qty * num(link.usage);
   });
 
   return {
