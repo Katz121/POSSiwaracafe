@@ -26,3 +26,16 @@ describe('planEditDeduction', () => {
     expect(planEditDeduction(original, original.items, stockById, null).cut).toEqual({});
   });
 });
+
+describe('planEditDeduction · ตัดย้อนหลังแล้ว', () => {
+  it('ไม่ตัดซ้ำส่วนที่ตัดย้อนหลังไปแล้ว', () => {
+    const backfilled = {
+      ...original,
+      stockDeduction: { applied: { cup: 1 }, milkSwapApplied: false },
+      stockBackfill: [{ at: 'x', lines: [{ itemKey: '0', applied: { milk: 150 } }] }],
+    };
+    const p = planEditDeduction(backfilled, original.items, stockById, null);
+    expect(p.cut).toEqual({});
+    expect(p.applied).toEqual({ milk: 150, cup: 1 });
+  });
+});

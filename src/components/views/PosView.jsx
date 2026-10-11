@@ -509,21 +509,27 @@ export default function PosView() {
         if (originalOrder?.status) editData.status = originalOrder.status;
         if (originalOrder?.createdAt) editData.createdAt = originalOrder.createdAt;
         if (originalOrder?.date) editData.date = originalOrder.date;
-        // บิลที่ตัดสต็อกไปแล้ว: ตัดเพิ่ม/คืนเฉพาะส่วนต่างของรายการที่แก้ · บันทึกใหม่แทนของเดิมให้หน้าตรวจเทียบตรง
-        const editStock = originalOrder?.stockDeducted ? planEditDeduction(originalOrder, orderData.items, stockById, milkSwap) : null;
-        if (editStock) {
-          editData.stockDeduction = {
-            ...originalOrder.stockDeduction,
-            applied: editStock.applied,
-            skipped: editStock.skipped,
-            unlinked: editStock.unlinked,
-            milkSwapApplied: editStock.milkSwapApplied,
-            editedAt: new Date().toISOString(),
-            editedBy: auth.currentUser?.email || '',
-          };
-        }
-        
+
         await runTransaction(db, async transaction => {
+          // บิลที่ตัดสต็อกไปแล้ว: ตัดเพิ่ม/คืนเฉพาะส่วนต่าง · อ่านบิลสดในทรานแซกชัน (อีกเครื่องอาจเพิ่งกดเสร็จ/แก้)
+          // แล้วเขียน stockDeduction ใหม่แทนของเดิม ให้หน้าตรวจเทียบตรง
+          const orderSnap = await transaction.get(doc(db, 'artifacts', appId, 'public', 'data', 'orders', editingOrderId));
+          const freshOrder = orderSnap.exists() ? orderSnap.data() : null;
+          const editStock = freshOrder?.stockDeducted ? planEditDeduction(freshOrder, orderData.items, stockById, milkSwap) : null;
+          if (freshOrder?.status) editData.status = freshOrder.status;
+          if (editStock) {
+            editData.stockDeduction = {
+              ...freshOrder.stockDeduction,
+              applied: editStock.applied,
+              skipped: editStock.skipped,
+              unlinked: editStock.unlinked,
+              milkSwapApplied: editStock.milkSwapApplied,
+              editedAt: new Date().toISOString(),
+              editedBy: auth.currentUser?.email || '',
+            };
+            // applied ใหม่รวมที่เคยตัดย้อนหลังแล้ว · ล้างไม่ให้ประวัติ/หน้าตรวจนับซ้ำ
+            if (Array.isArray(freshOrder.stockBackfill) && freshOrder.stockBackfill.length) editData.stockBackfill = [];
+          }
           const oldMemberDocId = originalOrder?.memberPhone 
             ? (members.find(m => m.phone === originalOrder.memberPhone)?.id || originalOrder.memberPhone) 
             : null;
