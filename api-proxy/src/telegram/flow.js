@@ -1,8 +1,12 @@
 import { EXPENSE_CATEGORIES, STOCK_CATEGORIES, DEFAULT_MIN_QUANTITY, inferStockCategory, getStockCategory } from '../../../src/config/constants.js';
+import { OTHER_CATEGORY } from '../../../src/config/constants.js';
 import { isInventoryCategory, findAliasMatch, findStockCandidates, normalizeName, normalizeUnit, planStockIntake, applyIntakesSequentially, buildExpenseRecord, roundMoney } from '../../../src/utils/stockIntake.js';
 import { createWrite, updateWrite, serverTime, increment, appendMissingElements } from '../firestore.js';
 import { escapeTelegramHtml as h } from './api.js';
 import { expenseDate } from './parse.js';
+
+// อื่น ๆ ลงสต็อกเฉพาะที่ผูกกับสต็อกที่มีอยู่แล้ว · หมวดวัตถุดิบลงตามเดิม
+const landsInStock = (line) => isInventoryCategory(line.category) || (line.category === OTHER_CATEGORY && Boolean(line.stockId));
 
 export const PENDING_KEY = '__expense_pending:';
 export const validPending = p => p?.v === 2 && /^[a-z0-9]{8}$/.test(p.batchId) && Array.isArray(p.lines) && p.lines.length > 0;
@@ -25,9 +29,11 @@ export function resolveLines(pending, stocks) {
         || findAliasMatch(stocks, { title: line.title })?.stock
         || stocks.find(s => normalizeName(s.name) === normalizeName(line.title));
       if (known) line.category = getStockCategory(known);
+      // วัตถุดิบที่หมวดเป็น อื่น ๆ ยังลงสต็อกตัวเดิมได้ (อื่น ๆ ไม่ใช่ของเข้าคลังโดยปริยาย)
+      if (known && line.category === OTHER_CATEGORY && !line.stockId) line.stockId = known.id;
     }
     if (!EXPENSE_CATEGORIES.includes(line.category)) { line.unresolved = 'category'; continue; }
-    if (!isInventoryCategory(line.category) || line.pick === 'skip') continue;
+    if (!landsInStock(line) || line.pick === 'skip') continue;
     let stock;
     if (line.pick === 'new') stock = newStock(pending, line, i);
     else if (line.stockId) stock = running.get(line.stockId);
@@ -93,7 +99,7 @@ export async function confirmBatch(db, pending, user, now) {
   await db.runTransaction(async tx => {
     const grouped = new Map();
     pending.lines.forEach((l, i) => {
-      if (!isInventoryCategory(l.category) || l.pick === 'skip') return;
+      if (!landsInStock(l) || l.pick === 'skip') return;
       const id = l.pick === 'new' ? `tg_${pending.batchId}_s${i}` : l.stockId;
       if (!id) throw new Error('ยังไม่ได้เลือกสต็อก');
       if (!grouped.has(id)) grouped.set(id, []);

@@ -29,7 +29,7 @@ export function inferExpenseCategory(title) {
 export function expenseCategoryOf(expense, stockById) {
   const own = expense?.category || 'อื่น ๆ';
   const item = expense?.stockId ? stockById?.get(expense.stockId) : null;
-  if (!item || !INVENTORY_CATEGORIES.includes(own)) return own;
+  if (!item || !(INVENTORY_CATEGORIES.includes(own) || own === 'อื่น ๆ')) return own;
   const stockCat = getStockCategory(item);
   return INVENTORY_CATEGORIES.includes(stockCat) ? stockCat : own;
 }

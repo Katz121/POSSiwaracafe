@@ -66,11 +66,13 @@ export default function ExpenseForm({
   const described = (field, id) => (errors[field] ? `${id}-msg` : undefined);
   // ซื้อวัตถุดิบที่ชื่อไม่ตรงของในสต็อก = บันทึกแล้วสร้างวัตถุดิบใหม่ · บอกก่อน กันพิมพ์ชื่อของที่ลบไปแล้ว
   const willCreate = inventory && !intake && String(value.title || '').trim() !== '' && resolveStockIntake(toExpenseLine(value), stock).newStock;
+  // อื่น ๆ ที่ชื่อไม่ตรงของในสต็อก = ค่าใช้จ่ายร้าน (ไม่สร้างวัตถุดิบ ไม่นับเป็นต้นทุนวัตถุดิบ)
+  const otherNoStock = value.category === 'อื่น ๆ' && !intake && String(value.title || '').trim() !== '' && !resolveStockIntake(toExpenseLine(value), stock).targetStock;
 
   return (
     <form id={formId} onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {!intake && (
-        <Field id={ids.title} label="ชื่อรายจ่าย" error={errors.title} hint={willCreate ? <span className="text-[var(--state-warn)]">ไม่มี "{String(value.title).trim()}" ในสต็อก · บันทึกแล้วจะสร้างวัตถุดิบใหม่ ถ้าเป็นของเดิมให้เลือกชื่อจากรายการแนะนำ</span> : (inventory && suggestions.length > 0 ? 'เลือกชื่อจากรายการแนะนำ ชื่อวัตถุดิบจะตรงกับคลัง' : undefined)}>
+        <Field id={ids.title} label="ชื่อรายจ่าย" error={errors.title} hint={otherNoStock ? 'หมวด อื่น ๆ ที่ไม่ตรงของในสต็อก นับเป็นค่าใช้จ่ายร้าน ไม่เข้าสต็อก' : willCreate ? <span className="text-[var(--state-warn)]">ไม่มี "{String(value.title).trim()}" ในสต็อก · บันทึกแล้วจะสร้างวัตถุดิบใหม่ ถ้าเป็นของเดิมให้เลือกชื่อจากรายการแนะนำ</span> : (inventory && suggestions.length > 0 ? 'เลือกชื่อจากรายการแนะนำ ชื่อวัตถุดิบจะตรงกับคลัง' : undefined)}>
           <div className="relative">
             <input
               id={ids.title}

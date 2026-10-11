@@ -125,7 +125,10 @@ export const getStockCategory = (item) => item?.category || inferStockCategory(i
 export const EQUIPMENT_CATEGORY = 'อุปกรณ์และของใช้';
 export const isEquipmentStock = (item) => getStockCategory(item) === EQUIPMENT_CATEGORY;
 // หมวดรายจ่ายที่ถือเป็น "ซื้อของเข้าคลัง" (ตัดผ่านสูตร/COGS) · ไม่รวมอุปกรณ์
-export const INVENTORY_CATEGORIES = ['วัตถุดิบ', ...STOCK_CATEGORIES.filter((c) => c !== EQUIPMENT_CATEGORY)];
+// 'อื่น ๆ' ไม่ใช่ของเข้าคลังโดยปริยาย (ค่าซ่อม ทิชชู่ ปริ้นรูป เคยถูกนับเป็นวัตถุดิบ หายจากกำไร)
+// นับเป็นวัตถุดิบเฉพาะรายการที่ชื่อตรงของในสต็อก (stockId) · ดู OTHER_CATEGORY ใน stockIntake/profitability
+export const OTHER_CATEGORY = 'อื่น ๆ';
+export const INVENTORY_CATEGORIES = ['วัตถุดิบ', ...STOCK_CATEGORIES.filter((c) => c !== EQUIPMENT_CATEGORY && c !== OTHER_CATEGORY)];
 export const DEFAULT_MIN_QUANTITY = 5;               // จำนวนขั้นต่ำเตือนสต็อกใกล้หมด
 
 // ==================== POS ====================

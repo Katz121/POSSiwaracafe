@@ -161,6 +161,8 @@ export function splitExpenses(expenses = [], inventoryCategories = DEFAULT_INVEN
     if (category === WASTE_CATEGORY) result.waste += amount;
     else if (category === STAFF_MEAL_CATEGORY) result.staffMeal += amount;
     else if (inventorySet.has(category)) result.inventory += amount;
+    // อื่น ๆ ที่ลงสต็อกจริง (stockId) = ซื้อของเข้าคลัง · ไม่ได้ลงสต็อก = ค่าใช้จ่ายของงวด
+    else if (category === 'อื่น ๆ' && expense?.stockId) result.inventory += amount;
     else result.operating += amount;
   });
 

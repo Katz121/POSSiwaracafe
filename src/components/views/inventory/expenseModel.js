@@ -1,6 +1,6 @@
 // Pure half of the expense/intake form (no Firestore), moved unchanged from
 // ExpensesView so the Stock intake sheet and the Expenses form share it.
-import { getStockCategory, NON_CASH_EXPENSE_CATEGORIES } from '../../../config/constants';
+import { getStockCategory, NON_CASH_EXPENSE_CATEGORIES, OTHER_CATEGORY } from '../../../config/constants';
 import {
   isInventoryCategory, findAliasMatch, findStockCandidates, planStockIntake, normalizeName, normalizePacks, roundUnitCost,
 } from '../../../utils/stockIntake';
@@ -61,7 +61,9 @@ export function resolveStockIntake(line, stock) {
   let newStock = false;
   let unitMismatch = false;
 
-  if (isInventoryCategory(line.category)) {
+  // หมวด อื่น ๆ: ลงสต็อกเฉพาะเมื่อชื่อตรงของที่มี · ไม่ตรง = ค่าใช้จ่ายร้าน ไม่สร้างวัตถุดิบใหม่
+  const other = line.category === OTHER_CATEGORY;
+  if (isInventoryCategory(line.category) || other) {
     const aliasMatch = findAliasMatch(stock, { title: line.title });
     if (aliasMatch) {
       targetStock = aliasMatch.stock;
@@ -71,7 +73,7 @@ export function resolveStockIntake(line, stock) {
       if (candidates.length > 0 && normalizeName(candidates[0].name) === normalizeName(line.title)) {
         targetStock = candidates[0];
         plan = planStockIntake(line, targetStock);
-      } else {
+      } else if (!other) {
         newStock = true;
       }
     }

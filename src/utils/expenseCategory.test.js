@@ -31,3 +31,20 @@ describe('หมวดรายจ่ายตรงกับสต็อก', (
     expect(applyExpenseTitle({ ...form, category: 'ค่าเช่า' }, 'น้ำแข็ง', [], []).category).toBe('ค่าเช่า');
   });
 });
+
+describe('หมวด อื่น ๆ', () => {
+  it('ลงสต็อกเฉพาะชื่อที่ตรงของในสต็อก · ไม่ตรง = ค่าใช้จ่ายร้าน ไม่สร้างวัตถุดิบ', async () => {
+    const { resolveStockIntake } = await import('../components/views/inventory/expenseModel');
+    const { splitExpenses } = await import('./profitability');
+    const { INVENTORY_CATEGORIES } = await import('../config/constants');
+    const stock = [{ id: 'n', name: 'ถั่ว เด็กโง่', unit: 'ถุง', quantity: 0, unitCost: 0, category: 'อื่น ๆ' }];
+    const hit = resolveStockIntake({ title: 'ถั่ว เด็กโง่', quantity: 24, unit: 'ถุง', amount: 245, category: 'อื่น ๆ' }, stock);
+    expect(hit.plan.ok).toBe(true);
+    const miss = resolveStockIntake({ title: 'ค่าซ่อมเครื่อง', quantity: 1, unit: 'ครั้ง', amount: 1500, category: 'อื่น ๆ' }, stock);
+    expect(miss.newStock).toBe(false);
+    expect(miss.plan).toBeNull();
+    expect(INVENTORY_CATEGORIES).not.toContain('อื่น ๆ');
+    expect(splitExpenses([{ category: 'อื่น ๆ', amount: 1500 }, { category: 'อื่น ๆ', amount: 245, stockId: 'n' }], INVENTORY_CATEGORIES))
+      .toMatchObject({ operating: 1500, inventory: 245 });
+  });
+});
