@@ -197,3 +197,20 @@ describe('planMerge', () => {
     expect(p.keep.update.unitCost).toBe(2);
   });
 });
+
+describe('findStockUsers / isRetiredStock', () => {
+  it('splits users into on-sale (must fix) and hidden (warn only)', async () => {
+    const { findStockUsers, isRetiredStock, isArchivedStock } = await import('./stockMerge.js');
+    const menu = [
+      { name: 'ลาเต้', stockLinks: [{ stockId: 's1', usage: 1 }] },
+      { name: 'เมนูเก่า', available: false, stockLinks: [{ stockId: 's1', usage: 1 }] },
+      { name: 'ชา', stockLinks: [{ stockId: 's2', usage: 1 }] },
+    ];
+    const beanModifiers = [{ name: 'คั่วอ่อน', stockLinks: [{ stockId: 's1', usage: 18 }] }];
+    expect(findStockUsers('s1', { menu, beanModifiers })).toEqual({ active: ['เมนู ลาเต้', 'ตัวเลือก คั่วอ่อน'], hidden: ['เมนู เมนูเก่า'] });
+    expect(findStockUsers('zz', { menu, beanModifiers })).toEqual({ active: [], hidden: [] });
+    expect(isRetiredStock({ archived: true })).toBe(true);
+    expect(isRetiredStock({ archived: true, mergedInto: 'x' })).toBe(false);
+    expect(isArchivedStock({ archived: true })).toBe(true);
+  });
+});

@@ -33,6 +33,22 @@ export const roundQty6 = (value) => Math.round(num(value) * 1e6) / 1e6;
 
 /** สต็อกที่ถูกรวมไปแล้ว หรือถูกเก็บเข้ากรุ · ไม่แสดงในรายการ/ตัวเลือก */
 export const isArchivedStock = (item) => Boolean(item?.archived || item?.mergedInto);
+
+/** เลิกใช้เอง (ไม่ได้รวมเข้าตัวไหน) · กลับมาใช้ได้ */
+export const isRetiredStock = (item) => Boolean(item?.archived && !item?.mergedInto);
+
+/**
+ * เมนู/ตัวเลือกที่ยังผูกสต็อกนี้ · ก่อนเลิกใช้ต้องรู้ ไม่งั้นขายแล้วไปตัดตัวที่ซ่อนอยู่
+ * active = ยังเปิดขาย (ต้องแก้ก่อน) · hidden = ปิดขายอยู่ (เตือนเฉยๆ)
+ */
+export function findStockUsers(stockId, { menu = [], beanModifiers = [] } = {}) {
+  const links = (x) => (Array.isArray(x?.stockLinks) ? x.stockLinks : []);
+  const uses = (x) => links(x).some((l) => l?.stockId === stockId);
+  const out = { active: [], hidden: [] };
+  menu.filter(uses).forEach((m) => out[m.available === false ? 'hidden' : 'active'].push(`เมนู ${m.name}`));
+  beanModifiers.filter(uses).forEach((b) => out[b.available === false ? 'hidden' : 'active'].push(`ตัวเลือก ${b.name}`));
+  return out;
+}
 export const activeStock = (stock = []) => stock.filter((s) => !isArchivedStock(s));
 
 /**

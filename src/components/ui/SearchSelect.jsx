@@ -8,6 +8,7 @@ export default function SearchSelect({ value, onChange, groups, getOptionValue, 
   const [position, setPosition] = useState({});
   const root = useRef(null);
   const list = useRef(null);
+  const pressing = useRef(false);
   const id = useId();
   const selected = groups.flatMap(([, items]) => items).find(item => getOptionValue(item) === value);
   const filtered = groups.map(([category, items]) => [category, items.filter(item => String(getOptionLabel(item)).toLowerCase().includes(query.toLowerCase()))]).filter(([, items]) => items.length);
@@ -64,10 +65,12 @@ export default function SearchSelect({ value, onChange, groups, getOptionValue, 
   }, [open, highlight, query]);
 
   const choose = item => {
+    pressing.current = false;
     onChange(getOptionValue(item));
     setOpen(false);
   };
-  const show = () => { setQuery(''); setActive(0); setOpen(true); };
+  // iPhone ส่ง mousedown/blur หลัง pointerup จึงล้างธงตอนเลือกเสร็จหรือเปิดใหม่ ไม่ใช่ตอนยกนิ้ว
+  const show = () => { pressing.current = false; setQuery(''); setActive(0); setOpen(true); };
 
   return (
     <div ref={root}>
@@ -78,9 +81,9 @@ export default function SearchSelect({ value, onChange, groups, getOptionValue, 
         autoComplete="off" placeholder={placeholder}
         value={open ? query : selected ? getOptionLabel(selected) : ''}
         onFocus={show} onClick={() => { if (!open) show(); }}
-        // ปิดเฉพาะตอนโฟกัสย้ายไปช่องอื่นจริง (Tab) · แตะรายการบน iPhone ทำให้ช่องเสียโฟกัส
-        // โดยไม่มี relatedTarget ถ้าปิดตรงนี้ลิสต์หายก่อน click → เลือกแล้วเงียบ · แตะนอกช่องปิดด้วย pointerdown ด้านบน
-        onBlur={event => { if (event.relatedTarget && !list.current?.contains(event.relatedTarget)) setOpen(false); }}
+        // แตะรายการบน iPhone ทำให้ช่องเสียโฟกัสก่อน click (preventDefault บน pointerdown กันไม่อยู่)
+        // ถ้าปิดตรงนี้ลิสต์หายก่อน click → เลือกแล้วเงียบ · ระหว่างกดรายการอยู่จึงไม่ปิด
+        onBlur={event => { if (!pressing.current && !list.current?.contains(event.relatedTarget)) setOpen(false); }}
         onChange={event => { setQuery(event.target.value); setActive(0); setOpen(true); }}
         onKeyDown={event => {
           if (event.nativeEvent.isComposing) return;
@@ -100,7 +103,7 @@ export default function SearchSelect({ value, onChange, groups, getOptionValue, 
         className={className}
       />
       {open && createPortal(
-        <div ref={list} id={id} role="listbox" aria-label={placeholder} style={position} className="overflow-y-auto overscroll-contain rounded-[var(--radius-sm)] border border-[var(--border-color)] bg-[var(--bg-raised)] text-[var(--text-primary)] shadow-[var(--elev-3)]">
+        <div ref={list} id={id} role="listbox" onPointerDown={() => { pressing.current = true; }} onPointerCancel={() => { pressing.current = false; }} aria-label={placeholder} style={position} className="overflow-y-auto overscroll-contain rounded-[var(--radius-sm)] border border-[var(--border-color)] bg-[var(--bg-raised)] text-[var(--text-primary)] shadow-[var(--elev-3)]">
           {options.length === 0 && <p className="p-4 text-sm">ไม่พบวัตถุดิบที่ค้นหา</p>}
           {filtered.map(([category, items]) => (
             <div key={category} role="group" aria-label={category}>

@@ -59,6 +59,8 @@ export default function ModifierSheet({
           label="ราคาเมนูเมื่อเลือกตัวนี้"
           type="number"
           inputMode="decimal"
+          step="any"
+          min="0"
           required
           suffix="บาท"
           inputClassName="num"

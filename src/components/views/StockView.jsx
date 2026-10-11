@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Package, PackagePlus, PackageMinus, Pencil, Plus, Trash2, SearchX, CookingPot, Combine, SpellCheck } from 'lucide-react';
+import { Package, PackagePlus, PackageMinus, Pencil, Plus, Trash2, SearchX, CookingPot, Combine, SpellCheck, Archive, ArchiveRestore } from 'lucide-react';
 import { collection, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useDataContext, useUIContext } from '../../context/AppContext';
@@ -10,7 +10,7 @@ import {
   Badge, Banner, Button, DataTable, EmptyState, FilterChips, NumberStepper, PageHeader, Skeleton, Toolbar,
   useMediaQuery, useToast,
 } from '../ui';
-import { isArchivedStock, planUnitFixes, suggestDuplicates } from '../../utils/stockMerge';
+import { findStockUsers, isArchivedStock, isRetiredStock, planUnitFixes, suggestDuplicates } from '../../utils/stockMerge';
 import { isPrep } from '../../utils/production';
 import MergeSheet from './inventory/MergeSheet';
 import { runMerge, runUnitFixes } from './production/productionActions';
@@ -125,6 +125,7 @@ export default function StockView() {
   const [sheet, setSheet] = useState(null); // { mode, id, back, pick }
   const [busy, setBusy] = useState(false);
   const [toDelete, setToDelete] = useState(null);
+  const [toRetire, setToRetire] = useState(null);
   const openSheet = (mode, item, extra = {}) => setSheet({ mode, id: item?.id || null, back: false, ...extra });
   const closeSheet = () => setSheet(null);
   const switchMode = (mode, id) => setSheet((s) => (s ? { ...s, mode, id: id ?? s.id, back: s.back || s.mode === 'detail' } : s));
@@ -216,16 +217,43 @@ export default function StockView() {
     if (ok && sheet?.id === item.id) closeSheet();
   };
 
+  // เลิกใช้ = เก็บเข้ากรุ (archived) แทนการลบ · บิลเก่ายังอ้าง stockId นี้คิดต้นทุนได้
+  // แจ้งเตือนสต็อกหมด/ใกล้หมด รายการ และตัวเลือกผูกสูตรข้ามตัวที่เก็บแล้วอยู่แล้ว
+  const retireUsers = toRetire ? findStockUsers(toRetire.id, { menu, beanModifiers }) : null;
+  const confirmRetire = async () => {
+    const item = toRetire;
+    setToRetire(null);
+    if (!item || findStockUsers(item.id, { menu, beanModifiers }).active.length) return;
+    const ok = await runDbAction(async () => {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stock', item.id), { archived: true, archivedAt: serverTimestamp() });
+    }, 'เลิกใช้สต็อกไม่สำเร็จ');
+    if (ok) {
+      toast.success(`เลิกใช้ "${item.name}" แล้ว · ไม่แจ้งเตือนอีก ดูได้ที่ตัวกรอง "เลิกใช้/รวมแล้ว"`);
+      if (sheet?.id === item.id) closeSheet();
+    }
+  };
+  const restore = async (item) => {
+    const ok = await runDbAction(async () => {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'stock', item.id), { archived: false });
+    }, 'นำกลับมาใช้ไม่สำเร็จ');
+    if (ok) toast.success(`นำ "${item.name}" กลับมาใช้แล้ว`);
+  };
+
   // ── rendering helpers
-  const menuItems = (item) => (isArchivedStock(item) ? [] : [
+  const menuItems = (item) => (isArchivedStock(item) ? (isRetiredStock(item)
+    ? [{ key: 'restore', label: 'กลับมาใช้', icon: ArchiveRestore, onSelect: () => restore(item) }]
+    : []) : [
     ...(isPrep(item) ? [{ key: 'make', label: 'ทำของเตรียม', icon: CookingPot, onSelect: () => navigate('production', { make: item.id }) }] : []),
     { key: 'intake', label: 'รับของเข้า', icon: PackagePlus, onSelect: () => openSheet('intake', item) },
     { key: 'count', label: 'ตรวจนับ', icon: ClipboardCheck, onSelect: () => setCountId(item.id) },
     { key: 'adjust', label: 'ตัดของเสีย / ปรับยอด', icon: PackageMinus, onSelect: () => openSheet('adjust', item) },
     { key: 'edit', label: 'แก้ไข', icon: Pencil, onSelect: () => openSheet('edit', item) },
+    { key: 'retire', label: 'เลิกใช้ (ไม่แจ้งเตือนอีก)', icon: Archive, onSelect: () => setToRetire(item) },
     { key: 'delete', label: 'ลบวัตถุดิบ', icon: Trash2, danger: true, onSelect: () => setToDelete(item) },
   ]);
-  const rowTag = (item) => (isArchivedStock(item)
+  const rowTag = (item) => (isRetiredStock(item)
+    ? <Badge tone="neutral" className="shrink-0">เลิกใช้แล้ว</Badge>
+    : isArchivedStock(item)
     ? <Badge tone="neutral" className="shrink-0">รวมแล้ว → {allStock.find((s) => s.id === item.mergedInto)?.name || '?'}</Badge>
     : isPrep(item) ? <Badge tone="accent" icon={<CookingPot size={12} />} className="shrink-0">ของเตรียม</Badge> : null);
   const stepper = (item, size = 'md') => (
@@ -355,7 +383,7 @@ export default function StockView() {
               { value: 'all', label: 'ทั้งหมด', count: counts.all },
               { value: 'low', label: 'ต้องเติม', count: counts.low, tone: 'warn' },
               { value: 'out', label: 'หมด/ติดลบ', count: counts.out, tone: 'danger' },
-              ...(mergedCount > 0 || filter === 'merged' ? [{ value: 'merged', label: 'รวมแล้ว', count: mergedCount }] : []),
+              ...(mergedCount > 0 || filter === 'merged' ? [{ value: 'merged', label: 'เลิกใช้/รวมแล้ว', count: mergedCount }] : []),
               { value: COUNT_FILTER, label: 'ยังไม่ตรวจวันนี้', count: counts.uncounted, tone: 'info' },
             ]}
           />
@@ -458,6 +486,17 @@ export default function StockView() {
       <CountSheet itemId={countId} stock={stock} today={today} onClose={closeCount} />
       <CountModeSheet open={countMode} stock={stock} today={today} onClose={() => setCountMode(false)} />
 
+      <TopConfirm
+        isOpen={!!toRetire}
+        onClose={() => setToRetire(null)}
+        onConfirm={retireUsers?.active.length ? () => setToRetire(null) : confirmRetire}
+        title={retireUsers?.active.length ? 'ยังเลิกใช้ไม่ได้' : 'เลิกใช้วัตถุดิบ'}
+        message={retireUsers?.active.length
+          ? `"${toRetire?.name}" ยังผูกอยู่กับ ${retireUsers.active.join(', ')} · ขายแล้วจะไปตัดตัวที่เลิกใช้ เปลี่ยนวัตถุดิบในสูตรพวกนี้ก่อน แล้วค่อยกดเลิกใช้อีกครั้ง`
+          : `เลิกใช้ "${toRetire?.name || 'วัตถุดิบ'}"? ไม่แจ้งเตือนสต็อกหมดอีก ไม่ขึ้นในรายการและตอนผูกสูตร บิลเก่ายังคิดต้นทุนได้เหมือนเดิม · กลับมาใช้ได้ที่ตัวกรอง "เลิกใช้/รวมแล้ว"${retireUsers?.hidden.length ? ` · ยังอยู่ในสูตรของที่ปิดขาย: ${retireUsers.hidden.join(', ')}` : ''}`}
+        confirmText={retireUsers?.active.length ? 'เข้าใจแล้ว' : 'เลิกใช้'}
+        cancelText="ยกเลิก"
+      />
       <TopConfirm
         isOpen={!!toDelete}
         onClose={() => setToDelete(null)}
