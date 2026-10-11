@@ -263,6 +263,7 @@ export default function App() {
   }, [runDbAction, stock, milkSwap]);
 
   // Delete order
+  const cancelTarget = orderToCancel ? orders.find(o => o.id === orderToCancel) : null;
   const executeDeleteOrder = async () => {
     if (!orderToCancel) return;
     const order = orders.find(o => o.id === orderToCancel);
@@ -278,7 +279,7 @@ export default function App() {
     }, 'ลบออเดอร์ไม่สำเร็จ');
 
     if (clawbackPoints > 0) {
-      toast.success(`ลบบิลแล้ว และหักแต้มคืน ${clawbackPoints} แต้ม`);
+      toast.success(`ยกเลิกบิลแล้ว และหักแต้มคืน ${clawbackPoints} แต้ม`);
     }
   };
 
@@ -804,16 +805,18 @@ export default function App() {
               <div className="w-16 h-16 rounded-[var(--radius)] mx-auto flex items-center justify-center bg-[var(--state-danger-soft)] text-[var(--state-danger)] mb-5">
                 <Trash2 size={30} />
               </div>
-              <h3 className="font-semibold text-2xl leading-snug mb-2 text-[var(--text-primary)]">ต้องการลบบิลนี้?</h3>
-              <p className="text-[var(--text-secondary)] mb-8 text-sm px-4 leading-relaxed">
-                ข้อมูลบิลนี้จะถูกลบออกจากระบบอย่างถาวรและไม่สามารถเรียกคืนได้
-              </p>
+              <h3 className="font-semibold text-2xl leading-snug mb-2 text-[var(--text-primary)]">ยกเลิกบิลนี้?</h3>
+              <ul className="text-[var(--text-secondary)] mb-8 text-sm px-4 leading-relaxed text-left list-disc pl-8 space-y-1">
+                <li>ไม่นับในยอดขาย · ย้อนดูได้ที่หน้าบิล → ยกเลิกแล้ว</li>
+                <li>{cancelTarget?.stockDeducted ? 'คืนวัตถุดิบที่ตัดไปเข้าสต็อก' : 'บิลยังไม่ได้ตัดสต็อก ไม่ต้องคืน'}</li>
+                {cancelTarget?.memberPhone ? <li>หักแต้มที่ได้จากบิลนี้คืน · แต้มที่ลูกค้าแลกกับบิลนี้คืนให้ลูกค้า</li> : null}
+              </ul>
               <div className="grid grid-cols-2 gap-3">
                 <Button variant="secondary" size="lg" onClick={() => setOrderToCancel(null)}>
                   ยกเลิก
                 </Button>
                 <Button variant="danger" size="lg" onClick={executeDeleteOrder}>
-                  ยืนยันการลบ
+                  ยืนยันยกเลิกบิล
                 </Button>
               </div>
             </div>

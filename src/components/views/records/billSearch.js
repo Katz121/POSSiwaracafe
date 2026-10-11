@@ -1,7 +1,7 @@
 // Bills screen helpers (UX v2 · WP2). Presentation only: they pick which bills
 // to show and how to label them, never what a bill is worth.
 
-export const BILL_FILTERS = ['all', 'unpaid', 'paid', 'qr'];
+export const BILL_FILTERS = ['all', 'unpaid', 'paid', 'qr', 'cancelled'];
 
 export const normalizeBillFilter = (value) => (BILL_FILTERS.includes(value) ? value : 'all');
 
@@ -20,6 +20,7 @@ export function matchesBillFilter(bill, filter) {
     case 'unpaid': return !bill.isPaid;
     case 'paid': return !!bill.isPaid;
     case 'qr': return bill.source === 'qr';
+    case 'cancelled': return bill.status === 'cancelled';
     default: return true;
   }
 }

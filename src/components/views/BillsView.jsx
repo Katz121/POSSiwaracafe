@@ -73,18 +73,22 @@ export default function BillsView() {
   const dayBills = useMemo(() => orders
     .filter((o) => o.status === 'completed' && getOrderDate(o) === date)
     .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)), [orders, date]);
+  // บิลที่ยกเลิก (เดิมลบทิ้ง) · ดูอย่างเดียว ไม่นับในยอด
+  const cancelledBills = useMemo(() => orders
+    .filter((o) => o.status === 'cancelled' && getOrderDate(o) === date)
+    .sort((a, b) => String(b.cancelledAt || '').localeCompare(String(a.cancelledAt || ''))), [orders, date]);
   const counts = useMemo(() => countBillFilters(dayBills), [dayBills]);
   const dayTotal = useMemo(() => dayBills.reduce((s, b) => s + (Number(b.total) || 0), 0), [dayBills]);
   const unpaidTotal = useMemo(() => dayBills.filter((b) => !b.isPaid).reduce((s, b) => s + (Number(b.total) || 0), 0), [dayBills]);
   const rows = useMemo(() => rankBills(
-    dayBills.filter((b) => matchesBillFilter(b, filter) && matchesBillQuery(b, query, billCustomerName(b, memberByPhone))),
+    (filter === 'cancelled' ? cancelledBills : dayBills).filter((b) => matchesBillFilter(b, filter) && matchesBillQuery(b, query, billCustomerName(b, memberByPhone))),
     query,
-  ), [dayBills, filter, query, memberByPhone]);
+  ), [dayBills, cancelledBills, filter, query, memberByPhone]);
 
   // A bill named in the URL wins (deep link / tap); otherwise iPad shows the
   // newest match so the detail pane is never empty.
   const selected = wide
-    ? ((idOrder && dayBills.includes(idOrder) ? idOrder : null) || rows[0] || null)
+    ? ((idOrder && (dayBills.includes(idOrder) || cancelledBills.includes(idOrder)) ? idOrder : null) || rows[0] || null)
     : idOrder;
   const onSearch = (text) => {
     setSearch(text);
@@ -172,7 +176,7 @@ export default function BillsView() {
   };
 
   // ── rendering ─────────────────────────────────────────────────────────────
-  const actionsFor = (bill) => (
+  const actionsFor = (bill) => (bill.status === 'cancelled' ? null : (
     <BillActions
       bill={bill}
       onTogglePaid={() => togglePaid(bill)}
@@ -183,7 +187,7 @@ export default function BillsView() {
       pdfBusy={generating}
       payBusy={payBusy}
     />
-  );
+  ));
   const pdfBanner = fallbackUrl ? (
     <Banner
       tone="info"
@@ -202,6 +206,11 @@ export default function BillsView() {
       deduction={bill.status === 'completed' ? summarizeStockDeduction(bill, stockById) : null}
       showHeader={showHeader}
     >
+      {bill.status === 'cancelled' && (
+        <Banner tone="warn" title={`ยกเลิกแล้ว${bill.cancelledAt ? ` · ${new Date(bill.cancelledAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}${bill.cancelledBy ? ` · ${bill.cancelledBy}` : ''}`}>
+          {bill.stockRestoredAt ? 'คืนสต็อกแล้ว · ' : ''}ไม่นับในยอดขาย · แต้มที่ได้จากบิลถูกหักคืน
+        </Banner>
+      )}
       {pdfBanner}
     </BillDetail>
   );
@@ -294,6 +303,7 @@ export default function BillsView() {
               { value: 'unpaid', label: 'ค้างชำระ', count: counts.unpaid, tone: 'warn' },
               { value: 'paid', label: 'จ่ายแล้ว', count: counts.paid, tone: 'ok' },
               { value: 'qr', label: 'QR', count: counts.qr, tone: 'info' },
+              ...(cancelledBills.length || filter === 'cancelled' ? [{ value: 'cancelled', label: 'ยกเลิกแล้ว', count: cancelledBills.length }] : []),
             ]}
           />
         )}

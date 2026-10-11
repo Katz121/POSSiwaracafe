@@ -139,7 +139,7 @@ describe('runDeleteOrderTransaction · คืนสต็อก', () => {
     await runDeleteOrderTransaction({}, 'app', order, stockList, '');
     expect(store.get(`${base}/stock/milk`).quantity).toBe(1000);
     expect(store.get(`${base}/stock/bean2`).quantity).toBe(1000);
-    expect(store.has(`${base}/orders/o1`)).toBe(false);
+    expect(store.get(`${base}/orders/o1`)).toMatchObject({ status: 'cancelled', stockDeducted: false });
   });
 });
 

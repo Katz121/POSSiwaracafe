@@ -238,7 +238,7 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap, b
   const fixCtx = buildFixContext({ stock, menu, beanModifiers, milkSwap });
 
   const dayOrders = orders
-    .filter((o) => getOrderDate(o) === date)
+    .filter((o) => getOrderDate(o) === date && o.status !== 'cancelled')
     // ยอดขายย้อนหลังที่แอดมินคีย์เป็นก้อน ไม่มีรายการเมนูจริง ไม่เกี่ยวกับสต็อก
     .filter((o) => !o.isBackdated);
 

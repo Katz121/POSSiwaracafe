@@ -46,6 +46,7 @@ export async function runDeleteOrderTransaction(db, appId, staleOrder, stockList
     const orderSnap = await transaction.get(orderRef);
     if (!orderSnap.exists()) return;
     const order = { id: staleOrder.id, ...orderSnap.data() };
+    if (order.status === 'cancelled') return; // ยกเลิกไปแล้ว (อีกเครื่อง/กดซ้ำ)
     const earned = typeof order?.pointsEarned === 'number' ? order.pointsEarned : Math.floor(Number(order?.total || 0) / 10);
     let memberSnap = null;
     let memberRef = null;
@@ -81,7 +82,16 @@ export async function runDeleteOrderTransaction(db, appId, staleOrder, stockList
         });
       });
     }
-    transaction.delete(orderRef);
+    // ยกเลิก ไม่ลบ · เก็บบิลไว้ให้ย้อนดูได้ว่าใครยกเลิกบิลไหนเมื่อไหร่ (หน้าบิล → ยกเลิกแล้ว)
+    // stockDeducted=false: คืนสต็อกแล้ว · ทุกหน้ารายงานนับเฉพาะ completed อยู่แล้ว
+    transaction.update(orderRef, {
+      status: 'cancelled',
+      cancelledFrom: order.status || '',
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: by || '',
+      stockDeducted: false,
+      ...(order.stockDeducted ? { stockRestoredAt: new Date().toISOString() } : {}),
+    });
 
     // คืนแต้มที่ลูกค้าใช้แลกกับบิลนี้ (เดิมไม่คืน ลูกค้าเสียแต้มฟรี) · คนเดียวกับคนได้แต้ม = รวมในการเขียนเดียว
     const redeemed = verifiedRefund(claim, claimSnap?.exists() ? claimSnap.data() : null, order.id);
