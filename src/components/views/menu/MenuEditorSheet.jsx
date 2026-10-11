@@ -195,6 +195,30 @@ export default function MenuEditorSheet({
   const marginPercent = Math.round((margin / (Number(newItem.price) || 1)) * 100);
   const askSweetness = supportsSweetnessChoice(newItem, { cakeSaleCategories });
 
+  // ปิดตัวตรวจของเบราว์เซอร์ (noValidate) แล้วตรวจเอง · บนมือถือฟองเตือนของเบราว์เซอร์
+  // ไม่ขึ้นในแผ่นที่เลื่อนได้ กดบันทึกแล้วเงียบ ไม่รู้ว่าติดช่องไหน
+  const submit = (e) => {
+    const form = e.currentTarget;
+    const flag = (field, message) => {
+      e.preventDefault();
+      toast.warning(message);
+      field?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      field?.focus?.({ preventScroll: true });
+    };
+    const emptyRow = links.findIndex((l) => !l?.stockId);
+    if (emptyRow >= 0) {
+      flag(linkListRef.current?.querySelectorAll(':scope > li')[emptyRow]?.querySelector('input'), `ยังไม่ได้เลือกวัตถุดิบแถวที่ ${emptyRow + 1} · เลือกจากรายการ หรือกดถังขยะลบแถวนั้น`);
+      return;
+    }
+    const bad = form.querySelector(':invalid');
+    if (bad) {
+      const name = bad.getAttribute('aria-label') || bad.labels?.[0]?.textContent?.replace('*', '').trim() || 'บางช่อง';
+      flag(bad, `${name}: ${bad.validity.valueMissing ? 'ยังไม่ได้กรอก' : 'ค่าไม่ถูกต้อง'}`);
+      return;
+    }
+    onSubmit(e);
+  };
+
   const footer = (
     <div className="flex w-full items-center gap-2">
       {editingItem && (
@@ -222,12 +246,12 @@ export default function MenuEditorSheet({
       title={editingItem ? `แก้ไขเมนู · ${editingItem.name || ''}` : 'เพิ่มเมนูใหม่'}
       footer={footer}
     >
-      <form id={EDITOR_FORM_ID} onSubmit={onSubmit} className="flex flex-col gap-7 pb-4">
+      <form id={EDITOR_FORM_ID} onSubmit={submit} noValidate className="flex flex-col gap-7 pb-4">
         <SheetSection title="ข้อมูลหลัก" icon={Tag}>
           <Input label="ชื่อเมนู" required value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} />
           <Input label="ชื่อ (EN)" value={newItem.nameEn || ''} placeholder="e.g. Hot Americano" onChange={(e) => setNewItem({ ...newItem, nameEn: e.target.value })} />
           <div className="grid grid-cols-2 gap-3">
-            <Input label="ราคา (บาท)" type="number" inputMode="decimal" required value={newItem.price} onChange={(e) => setNewItem({ ...newItem, price: e.target.value })} />
+            <Input label="ราคา (บาท)" type="number" inputMode="decimal" step="any" min="0" required value={newItem.price} onChange={(e) => setNewItem({ ...newItem, price: e.target.value })} />
             <div>
               <label htmlFor="menu-editor-category" className={LABEL}>หมวดหมู่ <span className="text-[var(--state-danger)]">*</span></label>
               <select id="menu-editor-category" required value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className={FIELD}>
@@ -440,6 +464,8 @@ export default function MenuEditorSheet({
               label="ต้นทุนแฝงเพิ่มเติม (ค่าแก้ว/ถุง/จ้าง)"
               type="number"
               inputMode="decimal"
+              step="any"
+              min="0"
               value={newItem.additionalCost || ''}
               placeholder="0.00"
               onChange={(e) => setNewItem({ ...newItem, additionalCost: e.target.value })}

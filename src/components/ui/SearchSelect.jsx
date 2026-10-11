@@ -78,7 +78,9 @@ export default function SearchSelect({ value, onChange, groups, getOptionValue, 
         autoComplete="off" placeholder={placeholder}
         value={open ? query : selected ? getOptionLabel(selected) : ''}
         onFocus={show} onClick={() => { if (!open) show(); }}
-        onBlur={event => { if (!list.current?.contains(event.relatedTarget)) setOpen(false); }}
+        // ปิดเฉพาะตอนโฟกัสย้ายไปช่องอื่นจริง (Tab) · แตะรายการบน iPhone ทำให้ช่องเสียโฟกัส
+        // โดยไม่มี relatedTarget ถ้าปิดตรงนี้ลิสต์หายก่อน click → เลือกแล้วเงียบ · แตะนอกช่องปิดด้วย pointerdown ด้านบน
+        onBlur={event => { if (event.relatedTarget && !list.current?.contains(event.relatedTarget)) setOpen(false); }}
         onChange={event => { setQuery(event.target.value); setActive(0); setOpen(true); }}
         onKeyDown={event => {
           if (event.nativeEvent.isComposing) return;
@@ -106,7 +108,7 @@ export default function SearchSelect({ value, onChange, groups, getOptionValue, 
               {items.map(item => {
                 const index = options.indexOf(item);
                 return <div key={getOptionValue(item)} id={`${id}-${index}`} role="option" aria-selected={getOptionValue(item) === value} data-highlight={index === highlight}
-                  onPointerDown={event => event.preventDefault()} onClick={() => choose(item)}
+                  onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => choose(item)}
                   className={`px-4 py-3 cursor-pointer text-sm ${index === highlight ? 'bg-[var(--accent-soft)]' : 'hover:bg-[var(--bg-tertiary)]'}`}>
                   {getOptionLabel(item)}
                 </div>;
