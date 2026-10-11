@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Package, PackagePlus, PackageMinus, Pencil, Plus, Trash2, SearchX, CookingPot, Combine, SpellCheck, Archive, ArchiveRestore } from 'lucide-react';
+import { Package, PackagePlus, PackageMinus, Pencil, Plus, Trash2, SearchX, CookingPot, Combine, SpellCheck, Archive, ArchiveRestore, Scale } from 'lucide-react';
 import { collection, doc, updateDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useDataContext, useUIContext } from '../../context/AppContext';
@@ -89,12 +89,19 @@ export default function StockView() {
     const present = new Set(stock.map(getStockCategory));
     return STOCK_CATEGORIES.filter((c) => present.has(c)).concat([...present].filter((c) => !STOCK_CATEGORIES.includes(c)));
   }, [stock]);
-  const rows = useMemo(() => sorted.filter((item) => (
-    matchesStockFilter(item, filter)
-    && matchesCountFilter(item, filter, today)
-    && (category === 'all' || getStockCategory(item) === category)
-    && matchesStockSearch(item, search)
-  )), [sorted, filter, category, search, today]);
+  const rows = useMemo(() => {
+    const live = sorted.filter((item) => (
+      matchesStockFilter(item, filter)
+      && matchesCountFilter(item, filter, today)
+      && (category === 'all' || getStockCategory(item) === category)
+      && matchesStockSearch(item, search)
+    ));
+    // ค้นหาในแท็บ "ทั้งหมด" เจอตัวที่เลิกใช้ด้วย (ต่อท้าย มีป้าย + กลับมาใช้) · วันหลังจะเปิดใช้ใหม่ต้องหาเจอ
+    if (filter !== 'all' || !search.trim()) return live;
+    const retired = sortStockForReview(allStock.filter((s) => isRetiredStock(s)
+      && (category === 'all' || getStockCategory(s) === category) && matchesStockSearch(s, search)));
+    return [...live, ...retired];
+  }, [sorted, filter, category, search, today, allStock]);
   const filtering = filter !== 'all' || category !== 'all' || search.trim() !== '';
 
   // ── รวมรายการซ้ำ + หน่วยสะกดผิด
@@ -308,7 +315,7 @@ export default function StockView() {
       render: (_, r) => (
         <div className="flex items-center justify-end gap-1" {...stop}>
           {!isArchivedStock(r) && stepper(r)}
-          {!isArchivedStock(r) && <RowMenu items={menuItems(r)} label={`ตัวเลือกของ ${r.name}`} />}
+          {menuItems(r).length > 0 && <RowMenu items={menuItems(r)} label={`ตัวเลือกของ ${r.name}`} />}
         </div>
       ),
     },
@@ -345,6 +352,9 @@ export default function StockView() {
           <>
             <Button variant="secondary" leftIcon={<Combine size={18} />} onClick={() => setMergeOpen(true)}>
               รวมรายการซ้ำ{strongDupes > 0 ? ` (${strongDupes})` : ''}
+            </Button>
+            <Button variant="secondary" leftIcon={<Scale size={18} />} onClick={() => navigate('stock_units')}>
+              ตัวเทียบหน่วย
             </Button>
             <Button variant="secondary" leftIcon={<ClipboardList size={18} />} onClick={() => setCountMode(true)} disabled={!stock.length}>
               โหมดตรวจนับ
@@ -384,7 +394,7 @@ export default function StockView() {
               { value: 'all', label: 'ทั้งหมด', count: counts.all },
               { value: 'low', label: 'ต้องเติม', count: counts.low, tone: 'warn' },
               { value: 'out', label: 'หมด/ติดลบ', count: counts.out, tone: 'danger' },
-              ...(mergedCount > 0 || filter === 'merged' ? [{ value: 'merged', label: 'เลิกใช้/รวมแล้ว', count: mergedCount }] : []),
+              { value: 'merged', label: 'เลิกใช้/รวมแล้ว', count: mergedCount },
               { value: COUNT_FILTER, label: 'ยังไม่ตรวจวันนี้', count: counts.uncounted, tone: 'info' },
             ]}
           />
@@ -443,7 +453,7 @@ export default function StockView() {
                         <CountStatusPill item={item} today={today} size="xs" />
                       </span>
                     </button>
-                    {!isArchivedStock(item) && <span className="pt-1"><RowMenu items={menuItems(item)} label={`ตัวเลือกของ ${item.name}`} /></span>}
+                    {menuItems(item).length > 0 && <span className="pt-1"><RowMenu items={menuItems(item)} label={`ตัวเลือกของ ${item.name}`} /></span>}
                   </div>
                   <div className="flex items-center justify-between gap-3 px-4 pb-3">
                     <p className="num min-w-0">

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PackagePlus, PackageMinus, Pencil, Trash2, ArrowRight, ClipboardCheck, Plus, X, Archive } from 'lucide-react';
+import { PackagePlus, PackageMinus, Pencil, Trash2, ArrowRight, ClipboardCheck, Archive } from 'lucide-react';
 import { Banner, Button, Money, NumberStepper, SearchSelect, SegmentedControl, Sheet } from '../../ui';
 import { STOCK_CATEGORIES, getStockCategory } from '../../../config/constants';
 import { formatNumber, formatThaiDate, formatTime } from '../../../utils/format';
@@ -8,6 +8,7 @@ import StockStatusPill from './StockStatusPill';
 import UnitCost from './UnitCost';
 import { intakeFormFor, resolveStockIntake, toExpenseLine, validateExpense } from './expenseModel';
 import { stockStatus, reorderPoint, emptyStockItem, stockItemForm } from './stockStatus';
+import PacksEditor from './PacksEditor';
 import { findPack, inPacks, normalizePacks } from '../../../utils/stockIntake';
 
 const qty = (n) => formatNumber(n, { maxDecimals: 3 });
@@ -258,40 +259,6 @@ function Adjust({ item, input, setInput, formId, onSubmit }) {
         <p className="text-sm text-[var(--text-muted)]">ปรับยอดให้ตรงของจริง ไม่บันทึกเป็นรายจ่าย</p>
       )}
     </form>
-  );
-}
-
-// ── หน่วยซื้อ (ตัวเทียบ) ─────────────────────────────────────────────────────
-// ซื้อเป็นขวด/ถุง/ลัง แต่สูตรตัดเป็นหน่วยของสต็อก (กรัม) · ตั้งไว้ครั้งเดียว รับของเข้าเลือก "ขวด" ได้เลย
-function PacksEditor({ packs, unit, onChange, idBase }) {
-  const update = (i, patch) => onChange(packs.map((p, j) => (j === i ? { ...p, ...patch } : p)));
-  return (
-    <fieldset className="flex flex-col gap-2 rounded-[var(--radius)] border border-[var(--border-color)] p-3">
-      <legend className="px-1 text-sm font-medium text-[var(--text-secondary)]">หน่วยซื้อ (ตัวเทียบ)</legend>
-      <p className="text-xs text-[var(--text-muted)]">
-        เช่น น้ำช่อดอกมะพร้าว 1 ขวด = 1000 {unit || 'กรัม'} · ลัง (12 ขวด) = 12000 · ของเหลวที่ตัดเป็นกรัม ใส่น้ำหนักจริงของ 1 ขวด
-      </p>
-      {packs.map((p, i) => (
-        <div key={i} className="flex items-end gap-2">
-          <div className="min-w-0 flex-1">
-            <label htmlFor={`${idBase}-l${i}`} className="mb-1 block text-xs text-[var(--text-muted)]">1 หน่วยซื้อ</label>
-            <input id={`${idBase}-l${i}`} type="text" placeholder="ขวด, ถุง, ลัง" value={p.label} onChange={(e) => update(i, { label: e.target.value })} className={FIELD} />
-          </div>
-          <span className="pb-3 text-[var(--text-muted)]" aria-hidden="true">=</span>
-          <div className="min-w-0 flex-1">
-            <label htmlFor={`${idBase}-s${i}`} className="mb-1 block text-xs text-[var(--text-muted)]">เท่ากับกี่ {unit || 'หน่วย'}</label>
-            <input id={`${idBase}-s${i}`} type="number" inputMode="decimal" step="any" min="0" placeholder="1000" value={p.size} onChange={(e) => update(i, { size: e.target.value })} className={`num ${FIELD}`} />
-          </div>
-          <button type="button" aria-label={`ลบหน่วยซื้อ ${p.label || i + 1}`} onClick={() => onChange(packs.filter((_, j) => j !== i))}
-            className="mb-0.5 flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--state-danger)] hover:bg-[var(--state-danger-soft)] outline-none focus-visible:shadow-[var(--focus-ring)]">
-            <X size={20} />
-          </button>
-        </div>
-      ))}
-      <Button type="button" variant="secondary" size="sm" leftIcon={<Plus size={16} />} onClick={() => onChange([...packs, { label: '', size: '' }])} className="self-start">
-        เพิ่มหน่วยซื้อ
-      </Button>
-    </fieldset>
   );
 }
 

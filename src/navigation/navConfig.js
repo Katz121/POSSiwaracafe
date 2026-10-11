@@ -1,6 +1,6 @@
 import {
   ShoppingCart, ChefHat, Receipt, Cake, Package, ClipboardCheck, ClipboardList, BookOpen,
-  Users, LayoutDashboard, TrendingUp, PieChart, Target, Wallet, Landmark, Settings, CookingPot,
+  Users, LayoutDashboard, TrendingUp, PieChart, Target, Wallet, Landmark, Settings, CookingPot, Scale,
 } from 'lucide-react';
 
 /**
@@ -24,6 +24,7 @@ export const NAV_ITEMS = [
   { key: 'cake_queue', hash: 'cake-queue', label: 'คิวเค้ก', short: 'คิวเค้ก', icon: Cake, section: 'front', rail: true, badgeKey: 'cake_queue' },
 
   { key: 'stock', hash: 'stock', label: 'สต็อก', short: 'สต็อก', icon: Package, section: 'inventory', phoneTab: true, rail: true, badgeKey: 'stock' },
+  { key: 'stock_units', hash: 'stock-units', label: 'ตัวเทียบหน่วย', short: 'ตัวเทียบ', icon: Scale, section: 'inventory' },
   { key: 'production', hash: 'production', label: 'ผลิตวันนี้', short: 'ผลิต', icon: CookingPot, section: 'inventory' },
   { key: 'stock_audit', hash: 'stock-audit', label: 'สรุปขาย & สต็อก', short: 'ตรวจสต็อก', icon: ClipboardCheck, section: 'inventory', badgeKey: 'stock_audit' },
   { key: 'menu_manage', hash: 'menu', label: 'เมนู', short: 'เมนู', icon: ClipboardList, section: 'inventory', protected: true },

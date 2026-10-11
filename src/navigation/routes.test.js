@@ -49,7 +49,7 @@ describe('hash routes', () => {
     expect(keys).toEqual([
       'admin', 'bills', 'cake_queue', 'category_summary', 'dashboard', 'expenses', 'financial',
       'members_manage', 'menu_manage', 'merchant', 'pos', 'production', 'profitability', 'recipes',
-      'sales_history', 'stock', 'stock_audit',
+      'sales_history', 'stock', 'stock_audit', 'stock_units',
     ]);
   });
 });

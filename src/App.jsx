@@ -55,6 +55,7 @@ const BillsView = lazy(() => import('./components/views/BillsView'));
 const DashboardView = lazy(() => import('./components/views/DashboardView'));
 const CategorySummaryView = lazy(() => import('./components/views/CategorySummaryView'));
 const StockView = lazy(() => import('./components/views/StockView'));
+const StockUnitsView = lazy(() => import('./components/views/StockUnitsView'));
 const ProfitabilityView = lazy(() => import('./components/views/ProfitabilityView'));
 const ExpensesView = lazy(() => import('./components/views/ExpensesView'));
 const MenuManageView = lazy(() => import('./components/views/MenuManageView'));
@@ -727,6 +728,7 @@ export default function App() {
                   {view === 'dashboard' && <DashboardView onNavigate={handleViewChange} />}
                   {view === 'category_summary' && <CategorySummaryView />}
                   {view === 'stock' && <StockView />}
+                  {view === 'stock_units' && <StockUnitsView />}
                   {view === 'profitability' && <ProfitabilityView />}
                   {view === 'expenses' && <ExpensesView />}
                   {view === 'menu_manage' && <MenuManageView />}
