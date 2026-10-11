@@ -4,6 +4,7 @@ import { getStockCategory } from '../../../config/constants';
 import {
   isInventoryCategory, findAliasMatch, findStockCandidates, planStockIntake, normalizeName, normalizePacks, roundUnitCost,
 } from '../../../utils/stockIntake';
+import { inferOperatingCategory } from '../../../utils/expenseCategory';
 
 export const EMPTY_EXPENSE = Object.freeze({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
 
@@ -136,6 +137,7 @@ export function rankTitleSuggestions(suggestions, typed) {
  * it is exactly a stock item, pulls that item's category, unit and unit cost.
  */
 export function applyExpenseTitle(form, typedTitle, suggestions, stock) {
+  // ชื่อที่เป็นค่าใช้จ่ายร้านชัดๆ (น้ำแข็ง ค่าไฟ) ย้ายออกจากหมวดวัตถุดิบ ไม่ให้ไปสร้างสต็อก
   const matchedExpenseTitle = suggestions.find(
     (suggestion) => suggestion.toLocaleLowerCase() === typedTitle.trim().toLocaleLowerCase(),
   );
@@ -151,7 +153,7 @@ export function applyExpenseTitle(form, typedTitle, suggestions, stock) {
           unit: matchedStock.unit || form.unit,
           pricePerUnit: matchedStock.unitCost || form.pricePerUnit,
         }
-      : {}),
+      : (isInventoryCategory(form.category) && inferOperatingCategory(title) ? { category: inferOperatingCategory(title) } : {})),
   };
 }
 

@@ -1,4 +1,4 @@
-import { INVENTORY_CATEGORIES } from '../config/constants';
+import { INVENTORY_CATEGORIES, getStockCategory } from '../config/constants';
 
 // หมวดหมู่ที่ถือเป็นสินค้าคงคลัง ต้องมีการอัพเดตสต็อกเมื่อมีการซื้อ · อุปกรณ์/ของใช้ไม่เข้าสต็อก
 export { INVENTORY_CATEGORIES };
@@ -203,6 +203,7 @@ export function planStockIntake({ quantity, unit, amount }, stock, alias = null)
     ok: true,
     stockId: stock.id,
     stockUnit: stock.unit,
+    stockCategory: getStockCategory(stock),
     factor,
     inQty,
     inUnitCost,
@@ -266,6 +267,8 @@ export function buildExpenseRecord(line, { date, plan = null, extra = {} }) {
   };
   
   if (plan && plan.ok) {
+    // ลงสต็อกตัวไหน ใช้หมวดของสต็อกตัวนั้น (เดิม "วัตถุดิบ" รวมๆ ไม่ตรงกับหน้าสต็อก)
+    if (isInventoryCategory(record.category) && isInventoryCategory(plan.stockCategory)) record.category = plan.stockCategory;
     record.stockId = plan.stockId;
     record.stockQuantity = plan.inQty;
     record.stockUnit = plan.stockUnit;

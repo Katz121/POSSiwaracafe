@@ -1,19 +1,8 @@
-import { inferStockCategory } from '../../../src/config/constants.js';
 import { normalizeUnit, roundMoney } from '../../../src/utils/stockIntake.js';
 
-export function inferExpenseCategory(title) {
-  const value = String(title || '').toLocaleLowerCase('th');
-  const rules = [
-    ['ค่าไฟ', ['ไฟ', 'ค่าไฟ']], ['ค่าน้ำแข็ง', ['น้ำแข็ง']],
-    ['ค่าแรง', ['ค่าแรง', 'เงินเดือน', 'ค่าจ้าง']], ['ค่าเช่า', ['ค่าเช่า']],
-    ['การตลาด', ['โฆษณา', 'ads', 'บูสต์']], ['อุปกรณ์', ['อุปกรณ์']],
-  ];
-  const expense = rules.find(([, words]) => words.some(w => value.includes(w)))?.[0];
-  if (expense) return expense;
-  // ค่าปริยายของแอปไม่ใช่หลักฐานว่าเป็นสินค้าคงคลัง ต้องให้คนเลือกเอง
-  const stock = inferStockCategory(title);
-  return stock === 'อื่น ๆ' ? null : stock;
-}
+// ย้ายไปใช้ร่วมกับแอปที่ src/utils/expenseCategory.js
+import { inferExpenseCategory } from '../../../src/utils/expenseCategory.js';
+export { inferExpenseCategory };
 export const MANUAL_FORMATS = 'รายจ่าย ชื่อ จำนวน หน่วย ยอด [บาท]\nรายจ่าย ชื่อ | จำนวน | หน่วย | ยอด\nรายจ่าย ชื่อ ยอด [บาท]\nหลายรายการ: ขึ้นหัว รายจ่าย แล้วเขียนทีละบรรทัด';
 export function parseManualExpense(text) {
   const value = String(text || '').trim().replace(/\s*บาท\s*$/, '').trim();

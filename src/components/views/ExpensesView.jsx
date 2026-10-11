@@ -5,6 +5,7 @@ import { db, appId } from '../../services/firebase';
 import { useDataContext, useUIContext } from '../../context/AppContext';
 import { useNavigate, useRouteParams } from '../../navigation';
 import { getISODate, getOrderDate } from '../../utils/calculations';
+import { expenseCategoryOf } from '../../utils/expenseCategory';
 import { formatNumber, formatThaiDate, toISODateLocal } from '../../utils/format';
 import {
   Badge, Banner, Button, DataTable, DateStepper, FilterChips, IconButton, Money, PageHeader, SectionCard, SegmentedControl, Sheet,
@@ -36,6 +37,8 @@ export default function ExpensesView() {
   // ของที่ถูกรวมไปแล้วไม่ให้เลือก/จับคู่ใบเสร็จ · ชื่อเดิมอยู่ใน purchaseAliases ของตัวที่เก็บไว้
   const { expenses, orders, quickExpenses, stock: allStock = [], activeStock } = useDataContext();
   const stock = activeStock || allStock;
+  // หมวดที่แสดง = หมวดของสต็อกที่รายจ่ายลงไป (รวมตัวที่เลิกใช้/รวมแล้ว) · ดู expenseCategoryOf
+  const allStockById = useMemo(() => new Map(allStock.map((s) => [s.id, s])), [allStock]);
   const { runDbAction, callGeminiAPI, handleViewChange, setAdminTab } = useUIContext();
   const params = useRouteParams();
   const navigate = useNavigate();
@@ -86,7 +89,7 @@ export default function ExpensesView() {
     const total = filtered.reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const byCategory = {};
     filtered.forEach((e) => {
-      const cat = e.category || 'อื่น ๆ';
+      const cat = expenseCategoryOf(e, allStockById);
       if (!byCategory[cat]) byCategory[cat] = 0;
       byCategory[cat] += Number(e.amount) || 0;
     });
@@ -96,12 +99,12 @@ export default function ExpensesView() {
       byCategory: Object.entries(byCategory).sort((a, b) => b[1] - a[1]),
       count: filtered.length,
     };
-  }, [expenses, expenseViewMode, expenseFilterDate]);
+  }, [expenses, expenseViewMode, expenseFilterDate, allStockById]);
 
   const activeCategory = filteredExpenseStats.byCategory.some(([c]) => c === categoryFilter) ? categoryFilter : 'all';
   const listRows = activeCategory === 'all'
     ? filteredExpenseStats.expenses
-    : filteredExpenseStats.expenses.filter((e) => (e.category || 'อื่น ๆ') === activeCategory);
+    : filteredExpenseStats.expenses.filter((e) => expenseCategoryOf(e, allStockById) === activeCategory);
 
   const periodLabel = expenseViewMode === 'daily'
     ? (expenseFilterDate === getISODate() ? 'วันนี้' : formatThaiDate(expenseFilterDate))
@@ -220,7 +223,7 @@ export default function ExpensesView() {
       unit: expense.unit || 'ชิ้น',
       pricePerUnit: expense.pricePerUnit || '',
       amount: expense.amount || '',
-      category: expense.category || 'วัตถุดิบ',
+      category: expense.category ? expenseCategoryOf(expense, allStockById) : 'วัตถุดิบ',
     },
   });
 
@@ -267,7 +270,7 @@ export default function ExpensesView() {
 
   const metaLine = (e) => (
     <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)]">
-      <Badge tone="neutral" size="xs">{e.category || 'อื่น ๆ'}</Badge>
+      <Badge tone="neutral" size="xs">{expenseCategoryOf(e, allStockById)}</Badge>
       {expenseViewMode !== 'daily' && <span className="num whitespace-nowrap">{formatThaiDate(e.date, { style: 'short' })}</span>}
       {detailLine(e) && <span className="num whitespace-nowrap">{detailLine(e)}</span>}
       {e.stockId && (
