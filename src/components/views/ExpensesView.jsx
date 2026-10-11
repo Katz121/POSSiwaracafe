@@ -275,7 +275,7 @@ export default function ExpensesView() {
       {detailLine(e) && <span className="num whitespace-nowrap">{detailLine(e)}</span>}
       {e.stockId && (
         <span className="inline-flex items-center gap-1 whitespace-nowrap text-[var(--state-ok)]">
-          <PackagePlus size={12} aria-hidden="true" />ลงสต็อกแล้ว
+          <PackagePlus size={12} aria-hidden="true" />{e.category === 'ของเสีย (Waste)' ? 'ตัดสต็อกแล้ว' : 'ลงสต็อกแล้ว'}
         </span>
       )}
     </p>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PackagePlus, PackageMinus, Pencil, Trash2, ArrowRight, ClipboardCheck, Archive } from 'lucide-react';
+import { PackagePlus, PackageMinus, Pencil, Trash2, ArrowRight, ClipboardCheck, Archive, History } from 'lucide-react';
 import { Banner, Button, Money, NumberStepper, SearchSelect, SegmentedControl, Sheet } from '../../ui';
 import { STOCK_CATEGORIES, getStockCategory } from '../../../config/constants';
 import { formatNumber, formatThaiDate, formatTime } from '../../../utils/format';
@@ -9,6 +9,7 @@ import UnitCost from './UnitCost';
 import { intakeFormFor, resolveStockIntake, toExpenseLine, validateExpense } from './expenseModel';
 import { stockStatus, reorderPoint, emptyStockItem, stockItemForm } from './stockStatus';
 import PacksEditor from './PacksEditor';
+import StockHistory from './StockHistory';
 import { findPack, inPacks, normalizePacks } from '../../../utils/stockIntake';
 
 const qty = (n) => formatNumber(n, { maxDecimals: 3 });
@@ -75,6 +76,7 @@ function Detail({ item, onStep, onMode, onDelete, onRetire, onCount }) {
           <Button variant="secondary" size="lg" leftIcon={<PackageMinus size={18} />} onClick={() => onMode('adjust')}>ตัดของเสีย</Button>
           <Button variant="secondary" size="lg" leftIcon={<Pencil size={18} />} onClick={() => onMode('edit')}>แก้ไข</Button>
         </div>
+        <Button variant="secondary" size="lg" fullWidth leftIcon={<History size={18} />} onClick={() => onMode('history')}>ประวัติสต็อก (เพิ่ม/ตัด)</Button>
       </div>
 
       <div className="border-t border-[var(--border-color)] pt-4">
@@ -315,7 +317,7 @@ const AUTOFOCUS = {
   },
 };
 
-const TITLES = { detail: null, intake: 'รับของเข้า', adjust: 'ตัดของเสีย / ปรับยอด', edit: 'แก้ไขวัตถุดิบ', create: 'เพิ่มวัตถุดิบ' };
+const TITLES = { detail: null, history: 'ประวัติสต็อก', intake: 'รับของเข้า', adjust: 'ตัดของเสีย / ปรับยอด', edit: 'แก้ไขวัตถุดิบ', create: 'เพิ่มวัตถุดิบ' };
 
 /**
  * One sheet for everything you do to a stock row. `state` = { mode, id, back }
@@ -393,6 +395,9 @@ export default function StockSheet({ state, stock, onClose, onMode, onStep, onDe
         <Button type="submit" form={formId} size="lg" loading={busy} disabled={!item}>บันทึกรับของ</Button>
       </>
     );
+  } else if (mode === 'history' && item) {
+    body = <StockHistory item={item} />;
+    footer = <Button variant="secondary" size="lg" onClick={cancel}>{state?.back ? 'ย้อนกลับ' : 'ปิด'}</Button>;
   } else if (mode === 'adjust' && item) {
     body = <Adjust item={item} input={adjustInput} setInput={setAdjustInput} formId={formId} onSubmit={submitAdjust} />;
     footer = (

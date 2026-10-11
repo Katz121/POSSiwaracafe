@@ -158,6 +158,11 @@ service cloud.firestore {
         allow read, write: if isStaff();
       }
 
+      // ประวัติปรับยอดสต็อกด้วยมือ (ปุ่ม +/− · ปรับยอดให้ตรง · แก้ตัวเลข) · พนักงานเท่านั้น
+      match /stockMoves/{id} {
+        allow read, write: if isStaff();
+      }
+
       match /expenses/{id} {
         allow read, write: if isStaff();
       }
