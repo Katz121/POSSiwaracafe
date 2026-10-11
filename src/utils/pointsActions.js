@@ -14,10 +14,25 @@ export function planEarnClawback({ points = 0, pendingPoints = 0 }, earned) {
 }
 
 // Delete a bill, restore its stock and take back the points it earned — one transaction.
-export async function runDeleteOrderTransaction(db, appId, order, stockList, memberDocId = order?.memberPhone, by = undefined) {
+/** แต้มที่ลูกค้าใช้กับบิลนี้ · POS เก็บ pointsRedeem* · QR เก็บ redeemedReward.cost (ไปที่เบอร์ของบิล) */
+export function redeemedPointsOf(order, memberDocId) {
+  if (order?.pointsRedeemed && order.pointsRedeemId && Number(order.pointsRedeemAmount) > 0) {
+    return { memberId: order.pointsRedeemId, amount: Number(order.pointsRedeemAmount) };
+  }
+  const cost = Number(order?.redeemedReward?.cost) || 0;
+  if (cost > 0 && memberDocId) return { memberId: memberDocId, amount: cost };
+  return null;
+}
+
+export async function runDeleteOrderTransaction(db, appId, staleOrder, stockList, memberDocId = staleOrder?.memberPhone, by = undefined) {
   let clawbackPoints = 0;
   await runTransaction(db, async transaction => {
-    const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id);
+    const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', staleOrder.id);
+    // อ่านบิลสด · กดยืนยันซ้ำ/อีกเครื่องลบไปแล้ว = ไม่ทำอะไร (เดิมคืนสต็อก+หักแต้มซ้ำ)
+    // อีกเครื่องเพิ่งกดเสร็จ = ใช้ stockDeducted ล่าสุด ไม่ใช่ข้อมูลค้างในเครื่อง
+    const orderSnap = await transaction.get(orderRef);
+    if (!orderSnap.exists()) return;
+    const order = { id: staleOrder.id, ...orderSnap.data() };
     const earned = typeof order?.pointsEarned === 'number' ? order.pointsEarned : Math.floor(Number(order?.total || 0) / 10);
     let memberSnap = null;
     let memberRef = null;
@@ -48,6 +63,12 @@ export async function runDeleteOrderTransaction(db, appId, order, stockList, mem
     }
     transaction.delete(orderRef);
 
+    // คืนแต้มที่ลูกค้าใช้แลกกับบิลนี้ (เดิมไม่คืน ลูกค้าเสียแต้มฟรี) · คนเดียวกับคนได้แต้ม = รวมในการเขียนเดียว
+    const redeemed = redeemedPointsOf(order, memberDocId);
+    const at = new Date().toISOString();
+    const refundEntry = redeemed ? { delta: redeemed.amount, reason: 'redeem-refund', orderId: order.id, at, ...(by ? { by } : {}) } : null;
+    const refundHere = Boolean(redeemed && memberSnap?.exists() && redeemed.memberId === memberDocId);
+
     if (memberSnap?.exists()) {
       const mData = memberSnap.data();
       const { fromPending, fromPoints } = planEarnClawback(mData, earned);
@@ -73,10 +94,24 @@ export async function runDeleteOrderTransaction(db, appId, order, stockList, mem
       
       if (earned > 0 || mData.pendingOrderIds?.includes(order.id)) hasUpdate = true;
 
+      if (refundHere) {
+        hasUpdate = true;
+        payload.points = increment(redeemed.amount - fromPoints);
+        payload.pointsHistory = fromPoints > 0
+          ? arrayUnion({ delta: -fromPoints, reason: 'manual', orderId: order.id, at, ...(by ? { by } : {}) }, refundEntry)
+          : arrayUnion(refundEntry);
+      }
+
       if (hasUpdate) {
         payload.pendingOrderIds = arrayRemove(order.id);
         transaction.update(memberRef, payload);
       }
+    }
+    if (redeemed && !refundHere) {
+      transaction.set(doc(db, 'artifacts', appId, 'public', 'data', 'members', redeemed.memberId), {
+        points: increment(redeemed.amount),
+        pointsHistory: arrayUnion(refundEntry),
+      }, { merge: true });
     }
   });
   return clawbackPoints;

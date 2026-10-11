@@ -55,6 +55,9 @@ export async function saveExpense({ form, editingExpense = null, date, stock, ru
   const ok = await runDbAction(async () => {
     const batch = writeBatch(db);
     const expenseRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'expenses'));
+    // ซื้อของใหม่ครั้งแรก: สร้างสต็อกในชุดเดียวกัน · ผูก stockId ให้รายจ่าย (ประวัติสต็อก/หมวดตรงกัน)
+    const newStockRef = !plan?.ok && newStock ? doc(collection(db, 'artifacts', appId, 'public', 'data', 'stock')) : null;
+    if (newStockRef) Object.assign(expenseRecord, { stockId: newStockRef.id, stockQuantity: line.quantity, stockUnit: line.unit || 'ชิ้น' });
     batch.set(expenseRef, expenseRecord);
 
     if (plan && plan.ok && targetStock) {
@@ -66,8 +69,8 @@ export async function saveExpense({ form, editingExpense = null, date, stock, ru
         lastPurchaseUnitCost: plan.inUnitCost,
       });
       syncAction = { action: 'updated', name: targetStock.name, qty: plan.newQuantity, unit: targetStock.unit };
-    } else if (newStock) {
-      const stockRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'stock'));
+    } else if (newStockRef) {
+      const stockRef = newStockRef;
       const cat = STOCK_CATEGORIES.includes(line.category) ? line.category : inferStockCategory(line.title);
       batch.set(stockRef, {
         name: line.title,

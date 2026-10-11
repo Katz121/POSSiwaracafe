@@ -101,6 +101,42 @@ export async function runBackfillTransaction(db, appId, lineRefs, data, by = '')
 }
 
 /**
+ * เปลี่ยนสถานะบิล · ถ้าเป็น "เสร็จ" ครั้งแรกตัดสต็อกในทรานแซกชันเดียวกัน อ่านบิลสดก่อน
+ * เดิมใช้ batch + ข้อมูลในเครื่อง · กดซ้ำ/สองเครื่องกดพร้อมกัน = ตัดซ้ำ · อีกเครื่องเพิ่งแก้บิล = ตัดตามรายการเก่า
+ * @returns {Promise<'missing'|'deducted'|'status'>}
+ */
+export async function runOrderStatusTransaction(db, appId, orderId, newStatus, stock, milkSwap, by = '') {
+  return runTransaction(db, async (tx) => {
+    const ref = dataDoc(db, appId, 'orders', orderId);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return 'missing';
+    const order = { id: orderId, ...snap.data() };
+    if (newStatus !== 'completed' || order.stockDeducted) {
+      tx.update(ref, { status: newStatus });
+      return 'status';
+    }
+    const stockById = new Map((stock || []).map((s) => [s.id, s]));
+    const plan = planOrderDeduction(order, stockById, { milkSwap });
+    Object.entries(plan.applied).forEach(([stockId, used]) => {
+      tx.update(dataDoc(db, appId, 'stock', stockId), { quantity: increment(-used) });
+    });
+    tx.update(ref, {
+      status: newStatus,
+      stockDeducted: true,
+      stockDeduction: {
+        at: new Date().toISOString(),
+        by,
+        applied: plan.applied,
+        skipped: plan.skipped,
+        unlinked: plan.unlinked,
+        milkSwapApplied: Boolean(milkSwap),
+      },
+    });
+    return 'deducted';
+  });
+}
+
+/**
  * ตัดสต็อกบิลที่เสร็จแล้วแต่ไม่ถูกตัด · บันทึกแบบเดียวกับ App.updateStatus
  * @returns {Promise<object|null>} แผนที่ตัด หรือ null ถ้าบิลไม่อยู่ในสภาพที่ตัดได้แล้ว
  */

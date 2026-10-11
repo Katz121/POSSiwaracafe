@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import { Lock, Trash2, Coffee } from 'lucide-react';
 
 // UI Components
@@ -11,9 +11,6 @@ import {
 } from './navigation';
 
 // Firebase Imports
-import {
-  doc, updateDoc, writeBatch, increment
-} from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { auth, db, appId } from './services/firebase';
 import useStaffAuth from './hooks/useStaffAuth';
@@ -43,7 +40,8 @@ import NewOrderAlert from './components/NewOrderAlert';
 import useNewQrOrderAlert from './hooks/useNewQrOrderAlert';
 import useDarkMode from './hooks/useDarkMode';
 import { getISODate, getOrderDate } from './utils/calculations';
-import { planOrderDeduction, auditMenuLinks } from './utils/stockAudit';
+import { auditMenuLinks } from './utils/stockAudit';
+import { runOrderStatusTransaction } from './utils/stockAuditActions';
 import { activeStock } from './utils/stockMerge';
 import { resolveMilkSwap } from './utils/milkSwap';
 import { runDeleteOrderTransaction } from './utils/pointsActions';
@@ -242,47 +240,27 @@ export default function App() {
   // setView keeps its old contract (plain switch, no PIN) but now writes the hash.
   const setView = useCallback((key, params) => navigate(key, params), [navigate]);
 
+  const statusInFlight = useRef(new Set());
   const updateStatus = useCallback(async (id, newStatus) => {
     await runDbAction(async () => {
-      const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', id);
 
       // Deduct stock the first time an order is completed. Idempotent via the
       // stockDeducted flag (mirrors how loyalty points use pointsProcessed) so
       // reverting and re-completing an order never double-counts. Each line
       // item already carries its merged recipe (base menu + chosen bean
       // modifier) in stockLinks, captured at order time.
-      const order = orders.find(o => o.id === id);
-      if (newStatus === 'completed' && order && !order.stockDeducted) {
-        // วางแผนตัดครั้งเดียวแล้วเก็บผลลงบิล (stockDeduction) · หน้า "สรุปการขาย & สต็อก"
-        // ใช้เทียบย้อนหลังว่าตัดอะไรไปจริง ข้ามอะไรไป (สต็อกถูกลบ / เมนูไม่ผูก)
-        const stockById = new Map(stock.map(s => [s.id, s]));
-        const plan = planOrderDeduction(order, stockById, { milkSwap });
-
-        const batch = writeBatch(db);
-        Object.entries(plan.applied).forEach(([stockId, used]) => {
-          // Atomic decrement so concurrent completions on two devices don't lose
-          // each other's deduction (symmetric with the restore path on delete).
-          batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), { quantity: increment(-used) });
-        });
-        batch.update(orderRef, {
-          status: newStatus,
-          stockDeducted: true,
-          stockDeduction: {
-            at: new Date().toISOString(),
-            by: auth.currentUser?.email || '',
-            applied: plan.applied,
-            skipped: plan.skipped,
-            unlinked: plan.unlinked,
-            milkSwapApplied: Boolean(milkSwap),
-          },
-        });
-        await batch.commit();
-        return;
+      // วางแผนตัดครั้งเดียวแล้วเก็บผลลงบิล (stockDeduction) · หน้า "สรุปการขาย & สต็อก"
+      // ใช้เทียบย้อนหลังว่าตัดอะไรไปจริง ข้ามอะไรไป (สต็อกถูกลบ / เมนูไม่ผูก)
+      // ทรานแซกชันอ่านบิลสด + กันกดซ้ำบิลเดียวกันระหว่างรอ (iPhone แตะสองที)
+      if (statusInFlight.current.has(id)) return;
+      statusInFlight.current.add(id);
+      try {
+        await runOrderStatusTransaction(db, appId, id, newStatus, stock, milkSwap, auth.currentUser?.email || '');
+      } finally {
+        statusInFlight.current.delete(id);
       }
-
-      await updateDoc(orderRef, { status: newStatus });
     }, 'อัปเดตสถานะไม่สำเร็จ');
-  }, [runDbAction, orders, stock, milkSwap]);
+  }, [runDbAction, stock, milkSwap]);
 
   // Delete order
   const executeDeleteOrder = async () => {

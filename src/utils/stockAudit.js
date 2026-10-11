@@ -177,17 +177,17 @@ export function planOrderDeduction(order, stockById, options = {}) {
 export function planEditDeduction(originalOrder, newItems, stockById, milkSwap) {
   const swap = originalOrder?.stockDeduction?.milkSwapApplied ? milkSwap : null;
   const plan = planOrderDeduction({ items: newItems }, stockById, { milkSwap: swap });
-  // ตัดไปแล้วจริง = ตอนขาย + ตัดย้อนหลัง (stockBackfill) · ไม่นับตัดย้อนหลัง = ตัดซ้ำ
-  // ผู้เรียกต้องล้าง stockBackfill เมื่อเขียน applied ใหม่ (applied ใหม่รวมส่วนนั้นแล้ว)
+  // เทียบกับที่ตัดตอนขาย (applied) เท่านั้น · ตัดย้อนหลัง (stockBackfill) ไม่นับทั้งสองฝั่ง
+  // เพราะตะกร้าตอนแก้บิลใช้ stockLinks เดิมของบิล ซึ่งไม่มีสูตรที่ตัดย้อนหลัง · stockBackfill คงไว้ในบิล
+  // บิลเก่าที่ตัดแล้วแต่ไม่มีบันทึก (ก่อนมี stockDeduction) ใช้สูตรในบิลเดิมแทน กันตัดซ้ำทั้งบิล
   const before = {};
   const add = (id, used) => {
     const rid = resolveStockId(id, stockById);
     before[rid] = roundQty((before[rid] || 0) + num(used));
   };
-  Object.entries(originalOrder?.stockDeduction?.applied || {}).forEach(([id, used]) => add(id, used));
-  (Array.isArray(originalOrder?.stockBackfill) ? originalOrder.stockBackfill : []).forEach((entry) => {
-    (entry?.lines || []).forEach((line) => Object.entries(line?.applied || {}).forEach(([id, used]) => add(id, used)));
-  });
+  const recorded = originalOrder?.stockDeduction?.applied
+    || planOrderDeduction(originalOrder, stockById, { milkSwap: swap }).applied;
+  Object.entries(recorded).forEach(([id, used]) => add(id, used));
   const cut = {};
   new Set([...Object.keys(before), ...Object.keys(plan.applied)]).forEach((id) => {
     const d = roundQty((plan.applied[id] || 0) - (before[id] || 0));

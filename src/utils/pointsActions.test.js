@@ -125,7 +125,6 @@ describe('runDeleteOrderTransaction · คืนสต็อก', () => {
   it('คืนทั้งที่ตัดตอนเสร็จ และที่ตัดย้อนหลัง (stockBackfill)', async () => {
     store.set(`${base}/stock/milk`, { quantity: 700 });
     store.set(`${base}/stock/bean2`, { quantity: 940 });
-    store.set(`${base}/orders/o1`, { status: 'completed' });
     const order = {
       id: 'o1', status: 'completed', stockDeducted: true, pointsEarned: 0,
       items: [{ name: 'ลาเต้', quantity: 2, stockLinks: [{ stockId: 'milk', usage: 150 }, { stockId: 'gone', usage: 20 }] }],
@@ -135,10 +134,38 @@ describe('runDeleteOrderTransaction · คืนสต็อก', () => {
         { at: 'b', lines: [{ itemKey: '0', applied: { bean2: 20 } }] },
       ],
     };
+    store.set(`${base}/orders/o1`, structuredClone(order));
     const stockList = [{ id: 'milk' }, { id: 'bean2' }];
     await runDeleteOrderTransaction({}, 'app', order, stockList, '');
     expect(store.get(`${base}/stock/milk`).quantity).toBe(1000);
     expect(store.get(`${base}/stock/bean2`).quantity).toBe(1000);
     expect(store.has(`${base}/orders/o1`)).toBe(false);
+  });
+});
+
+describe('runDeleteOrderTransaction · บิลสด + คืนแต้มที่แลก', () => {
+  const base = 'artifacts/app/public/data';
+  it('กดซ้ำ (บิลถูกลบไปแล้ว) = ไม่คืนสต็อกซ้ำ', async () => {
+    store.set(`${base}/stock/milk`, { quantity: 700 });
+    const order = { id: 'o2', status: 'completed', stockDeducted: true, pointsEarned: 0, stockDeduction: { applied: { milk: 300 } } };
+    store.set(`${base}/orders/o2`, structuredClone(order));
+    await runDeleteOrderTransaction({}, 'app', order, [{ id: 'milk' }], '');
+    await runDeleteOrderTransaction({}, 'app', order, [{ id: 'milk' }], '');
+    expect(store.get(`${base}/stock/milk`).quantity).toBe(1000);
+  });
+
+  it('ใช้ข้อมูลบิลล่าสุด · เครื่องนี้ยังเห็นว่าไม่ตัด แต่จริงตัดแล้ว = คืน', async () => {
+    store.set(`${base}/stock/milk`, { quantity: 700 });
+    store.set(`${base}/orders/o3`, { status: 'completed', stockDeducted: true, stockDeduction: { applied: { milk: 300 } }, pointsEarned: 0 });
+    await runDeleteOrderTransaction({}, 'app', { id: 'o3', status: 'pending' }, [{ id: 'milk' }], '');
+    expect(store.get(`${base}/stock/milk`).quantity).toBe(1000);
+  });
+
+  it('คืนแต้มที่แลก และหักแต้มที่ได้ ในคนเดียวกัน', async () => {
+    store.set(`${base}/members/081`, { points: 100, pendingPoints: 0 });
+    const order = { id: 'o4', status: 'completed', pointsEarned: 5, pointsRedeemed: true, pointsRedeemId: '081', pointsRedeemAmount: 50 };
+    store.set(`${base}/orders/o4`, structuredClone(order));
+    await runDeleteOrderTransaction({}, 'app', order, [], '081');
+    expect(store.get(`${base}/members/081`).points).toBe(145);
   });
 });

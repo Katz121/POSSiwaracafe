@@ -217,3 +217,13 @@ describe('หน่วยซื้อ (packs)', () => {
     expect(inPacks({ unit: 'กรัม' }, 10)).toBeNull();
   });
 });
+
+describe('หน่วยนับเป็นชิ้น', () => {
+  it('ลูก/ใบ/ฟอง = ชิ้น · กรัม ไม่ใช่', () => {
+    expect(unitFactor('ลูก', 'ชิ้น')).toBe(1);
+    expect(unitFactor('ใบ', 'ชิ้น')).toBe(1);
+    expect(unitFactor('ชิ้น', 'ฟอง')).toBe(1);
+    expect(unitFactor('ลูก', 'กรัม')).toBeNull();
+    expect(planStockIntake({ quantity: 22, unit: 'ลูก', amount: 110 }, { id: 'l', unit: 'ชิ้น', quantity: 0, unitCost: 0 }).inQty).toBe(22);
+  });
+});

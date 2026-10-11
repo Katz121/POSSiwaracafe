@@ -40,12 +40,17 @@ export function normalizeUnit(u) {
   return map[lower] || trimmed;
 }
 
+const PIECE_LIKE = new Set(['ชิ้น', 'ลูก', 'ใบ', 'ฟอง', 'แผ่น', 'ตัว', 'ผล']);
+
 // หาตัวคูณเพื่อแปลงหน่วยจาก fromUnit ไปยัง toUnit
 export function unitFactor(fromUnit, toUnit) {
   const from = normalizeUnit(fromUnit);
   const to = normalizeUnit(toUnit);
   
   if (from === to) return 1;
+  // นับเป็นชิ้นเหมือนกัน · "มะนาว 22 ลูก" กับสต็อกหน่วย ชิ้น เคยแปลงไม่ได้ ของไม่เข้าสต็อก
+  // (ไม่ใส่ใน normalizeUnit เพราะหน้าแก้หน่วยสะกดผิดจะเสนอเปลี่ยน ลูก → ชิ้น ทั้งร้าน)
+  if (PIECE_LIKE.has(from) && PIECE_LIKE.has(to)) return 1;
   if (from === 'กิโลกรัม' && to === 'กรัม') return 1000;
   if (from === 'กรัม' && to === 'กิโลกรัม') return 0.001;
   if (from === 'ลิตร' && to === 'มล.') return 1000;

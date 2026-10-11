@@ -103,6 +103,7 @@ export const stockItemForm = (item) => ({
   name: item.name || '',
   category: getStockCategory(item),
   quantity: item.quantity || 0,
+  quantityAtOpen: item.quantity || 0, // ไม่ได้แก้ช่องคงเหลือ = ไม่เขียนทับ (ระหว่างเปิดฟอร์มอาจมีขาย)
   unit: item.unit || DEFAULT_STOCK_UNIT,
   minQuantity: item.minQuantity || DEFAULT_MIN_QUANTITY,
   unitCost: item.unitCost || 0,

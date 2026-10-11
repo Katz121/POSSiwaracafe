@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Package, PackagePlus, PackageMinus, Pencil, Plus, Trash2, SearchX, CookingPot, Combine, SpellCheck, Archive, ArchiveRestore, Scale } from 'lucide-react';
-import { collection, doc, updateDoc, addDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, doc, updateDoc, addDoc, deleteDoc, serverTimestamp, writeBatch, increment } from 'firebase/firestore';
 import { db, appId } from '../../services/firebase';
 import { useDataContext, useUIContext } from '../../context/AppContext';
 import { useNavigate, useRouteParams } from '../../navigation';
@@ -145,12 +145,13 @@ export default function StockView() {
   // ปรับยอดที่ไม่มีบันทึกอื่นรองรับ → เก็บ stockMoves ไว้ให้หน้าประวัติ (utils/stockHistory.js)
   const moveRef = () => doc(collection(db, 'artifacts', appId, 'public', 'data', 'stockMoves'));
   const moveBy = () => staffLabel(auth.currentUser?.email);
+  // increment ไม่ใช่ค่าตายตัว · ไม่ทับยอดที่อีกเครื่องเพิ่งตัดระหว่างนี้
   const updateStockQuantity = async (item, delta) => {
     const before = Number(item.quantity) || 0;
     const after = Math.max(0, before + delta);
     await runDbAction(async () => {
       const batch = writeBatch(db);
-      batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', item.id), { quantity: after });
+      batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', item.id), { quantity: increment(after - before) });
       if (after !== before) batch.set(moveRef(), buildStockMove({ item, before, after, reason: 'stepper', by: moveBy() }));
       await batch.commit();
     }, 'อัปเดตสต็อกไม่สำเร็จ');
@@ -158,14 +159,17 @@ export default function StockView() {
 
   const saveStockItem = async (form, editingItem) => {
     const col = collection(db, 'artifacts', appId, 'public', 'data', 'stock');
-    const data = { ...form, quantity: Number(form.quantity), minQuantity: Number(form.minQuantity), unitCost: Number(form.unitCost) || 0, packs: normalizePacks(form.packs) };
+    const { quantityAtOpen, ...fields } = form;
+    const data = { ...fields, quantity: Number(form.quantity), minQuantity: Number(form.minQuantity), unitCost: Number(form.unitCost) || 0, packs: normalizePacks(form.packs) };
+    const qtyEdited = !editingItem || Number(form.quantity) !== Number(quantityAtOpen);
+    if (!qtyEdited) delete data.quantity;
     setBusy(true);
     const ok = await runDbAction(async () => {
       if (!editingItem) { await addDoc(col, data); return; }
       const batch = writeBatch(db);
       batch.update(doc(col, editingItem.id), data);
       const before = Number(editingItem.quantity) || 0;
-      if (data.quantity !== before) batch.set(moveRef(), buildStockMove({ item: editingItem, before, after: data.quantity, reason: 'edit', by: moveBy() }));
+      if (qtyEdited && data.quantity !== before) batch.set(moveRef(), buildStockMove({ item: editingItem, before, after: data.quantity, reason: 'edit', by: moveBy() }));
       await batch.commit();
     }, 'บันทึกสต็อกไม่สำเร็จ');
     setBusy(false);
@@ -189,8 +193,8 @@ export default function StockView() {
       const before = Number(item.quantity) || 0;
       const after = Math.max(0, before - amount);
       const batch = writeBatch(db);
-      // 1. Update stock quantity
-      batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', item.id), { quantity: after });
+      // 1. Update stock quantity (increment · ไม่ทับยอดที่อีกเครื่องเพิ่งตัด)
+      batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', item.id), { quantity: increment(after - before) });
       // 2. Record as expense if it's waste (stockId → หน้าประวัติจับคู่ได้ตรงตัว) · ปรับยอดให้ตรง → stockMoves
       if (input.reason === 'waste') {
         const costPerUnit = Number(item.unitCost) || 0;

@@ -527,8 +527,6 @@ export default function PosView() {
               editedAt: new Date().toISOString(),
               editedBy: auth.currentUser?.email || '',
             };
-            // applied ใหม่รวมที่เคยตัดย้อนหลังแล้ว · ล้างไม่ให้ประวัติ/หน้าตรวจนับซ้ำ
-            if (Array.isArray(freshOrder.stockBackfill) && freshOrder.stockBackfill.length) editData.stockBackfill = [];
           }
           const oldMemberDocId = originalOrder?.memberPhone 
             ? (members.find(m => m.phone === originalOrder.memberPhone)?.id || originalOrder.memberPhone) 

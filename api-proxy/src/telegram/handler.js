@@ -4,6 +4,7 @@ import { MANUAL_FORMATS, parseManualExpenses, parseEdit, parseCallback, inferExp
 import { extractExpenseFromImage } from './ocr.js';
 import { PENDING_KEY, validPending, newPending, resolveLines, preview, confirmBatch } from './flow.js';
 import { EXPENSE_CATEGORIES } from '../../../src/config/constants.js';
+import { activeStock } from '../../../src/utils/stockMerge.js';
 
 export function constantTimeEqual(a, b) {
   const x = new TextEncoder().encode(a || ''), y = new TextEncoder().encode(b || '');
@@ -32,7 +33,7 @@ export async function handleTelegramExpenseStatus(request, env, headers, injecte
 }
 const help = () => `🤖 <b>คำสั่งผู้ช่วยร้าน</b>\n\n${MANUAL_FORMATS}\nส่งรูปใบเสร็จเพื่ออ่านและรอยืนยัน\nแก้ไข ลำดับ ชื่อ จำนวน หน่วย ยอด [บาท]\n\n/ยอดวันนี้\n/เช็คสต็อก [คำค้น]\n/เช็คเมล็ดกาแฟ\n/ยกเลิก`;
 export async function listTelegramStock(db, query = '') {
-  const items = await db.listAll('stock');
+  const items = activeStock(await db.listAll('stock'));
   const q = query.toLocaleLowerCase();
   const filtered = items.filter(item => !q || String(item.name || '').toLocaleLowerCase().includes(q) || String(item.category || '').toLocaleLowerCase().includes(q) || (q.includes('เมล็ดกาแฟ') && inferExpenseCategory(item.name) === 'เมล็ดกาแฟ'));
   const low = query ? filtered : filtered.filter(item => Number(item.quantity) <= Number(item.minQuantity));
@@ -73,7 +74,8 @@ export async function handleTelegramExpense(request, env, injected) {
     const stored = await deps.kv.get(key, 'json');
     let pending = validPending(stored) ? stored : null;
     const show = async () => {
-      resolveLines(pending, await db.listAll('stock'));
+      // ตัวที่เลิกใช้/ถูกรวมไม่ให้ของเข้า (เหมือนแอปที่ใช้ activeStock)
+      resolveLines(pending, activeStock(await db.listAll('stock')));
       const view = preview(pending, deps.now());
       await deps.kv.put(key, JSON.stringify(pending), { expirationTtl: 3600 });
       await reply(view.text, view.keyboard);
