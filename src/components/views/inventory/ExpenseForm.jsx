@@ -2,7 +2,7 @@ import { useId, useState } from 'react';
 import { PackageCheck } from 'lucide-react';
 import { EXPENSE_CATEGORIES } from '../../../config/constants';
 import { isInventoryCategory } from '../../../utils/stockIntake';
-import { applyExpenseTitle, displayTotal, displayUnitCost, rankTitleSuggestions } from './expenseModel';
+import { applyExpenseTitle, displayTotal, displayUnitCost, rankTitleSuggestions, resolveStockIntake, toExpenseLine } from './expenseModel';
 
 const FIELD = 'w-full min-h-12 rounded-[var(--radius-sm)] border bg-[var(--bg-surface)] px-4 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] focus-visible:shadow-[var(--focus-ring)] [&:read-only:not(select)]:bg-[var(--bg-sunken)] [&:read-only:not(select)]:text-[var(--text-secondary)]';
 const LABEL = 'mb-1.5 block text-sm font-medium text-[var(--text-secondary)]';
@@ -64,11 +64,13 @@ export default function ExpenseForm({
   };
   const computedTotal = Number(value.quantity) * Number(value.pricePerUnit) || 0;
   const described = (field, id) => (errors[field] ? `${id}-msg` : undefined);
+  // ซื้อวัตถุดิบที่ชื่อไม่ตรงของในสต็อก = บันทึกแล้วสร้างวัตถุดิบใหม่ · บอกก่อน กันพิมพ์ชื่อของที่ลบไปแล้ว
+  const willCreate = inventory && !intake && String(value.title || '').trim() !== '' && resolveStockIntake(toExpenseLine(value), stock).newStock;
 
   return (
     <form id={formId} onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {!intake && (
-        <Field id={ids.title} label="ชื่อรายจ่าย" error={errors.title} hint={inventory && suggestions.length > 0 ? 'เลือกชื่อจากรายการแนะนำ ชื่อวัตถุดิบจะตรงกับคลัง' : undefined}>
+        <Field id={ids.title} label="ชื่อรายจ่าย" error={errors.title} hint={willCreate ? <span className="text-[var(--state-warn)]">ไม่มี "{String(value.title).trim()}" ในสต็อก · บันทึกแล้วจะสร้างวัตถุดิบใหม่ ถ้าเป็นของเดิมให้เลือกชื่อจากรายการแนะนำ</span> : (inventory && suggestions.length > 0 ? 'เลือกชื่อจากรายการแนะนำ ชื่อวัตถุดิบจะตรงกับคลัง' : undefined)}>
           <div className="relative">
             <input
               id={ids.title}

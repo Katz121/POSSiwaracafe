@@ -103,3 +103,15 @@ describe('expense / intake form', () => {
     expect(rankTitleSuggestions(['ครีมนมสด', 'นมสด', 'นมข้น'], 'นม')).toEqual(['นมข้น', 'นมสด', 'ครีมนมสด']);
   });
 });
+
+describe('title suggestions skip deleted stock', () => {
+  it('ไม่แนะนำชื่อซื้อวัตถุดิบเก่าที่ไม่มีในสต็อกแล้ว', () => {
+    const list = buildTitleSuggestions([{ name: 'นมสดโฟร์โมสต์' }], [
+      { title: 'นมสด Meiji', category: 'นมและผลิตภัณฑ์นม' },
+      { title: 'นมสดโฟร์โมสต์', category: 'วัตถุดิบ' },
+      { title: 'ค่าไฟ', category: 'ค่าไฟ' },
+      { title: 'ของเสีย: นมสด (x1 มล.)', category: 'ของเสีย (Waste)' },
+    ]);
+    expect(list).toEqual(['ค่าไฟ', 'นมสดโฟร์โมสต์']);
+  });
+});

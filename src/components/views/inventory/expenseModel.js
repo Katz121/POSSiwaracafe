@@ -1,6 +1,6 @@
 // Pure half of the expense/intake form (no Firestore), moved unchanged from
 // ExpensesView so the Stock intake sheet and the Expenses form share it.
-import { getStockCategory } from '../../../config/constants';
+import { getStockCategory, NON_CASH_EXPENSE_CATEGORIES } from '../../../config/constants';
 import {
   isInventoryCategory, findAliasMatch, findStockCandidates, planStockIntake, normalizeName, normalizePacks, roundUnitCost,
 } from '../../../utils/stockIntake';
@@ -111,7 +111,14 @@ export function buildTitleSuggestions(stock = [], expenses = []) {
     suggestions.push(title);
   };
   stock.forEach((item) => addSuggestion(item.name));
-  expenses.forEach((expense) => addSuggestion(expense.title));
+  // ชื่อซื้อวัตถุดิบเก่าที่ไม่มีในสต็อกแล้ว (ลบ/เลิกใช้) ไม่แนะนำ · เลือกแล้วบันทึกจะสร้างวัตถุดิบตัวใหม่ซ้ำ
+  // (นมสด Meiji · 2026-10-11) · ของเสีย/พนักงานกิน เป็นชื่อที่ระบบตั้งเอง ไม่ใช่ชื่อที่คนพิมพ์
+  const live = new Set(stock.map((item) => normalizeName(item.name)));
+  expenses.forEach((expense) => {
+    if (NON_CASH_EXPENSE_CATEGORIES.includes(expense.category)) return;
+    if (isInventoryCategory(expense.category) && !live.has(normalizeName(expense.title))) return;
+    addSuggestion(expense.title);
+  });
   return suggestions.sort((a, b) => a.localeCompare(b, 'th'));
 }
 
