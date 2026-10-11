@@ -134,8 +134,22 @@ service cloud.firestore {
       // แต่ **อ่านบิลคนอื่นไม่ได้** เพราะบิลมีชื่อและเบอร์โทรลูกค้าอยู่
       // และแก้หรือลบบิลไม่ได้เลย ไม่งั้นตรวจตอนสร้างไปก็ไร้ความหมาย
       match /orders/{id} {
-        allow create: if signedIn()
+        // พนักงาน (POS) สร้างบิลได้ตามปกติ
+        allow create: if isStaff();
+        // ลูกค้า (ทางสำรองตอน Cloud Function ล่ม · services/checkoutFallback.js) สร้างได้เฉพาะ:
+        // id ของตัวเอง · ยังไม่จ่าย · ฟิลด์ที่ทางสำรองเขียนเท่านั้น (ห้าม stockDeducted / แลกแต้ม / แต้มที่ได้)
+        // เดิมรับทุกฟิลด์ · บิลปลอม "จ่ายแล้ว" หรือ "ใช้ 9,999 แต้ม" สร้างได้
+        allow create: if signedIn() && !isStaff()
+                      && id.matches('qr_' + request.auth.uid + '_.*')
+                      && request.resource.data.keys().hasOnly([
+                           'queueNumber', 'items', 'subtotal', 'discount', 'vat', 'total', 'vatIncluded',
+                           'isPaid', 'memberPhone', 'memberNickname', 'customerName', 'status',
+                           'promotionTitle', 'promotionDiscountPercent', 'bringOwnGlass', 'createdAt',
+                           'date', 'time', 'table', 'source', 'checkoutRequestId', 'trustedCheckout'])
                       && request.resource.data.status == 'pending'
+                      && request.resource.data.isPaid == false
+                      && request.resource.data.source == 'qr'
+                      && request.resource.data.trustedCheckout == false
                       && request.resource.data.total is number
                       && request.resource.data.total >= 0
                       && request.resource.data.items is list;
