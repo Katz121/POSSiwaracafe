@@ -578,7 +578,7 @@ export default function PosView() {
           
           // Loyalty redemption for edit
           if (pointsRedeemActive && !wasRedeemed && redeemMemberId) {
-             const rEntry = { delta: -redeemAmount, reason: 'redeem', at: new Date().toISOString() };
+             const rEntry = { delta: -redeemAmount, reason: 'redeem', orderId: editingOrderId, at: new Date().toISOString() };
              if (auth.currentUser?.email) rEntry.by = auth.currentUser.email;
              transaction.set(doc(db, ...membersPath, redeemMemberId), {
                 points: increment(-redeemAmount),
@@ -628,7 +628,7 @@ export default function PosView() {
         }
         
         if (pointsRedeemActive && redeemMemberId) {
-          const rEntry = { delta: -redeemAmount, reason: 'redeem', at: new Date().toISOString() };
+          const rEntry = { delta: -redeemAmount, reason: 'redeem', orderId: orderRef.id, at: new Date().toISOString() };
           if (auth.currentUser?.email) rEntry.by = auth.currentUser.email;
           addMemberWrite(redeemMemberId, {
             points: increment(-redeemAmount),

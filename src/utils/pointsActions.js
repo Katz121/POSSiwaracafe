@@ -14,7 +14,7 @@ export function planEarnClawback({ points = 0, pendingPoints = 0 }, earned) {
 }
 
 // Delete a bill, restore its stock and take back the points it earned — one transaction.
-/** แต้มที่ลูกค้าใช้กับบิลนี้ · POS เก็บ pointsRedeem* · QR เก็บ redeemedReward.cost (ไปที่เบอร์ของบิล) */
+/** แต้มที่บิลอ้างว่าลูกค้าใช้ · POS เก็บ pointsRedeem* · QR เก็บ redeemedReward.cost (ไปที่เบอร์ของบิล) */
 export function redeemedPointsOf(order, memberDocId) {
   if (order?.pointsRedeemed && order.pointsRedeemId && Number(order.pointsRedeemAmount) > 0) {
     return { memberId: order.pointsRedeemId, amount: Number(order.pointsRedeemAmount) };
@@ -22,6 +22,19 @@ export function redeemedPointsOf(order, memberDocId) {
   const cost = Number(order?.redeemedReward?.cost) || 0;
   if (cost > 0 && memberDocId) return { memberId: memberDocId, amount: cost };
   return null;
+}
+
+/**
+ * คืนได้เมื่อประวัติแต้มของสมาชิก (เขียนโดย server/พนักงาน) มีรายการแลกของบิลนี้จริง
+ * ห้ามเชื่อตัวเลขในบิลอย่างเดียว · ลูกค้าสร้างบิลทางสำรองได้เอง ใส่ "ใช้ไป 9,999 แต้ม" แล้วรอร้านลบ = เสกแต้ม
+ * ยังไม่เคยคืน (redeem-refund ของบิลเดียวกัน) · บิล POS เก่าที่ประวัติไม่มีเลขบิล = ไม่คืนอัตโนมัติ
+ */
+export function verifiedRefund(claim, memberData, orderId) {
+  if (!claim || !memberData) return null;
+  const history = Array.isArray(memberData.pointsHistory) ? memberData.pointsHistory : [];
+  const redeemed = history.some((h) => h?.reason === 'redeem' && h.orderId === orderId && Number(h.delta) === -claim.amount);
+  const refunded = history.some((h) => h?.reason === 'redeem-refund' && h.orderId === orderId);
+  return redeemed && !refunded ? claim : null;
 }
 
 export async function runDeleteOrderTransaction(db, appId, staleOrder, stockList, memberDocId = staleOrder?.memberPhone, by = undefined) {
@@ -39,6 +52,13 @@ export async function runDeleteOrderTransaction(db, appId, staleOrder, stockList
     if (memberDocId && earned > 0) {
       memberRef = doc(db, 'artifacts', appId, 'public', 'data', 'members', memberDocId);
       memberSnap = await transaction.get(memberRef);
+    }
+    const claim = redeemedPointsOf(order, memberDocId);
+    let claimSnap = null;
+    if (claim) {
+      claimSnap = claim.memberId === memberDocId && memberSnap
+        ? memberSnap
+        : await transaction.get(doc(db, 'artifacts', appId, 'public', 'data', 'members', claim.memberId));
     }
 
     if (order?.stockDeducted) {
@@ -64,7 +84,7 @@ export async function runDeleteOrderTransaction(db, appId, staleOrder, stockList
     transaction.delete(orderRef);
 
     // คืนแต้มที่ลูกค้าใช้แลกกับบิลนี้ (เดิมไม่คืน ลูกค้าเสียแต้มฟรี) · คนเดียวกับคนได้แต้ม = รวมในการเขียนเดียว
-    const redeemed = redeemedPointsOf(order, memberDocId);
+    const redeemed = verifiedRefund(claim, claimSnap?.exists() ? claimSnap.data() : null, order.id);
     const at = new Date().toISOString();
     const refundEntry = redeemed ? { delta: redeemed.amount, reason: 'redeem-refund', orderId: order.id, at, ...(by ? { by } : {}) } : null;
     const refundHere = Boolean(redeemed && memberSnap?.exists() && redeemed.memberId === memberDocId);

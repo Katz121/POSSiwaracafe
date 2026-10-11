@@ -162,10 +162,18 @@ describe('runDeleteOrderTransaction · บิลสด + คืนแต้ม�
   });
 
   it('คืนแต้มที่แลก และหักแต้มที่ได้ ในคนเดียวกัน', async () => {
-    store.set(`${base}/members/081`, { points: 100, pendingPoints: 0 });
+    store.set(`${base}/members/081`, { points: 100, pendingPoints: 0, pointsHistory: [{ delta: -50, reason: 'redeem', orderId: 'o4' }] });
     const order = { id: 'o4', status: 'completed', pointsEarned: 5, pointsRedeemed: true, pointsRedeemId: '081', pointsRedeemAmount: 50 };
     store.set(`${base}/orders/o4`, structuredClone(order));
     await runDeleteOrderTransaction({}, 'app', order, [], '081');
     expect(store.get(`${base}/members/081`).points).toBe(145);
+  });
+
+  it('บิลปลอมที่อ้างว่าแลกแต้ม แต่ประวัติไม่มีรายการแลกของบิลนี้ = ไม่คืน', async () => {
+    store.set(`${base}/members/099`, { points: 10, pendingPoints: 0, pointsHistory: [{ delta: -50, reason: 'redeem', orderId: 'other' }] });
+    const order = { id: 'qr_x_1', status: 'pending', pointsEarned: 1, pointsRedeemed: true, pointsRedeemId: '099', pointsRedeemAmount: 9999 };
+    store.set(`${base}/orders/qr_x_1`, structuredClone(order));
+    await runDeleteOrderTransaction({}, 'app', order, [], '099');
+    expect(store.get(`${base}/members/099`).points).toBe(9);
   });
 });
