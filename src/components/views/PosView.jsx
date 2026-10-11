@@ -34,6 +34,7 @@ import {
   needsOptionSheet, buildPlainLine, buildOptionLine, addPlainLine, addOptionLine, toOrderItems, repeatLines,
 } from './pos/posCart';
 import { planStaffMeal } from '../../utils/staffMeal';
+import { planEditDeduction } from '../../utils/stockAudit';
 import StaffMealSheet from './pos/StaffMealSheet';
 
 const DENSITY_KEY = 'pos-menu-density';
@@ -508,6 +509,19 @@ export default function PosView() {
         if (originalOrder?.status) editData.status = originalOrder.status;
         if (originalOrder?.createdAt) editData.createdAt = originalOrder.createdAt;
         if (originalOrder?.date) editData.date = originalOrder.date;
+        // บิลที่ตัดสต็อกไปแล้ว: ตัดเพิ่ม/คืนเฉพาะส่วนต่างของรายการที่แก้ · บันทึกใหม่แทนของเดิมให้หน้าตรวจเทียบตรง
+        const editStock = originalOrder?.stockDeducted ? planEditDeduction(originalOrder, orderData.items, stockById, milkSwap) : null;
+        if (editStock) {
+          editData.stockDeduction = {
+            ...originalOrder.stockDeduction,
+            applied: editStock.applied,
+            skipped: editStock.skipped,
+            unlinked: editStock.unlinked,
+            milkSwapApplied: editStock.milkSwapApplied,
+            editedAt: new Date().toISOString(),
+            editedBy: auth.currentUser?.email || '',
+          };
+        }
         
         await runTransaction(db, async transaction => {
           const oldMemberDocId = originalOrder?.memberPhone 
@@ -588,6 +602,9 @@ export default function PosView() {
           // Name/phone/lastOrderAt (and createdAt for a brand-new member) for the bill's member.
           Object.entries(memberWrites).forEach(([id, data]) => {
             transaction.set(doc(db, ...membersPath, id), data, { merge: true });
+          });
+          Object.entries(editStock?.cut || {}).forEach(([stockId, used]) => {
+            transaction.update(doc(db, 'artifacts', appId, 'public', 'data', 'stock', stockId), { quantity: increment(-used) });
           });
           transaction.update(doc(db, 'artifacts', appId, 'public', 'data', 'orders', editingOrderId), editData);
         });

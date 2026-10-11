@@ -168,6 +168,28 @@ export function planOrderDeduction(order, stockById, options = {}) {
   return { applied, skipped, unlinked };
 }
 
+/**
+ * แก้บิลที่ตัดสต็อกไปแล้ว (เพิ่ม/ลด/เปลี่ยนรายการ) · คิดสูตรใหม่ของทั้งบิลแล้วเทียบกับที่ตัดไว้
+ * `cut[stockId]` > 0 = ตัดเพิ่ม · < 0 = คืนเข้าสต็อก · `applied` = บันทึกใหม่ของบิล
+ * เดิมแก้บิลแล้วไม่ปรับสต็อกเลย ของที่เพิ่มหลังตัดไม่ถูกตัด (บิลคิว 26/31 · 2026-10-11)
+ * ใช้นมโอ๊ตแทนตามบันทึกเดิมของบิล (milkSwapApplied) ให้ตรงกับหน้าตรวจ
+ */
+export function planEditDeduction(originalOrder, newItems, stockById, milkSwap) {
+  const swap = originalOrder?.stockDeduction?.milkSwapApplied ? milkSwap : null;
+  const plan = planOrderDeduction({ items: newItems }, stockById, { milkSwap: swap });
+  const before = {};
+  Object.entries(originalOrder?.stockDeduction?.applied || {}).forEach(([id, used]) => {
+    const rid = resolveStockId(id, stockById);
+    before[rid] = roundQty((before[rid] || 0) + num(used));
+  });
+  const cut = {};
+  new Set([...Object.keys(before), ...Object.keys(plan.applied)]).forEach((id) => {
+    const d = roundQty((plan.applied[id] || 0) - (before[id] || 0));
+    if (d !== 0 && stockById.has(id)) cut[id] = d;
+  });
+  return { cut, applied: plan.applied, skipped: plan.skipped, unlinked: plan.unlinked, milkSwapApplied: Boolean(swap) };
+}
+
 /** ปุ่มแก้ของข้อที่ยังเปิดอยู่ · ลิงก์เสียในตัวเลือก → ไปแก้ตัวเลือก · เมนูถูกลบ → ไปตรวจนับ */
 function fixTarget(recipe, menuId) {
   if (!recipe?.menu) return { kind: 'count' };
