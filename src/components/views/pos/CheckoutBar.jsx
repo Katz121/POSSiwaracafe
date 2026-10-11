@@ -32,11 +32,12 @@ const CheckoutActions = memo(function CheckoutActions({ disabled, editing, isPai
   }
   return (
     <>
-      <div className="grid grid-cols-[1fr_1.5fr] gap-2">
-        <Button variant="secondary" size="xl" className="whitespace-nowrap px-3" disabled={disabled} onClick={() => onCheckout(false)} data-checkout="unpaid">
+      {/* minmax(0,…) ให้ปุ่มหดตามคอลัมน์ตะกร้า · iPad แนวตั้ง 834 ตะกร้าแคบ ปุ่ม nowrap เคยดันล้นขวา */}
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-2">
+        <Button variant="secondary" size="xl" className="min-w-0 whitespace-nowrap px-2" disabled={disabled} onClick={() => onCheckout(false)} data-checkout="unpaid">
           {UNPAID_LABEL}
         </Button>
-        <Button variant="primary" size="xl" className="whitespace-nowrap px-3" disabled={disabled} onClick={() => onCheckout(true)} data-checkout="paid">
+        <Button variant="primary" size="xl" className="min-w-0 whitespace-nowrap px-2" disabled={disabled} onClick={() => onCheckout(true)} data-checkout="paid">
           {PAID_LABEL}
         </Button>
       </div>

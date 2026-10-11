@@ -95,7 +95,7 @@ export default function MerchantView() {
             onUpdate={updateStatus}
             onCancel={handleCancel}
             onEdit={handleEdit}
-            className="flex-1 min-w-[min(100%,300px)]"
+            className="flex-1 min-w-[min(100%,220px)]"
           />
         ))}
       </div>

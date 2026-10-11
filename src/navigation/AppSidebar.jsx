@@ -44,7 +44,7 @@ function RailItem({ item, active, badge, onNavigate }) {
       }`}
     >
       <Icon size={20} strokeWidth={active ? 2.3 : 1.9} />
-      <span className={`text-[11px] leading-[14px] max-w-full truncate ${active ? 'font-semibold' : ''}`}>{item.short}</span>
+      <span className={`text-xs leading-[15px] max-w-full truncate ${active ? 'font-semibold' : ''}`}>{item.short}</span>
       {badge > 0 && <NavBadge navKey={item.key} count={badge} className="absolute top-0.5 right-0.5" />}
     </button>
   );
@@ -188,7 +188,7 @@ export default function AppSidebar({
             className="relative w-14 flex flex-col items-center justify-center gap-0.5 min-h-14 py-1.5 rounded-[var(--radius-sm)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] outline-none focus-visible:shadow-[var(--focus-ring)]"
           >
             <Menu size={20} strokeWidth={1.9} />
-            <span className="text-[11px] leading-[14px]">ทั้งหมด</span>
+            <span className="text-xs leading-[15px]">ทั้งหมด</span>
             {hiddenBadgeTotal > 0 && <span className="absolute top-1.5 right-2.5 w-2.5 h-2.5 rounded-full bg-[var(--state-danger)] ring-2 ring-[var(--bg-surface)]" aria-hidden="true" />}
           </button>
         </nav>

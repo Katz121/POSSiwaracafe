@@ -261,6 +261,11 @@ html.dark {
 /* ============================================================
    SCROLLBAR UTILITIES
    ============================================================ */
+/* แถบเลื่อนแนวนอนที่ซ่อน scrollbar · เงาจางขอบขวาบอกว่ายังมีต่อ (iPad แนวตั้ง แถบหมวดถูกตัดเหมือนจบ) */
+.scroll-fade-x {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
+}
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;

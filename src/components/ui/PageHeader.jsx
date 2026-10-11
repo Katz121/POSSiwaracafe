@@ -9,7 +9,7 @@ import { ChevronLeft } from 'lucide-react';
  *  subtitle?  string | node (muted, one line on phone)
  *  icon?      lucide component or element · shown in a soft accent tile
  *  back?      { label, onClick }
- *  actions?   node · right-aligned; wraps to a second row under 768px
+ *  actions?   node · right-aligned; wraps to a second row under 1024px (iPad แนวตั้ง ชื่อหน้าไม่ถูกบีบจนตัด)
  *  meta?      node · small row under the title (badges, "อัปเดต 10:32")
  *  sticky     default true · sticks to the top of the scrolling view
  *  className
@@ -63,7 +63,7 @@ export default function PageHeader({
           </div>
         </div>
         {actions && (
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:justify-end">
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto lg:justify-end">
             {actions}
           </div>
         )}

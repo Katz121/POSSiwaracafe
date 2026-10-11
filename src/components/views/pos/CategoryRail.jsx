@@ -34,7 +34,7 @@ function CategoryRail({ categories, active, onSelect, vertical = false }) {
     );
   }
   return (
-    <nav aria-label="หมวดหมู่เมนู" className="flex gap-2 overflow-x-auto scrollbar-hide px-4 py-2 shrink-0">
+    <nav aria-label="หมวดหมู่เมนู" className="flex gap-2 overflow-x-auto scrollbar-hide px-4 py-2 shrink-0 scroll-fade-x">
       {categories.map((cat) => {
         const on = cat === active;
         return (

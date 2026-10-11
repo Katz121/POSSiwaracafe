@@ -49,6 +49,8 @@ export default function StockView() {
   const navigate = useNavigate();
   const toast = useToast();
   const wide = useMediaQuery('(min-width: 768px)');
+  // iPad แนวตั้ง (768–1023) ตารางเต็มล้นขวา · ซ่อน ขั้นต่ำ/ต้นทุน (ดูในหน้ารายละเอียด)
+  const roomy = useMediaQuery('(min-width: 1024px)');
 
   // ── filters · `#/stock?filter=low` pre-selects, and the URL follows the chips
   const paramFilter = normalizeFilterWithCount(params.filter, normalizeStockFilter);
@@ -328,8 +330,8 @@ export default function StockView() {
         </span>
       ),
     },
-    { key: 'min', header: 'ขั้นต่ำ', numeric: true, width: 84, render: (_, r) => <span className="text-[var(--text-secondary)]">{qty(reorderPoint(r))}</span> },
-    { key: 'unitCost', header: 'ต้นทุน/หน่วย', numeric: true, width: 112, render: (v) => <UnitCost value={v || 0} muted={!Number(v)} /> },
+    ...(roomy ? [{ key: 'min', header: 'ขั้นต่ำ', numeric: true, width: 84, render: (_, r) => <span className="text-[var(--text-secondary)]">{qty(reorderPoint(r))}</span> },
+    { key: 'unitCost', header: 'ต้นทุน/หน่วย', numeric: true, width: 112, render: (v) => <UnitCost value={v || 0} muted={!Number(v)} /> }] : []),
     {
       key: 'actions',
       header: <span className="sr-only">ปรับจำนวนและตัวเลือก</span>,
