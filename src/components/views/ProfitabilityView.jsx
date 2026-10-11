@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { ComposedChart, ResponsiveContainer, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar, Line } from 'recharts';
-import { computeDailySeries, computeModifierCoverage, orderDay, computeMonthlySeries, computeItemPerformance, classifyMenuEngineering, computeHeadlineKpis, SEGMENT_LABELS, orderMonth } from '../../utils/menuInsights';
+import { computeDailySeries, computeModifierCoverage, computeMonthlySeries, computeItemPerformance, classifyMenuEngineering, computeHeadlineKpis, SEGMENT_LABELS } from '../../utils/menuInsights';
 import { AlertCircle, Target, Package, Receipt, TrendingUp } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
-import { getISODate, getOrderDate } from '../../utils/calculations';
+import { getISODate, getOrderDate, isDateInRange } from '../../utils/calculations';
 import { computeProfitability } from '../../utils/profitability';
 import { formatBaht, formatNumber, formatPercent, formatThaiDate } from '../../utils/format';
 import { INVENTORY_CATEGORIES } from '../../config/constants';
-import { Badge, Banner, Button, DataTable, DateStepper, PageHeader, SectionCard, SegmentedControl, StatCard } from '../ui';
+import { Badge, Banner, Button, DataTable, PageHeader, SectionCard, SegmentedControl, StatCard, Toolbar, useMediaQuery } from '../ui';
+import { PROFIT_PRESETS, profitRange, fullMonthOf, defaultChartMode, rangeDays, monthsBetween } from './profit/profitPeriod';
 
 // การซื้อเข้าคลังต้องไม่ถูกหักซ้ำกับต้นทุนที่ใช้ตอนขาย
 // ปัดเป็นบาทเต็มให้ตรงกับหน้าอื่นทั้งแอป · เศษสตางค์บนยอดเฉลี่ยต่อบิลไม่ได้ช่วย
@@ -98,32 +99,57 @@ const Table = ({ rows, columns, empty, caption }) => <DataTable
 />;
 
 const MODE_OPTIONS = [{ value: 'daily', label: 'รายวัน' }, { value: 'monthly', label: 'รายเดือน' }];
-const DAY_RANGES = [{ value: 7, label: '7 วัน' }, { value: 30, label: '30 วัน' }, { value: 90, label: '90 วัน' }];
-const MONTH_RANGES = [{ value: 6, label: '6 เดือน' }, { value: 12, label: '1 ปี' }, { value: null, label: 'ทั้งหมด' }];
+const dateInput = 'min-h-11 w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 text-sm text-[var(--text-primary)] outline-none focus-visible:shadow-[var(--focus-ring)] focus:border-[var(--accent)]';
+const periodText = (start, end) => {
+    if (!start && !end) return 'ทุกช่วงเวลา';
+    if (start === end) return formatThaiDate(start, { weekday: true });
+    return `${start ? formatThaiDate(start) : 'เริ่มต้น'} – ${end ? formatThaiDate(end) : 'ล่าสุด'}`;
+};
 const SPLIT_OPTIONS = [{ value: false, label: 'รวมทุกตัวเลือก' }, { value: true, label: 'แยกตามตัวเลือก' }];
 
 export default function ProfitabilityView() {
     const { orders, expenses, menu, stock, beanModifiers } = useAppContext();
-    const [currentMonth, setCurrentMonth] = useState(() => getISODate().slice(0, 7));
+    const phone = useMediaQuery('(max-width: 767px)');
+    // ช่วงเดียวป้อนทั้งหน้า · เดิมสรุปใช้เดือน ตัวเลือก (#) ใช้ทั้งหมด กราฟใช้ N วันย้อนหลัง
+    // เลยเทียบกันไม่ได้ว่าเมนูไหนผิดปกติในช่วงที่ดูอยู่
+    const [preset, setPreset] = useState('month');
+    const [range, setRange] = useState(() => profitRange('month'));
+    const [chartMode, setChartMode] = useState(null); // null = ตามความยาวช่วง
+    const choosePreset = next => {
+        setPreset(next);
+        setRange(current => profitRange(next, new Date(), current));
+        setChartMode(null);
+    };
+    const fixedMonth = fullMonthOf(range.start, range.end);
+    const rangeOrders = useMemo(
+        () => orders.filter(o => o.status === 'completed' && isDateInRange(getOrderDate(o), range.start, range.end)),
+        [orders, range.start, range.end],
+    );
+    const rangeExpenses = useMemo(
+        () => expenses.filter(e => isDateInRange(String(e.date || ''), range.start, range.end)),
+        [expenses, range.start, range.end],
+    );
     const profitability = useMemo(() => computeProfitability({
-        orders: orders.filter(o => o.status === 'completed' && String(getOrderDate(o)).startsWith(currentMonth)),
-        expenses: expenses.filter(e => String(e.date || '').startsWith(currentMonth)),
+        orders: rangeOrders,
+        expenses: rangeExpenses,
         menu,
         stock,
         inventoryCategories: INVENTORY_CATEGORIES,
-    }), [orders, expenses, menu, stock, currentMonth]);
+    }), [rangeOrders, rangeExpenses, menu, stock]);
 
-
-
-    const [mode, setMode] = useState('monthly');
-    const [daysBack, setDaysBack] = useState(30);
+    const mode = chartMode || defaultChartMode(range.start, range.end);
     const isDaily = mode === 'daily';
-    const [monthsBack, setMonthsBack] = useState(6);
     const [expanded, setExpanded] = useState({});
     // เริ่มแบบแยกเพื่อให้เห็นตัวเลือกที่มีราคาและต้นทุนต่างกันก่อนดูภาพรวมเมนู
     const [splitByModifier, setSplitByModifier] = useState(true);
-    const monthlySeries = useMemo(() => computeMonthlySeries({ orders, expenses, menu, stock, monthsBack, inventoryCategories: INVENTORY_CATEGORIES }), [orders, expenses, menu, stock, monthsBack]);
-    const dailySeries = useMemo(() => computeDailySeries({ orders, menu, stock, days: daysBack }), [orders, menu, stock, daysBack]);
+    const monthlySeries = useMemo(() => isDaily ? [] : computeMonthlySeries({
+        orders: rangeOrders, expenses: rangeExpenses, menu, stock, inventoryCategories: INVENTORY_CATEGORIES,
+        endMonth: range.end ? range.end.slice(0, 7) : null,
+        monthsBack: monthsBetween(range.start, range.end),
+    }), [isDaily, rangeOrders, rangeExpenses, menu, stock, range.start, range.end]);
+    const dailySeries = useMemo(() => isDaily ? computeDailySeries({
+        orders: rangeOrders, menu, stock, days: rangeDays(range.start, range.end), endDay: range.end || null,
+    }) : [], [isDaily, rangeOrders, menu, stock, range.start, range.end]);
     const series = isDaily ? dailySeries : monthlySeries;
     const periodKey = isDaily ? 'day' : 'month';
     const dailySummary = useMemo(() => {
@@ -135,21 +161,18 @@ export default function ProfitabilityView() {
             best: openDays.reduce((best, row) => !best || row.revenue > best.revenue ? row : best, null),
         };
     }, [dailySeries]);
-    // ใช้ประวัติทั้งหมดเพื่อไม่เรียกตัวเลือกที่เคยขายนอกช่วงว่าไม่เคยขาย
+    // ยอด/มาร์จิ้นของตัวเลือกตามช่วงที่เลือก · ส่วน "ยังไม่เคยขาย" กับ "ถูกลบแล้ว" ดูจากประวัติทั้งหมด
+    // ไม่งั้นตัวเลือกที่เคยขายนอกช่วงจะถูกเรียกว่าไม่เคยขาย
     // ต้องส่ง menu ไปด้วย ไม่งั้นต้นทุนของแก้วที่สูตรในบิลชี้สต็อกที่ถูกลบแล้ว
     // จะประมาณจากสูตรปัจจุบันไม่ได้ แล้วความครอบคลุมจะต่ำกว่าความจริง
-    const modifierCoverage = useMemo(() => computeModifierCoverage({
-        orders: orders.filter(order => order.status === 'completed'), beanModifiers, stock, menu,
-    }), [orders, beanModifiers, stock, menu]);
+    const allCompleted = useMemo(() => orders.filter(order => order.status === 'completed'), [orders]);
+    const modifierHistory = useMemo(() => computeModifierCoverage({ orders: allCompleted, beanModifiers, stock, menu }), [allCompleted, beanModifiers, stock, menu]);
+    const modifierCoverage = useMemo(() => computeModifierCoverage({ orders: rangeOrders, beanModifiers, stock, menu }), [rangeOrders, beanModifiers, stock, menu]);
     // รวมตัวเลือกที่ยังอยู่เพื่อเทียบกำไรได้ครบ ส่วนตัวเลือกที่ถูกลบยังแจ้งแยกตามเดิม
     const soldModifiers = useMemo(() => modifierCoverage.rows.filter(row => row.exists).sort((a, b) => b.revenue - a.revenue), [modifierCoverage]);
-    const unsoldUnlinked = modifierCoverage.neverSold.filter(row => !row.linked);
-    // ใช้ช่วงเดียวกัน · เพื่อไม่ให้จำนวนบิลกับกำไรอ้างถึงคนละช่วงเวลา
-    const rangeOrders = useMemo(() => {
-        const periods = new Set(series.map(row => row[periodKey]));
-        return orders.filter(order => order.status === 'completed' && periods.has(isDaily ? orderDay(order) : orderMonth(order)));
-    }, [orders, series, periodKey, isDaily]);
-    const rangeProfitability = useMemo(() => computeProfitability({ orders: rangeOrders, menu, stock, inventoryCategories: INVENTORY_CATEGORIES }), [rangeOrders, menu, stock]);
+    const unsoldUnlinked = modifierHistory.neverSold.filter(row => !row.linked);
+    // ช่วงเดียวกับสรุปด้านบน ใช้ผลเดียวกันได้เลย
+    const rangeProfitability = profitability;
     const items = useMemo(() => computeItemPerformance({ orders: rangeOrders, menu, stock, beanModifiers, splitByModifier }), [rangeOrders, menu, stock, beanModifiers, splitByModifier]);
     const kpis = useMemo(() => computeHeadlineKpis({ orders: rangeOrders, items, profitability: rangeProfitability, series }), [rangeOrders, items, rangeProfitability, series]);
     const engineering = useMemo(() => classifyMenuEngineering(items), [items]);
@@ -166,7 +189,7 @@ export default function ProfitabilityView() {
     const visibleGroups = useMemo(() => SEGMENTS.map(segment => ({ segment, all: groups[segment], visible: expanded[segment] ? groups[segment] : groups[segment].slice(0, 5) })), [groups, expanded]);
     const toggle = key => setExpanded(previous => ({ ...previous, [key]: !previous[key] }));
 
-    const monthLabel = formatThaiDate(currentMonth, { style: 'month' });
+    const periodLabel = periodText(range.start, range.end);
     const rangeLabel = series.length ? (isDaily
         ? `${shortDay(series[0][periodKey])} ถึง ${shortDay(series[series.length - 1][periodKey])}`
         : `${formatThaiDate(series[0][periodKey], { style: 'month' })} ถึง ${formatThaiDate(series[series.length - 1][periodKey], { style: 'month' })}`)
@@ -179,8 +202,27 @@ export default function ProfitabilityView() {
                 subtitle="ตัดต้นทุนวัตถุดิบตอนขาย ไม่ใช่ตอนซื้อ"
                 icon={Target}
                 sticky={false}
-                actions={<DateStepper mode="month" value={currentMonth} onChange={value => value && setCurrentMonth(value)} />}
             />
+            <Toolbar
+                filters={(
+                    <div className="max-w-full overflow-x-auto scrollbar-hide">
+                        <SegmentedControl ariaLabel="ช่วงเวลาของทั้งหน้า" options={PROFIT_PRESETS} value={preset} onChange={choosePreset} className={phone ? '[&>button]:px-2' : ''} />
+                    </div>
+                )}
+            >
+                {preset === 'custom' && (
+                    <div className="grid grid-cols-2 gap-2 max-w-md">
+                        <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                            ตั้งแต่
+                            <input type="date" value={range.start} max={range.end || getISODate()} onChange={e => setRange(r => ({ ...r, start: e.target.value }))} className={dateInput} />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                            ถึง
+                            <input type="date" value={range.end} min={range.start || undefined} onChange={e => setRange(r => ({ ...r, end: e.target.value }))} className={dateInput} />
+                        </label>
+                    </div>
+                )}
+            </Toolbar>
             <div className="flex-1 overflow-y-auto px-[var(--page-pad)] py-5 md:py-6 pb-24 md:pb-10">
                 <div className="max-w-[1400px] mx-auto flex flex-col gap-6">
                     {/* กำไรขั้นต้น · กำไรสุทธิ · จุดคุ้มทุน
@@ -188,7 +230,7 @@ export default function ProfitabilityView() {
                     <section aria-labelledby="pf-month" className="flex flex-col gap-3">
                         <div className="flex flex-wrap items-end justify-between gap-2">
                             <div>
-                                <h2 id="pf-month" className="text-[length:var(--fs-lg)] leading-[var(--lh-lg)] font-semibold">สรุปกำไรเดือน{monthLabel}</h2>
+                                <h2 id="pf-month" className="text-[length:var(--fs-lg)] leading-[var(--lh-lg)] font-semibold">สรุปกำไร · {periodLabel}</h2>
                                 <p className="text-sm text-[var(--text-muted)]">ห้ามเอาไปบวกลบกับตัวเลขเงินสดในหน้าภาพรวม</p>
                             </div>
                             {profitability.cogsCoverage < 100 && (
@@ -201,13 +243,17 @@ export default function ProfitabilityView() {
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                             <StatCard label="กำไรขั้นต้น" icon={TrendingUp} tone="ok" value={money(profitability.grossProfit)} hint={`มาร์จิ้น ${percent(profitability.grossMargin)}`} />
                             <StatCard label="ต้นทุนวัตถุดิบ" icon={Package} value={money(profitability.cogs)} hint={`ที่ใช้ไป · ${percent(profitability.cogsRatio)} ของยอดขาย`} />
-                            <StatCard
-                                label="กำไรสุทธิ"
-                                icon={Target}
-                                tone={profitability.netProfit >= 0 ? 'ok' : 'danger'}
-                                value={money(profitability.netProfit)}
-                                hint={`หลังหักค่าใช้จ่าย ${money(profitability.fixedCosts)}`}
-                            />
+                            {fixedMonth ? (
+                                <StatCard
+                                    label="กำไรสุทธิ"
+                                    icon={Target}
+                                    tone={profitability.netProfit >= 0 ? 'ok' : 'danger'}
+                                    value={money(profitability.netProfit)}
+                                    hint={`หลังหักค่าใช้จ่าย ${money(profitability.fixedCosts)}`}
+                                />
+                            ) : (
+                                <StatCard label="กำไรสุทธิ" icon={Target} value="–" hint="ดูได้เมื่อเลือกเดือนนี้/เดือนก่อน · ค่าเช่า เงินเดือนจ่ายเป็นก้อนรายเดือน" />
+                            )}
                             <StatCard label="กำไรขั้นต้นต่อแก้ว" icon={Receipt} value={money(profitability.contributionPerUnit)} hint={`ขายไป ${number(profitability.unitsSold)} หน่วย`} />
                             {profitability.staffMealCost > 0 && (
                                 <StatCard label="เจ้าของ/พนักงานกิน" icon={Package} value={money(profitability.staffMealCost)} hint="ราคาทุน · หักจากกำไรแล้ว · ไม่ใช่เงินสดจ่ายออก" />
@@ -215,19 +261,19 @@ export default function ProfitabilityView() {
                         </div>
 
                         {/* จุดคุ้มทุน · ตัวเลขที่ใช้ตัดสินใจได้จริงที่สุดจากทั้งหน้านี้ */}
-                        {profitability.breakEvenUnits === null ? (
+                        {!fixedMonth ? null : profitability.breakEvenUnits === null ? (
                             <Banner tone="danger" title="ยังคำนวณจุดคุ้มทุนไม่ได้">
                                 กำไรขั้นต้นต่อหน่วยไม่เป็นบวก แปลว่ายิ่งขายยิ่งขาดทุน ให้ตรวจราคาขายกับต้นทุนก่อน
                             </Banner>
                         ) : !profitability.hasFixedCosts ? (
-                            <Banner tone="warn" title="ยังไม่ได้บันทึกค่าใช้จ่ายคงที่ของเดือนนี้">
+                            <Banner tone="warn" title="ยังไม่ได้บันทึกค่าใช้จ่ายคงที่ของเดือนนั้น">
                                 (ค่าเช่า เงินเดือน ค่าไฟ) จุดคุ้มทุนเลยยังไม่มีความหมาย · บันทึกรายจ่ายพวกนี้เข้าระบบก่อน แล้วตัวเลขจะขึ้นเอง
                             </Banner>
                         ) : (
                             <SectionCard padding="md">
                                 <div className="flex items-baseline justify-between gap-x-4 gap-y-1 flex-wrap mb-3">
                                     <p className="font-semibold text-[var(--text-primary)]">
-                                        จุดคุ้มทุนเดือนนี้ · <span className="num">{number(profitability.breakEvenUnits)}</span> หน่วย
+                                        จุดคุ้มทุนของเดือน · <span className="num">{number(profitability.breakEvenUnits)}</span> หน่วย
                                         <span className="text-[var(--text-muted)] font-normal num"> ({money(profitability.breakEvenRevenue)})</span>
                                     </p>
                                     <p className={`text-sm font-semibold ${profitability.pastBreakEven ? 'text-[var(--state-ok)]' : 'text-[var(--state-warn)]'}`}>
@@ -246,14 +292,14 @@ export default function ProfitabilityView() {
                         )}
 
                         {/* อธิบายว่าทำไมกำไรกับเงินสดไม่เท่ากัน แทนที่จะให้วางงงเอง */}
-                        {Math.abs(profitability.inventoryMovement) > 100 && (
+                        {fixedMonth && Math.abs(profitability.inventoryMovement) > 100 && (
                             <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
                                 {profitability.inventoryMovement > 0
                                     ? `เดือนนี้ซื้อของเข้าคลังมากกว่าที่ใช้ไป ${money(profitability.inventoryMovement)} เงินสดเลยดูหายมากกว่ากำไรที่หายจริง ของก้อนนี้จะกลายเป็นยอดขายเดือนหน้า`
                                     : `เดือนนี้ใช้ของเก่าในคลังมากกว่าที่ซื้อเข้า ${money(Math.abs(profitability.inventoryMovement))} เงินสดเลยดูดีกว่ากำไรจริง เดือนหน้าถ้าต้องตุนของ เงินสดจะตกลง`}
                             </p>
                         )}
-                        <p className="text-sm text-[var(--text-muted)]">มาร์จิ้นในตารางด้านล่างคิดจากต้นทุนที่ผูกไว้ · เดือน{monthLabel} ครอบคลุมยอดขาย {percent(profitability.cogsCoverage)} · รายการที่มีป้ายเตือนคือตัวที่ต้นทุนยังไม่ครบ ตัวเลขจะสูงเกินจริง</p>
+                        <p className="text-sm text-[var(--text-muted)]">มาร์จิ้นในตารางด้านล่างคิดจากต้นทุนที่ผูกไว้ · ช่วงนี้ครอบคลุมยอดขาย {percent(profitability.cogsCoverage)} · รายการที่มีป้ายเตือนคือตัวที่ต้นทุนยังไม่ครบ ตัวเลขจะสูงเกินจริง</p>
                     </section>
 
                     {/* ผูกสต็อกไม่ครบ = กำไรขั้นต้นสวยเกินจริงเสมอ ต้องเตือนให้เห็น */}
@@ -278,13 +324,13 @@ export default function ProfitabilityView() {
 
                     <SectionCard
                         title="ต้นทุนของตัวเลือก (#)"
-                        description="บิลสำเร็จทั้งหมดที่โหลดมา · แยกจากเดือนสรุปกำไรและช่วงกราฟ"
+                        description={`บิลสำเร็จในช่วงที่เลือก · ${periodLabel}`}
                     >
                         <div className="flex flex-col gap-3">
                             <p>ยอดขาย <span className="num font-semibold">{money(modifierCoverage.totalRevenue)}</span> วิ่งผ่านตัวเลือก · ผูกต้นทุนแล้ว <span className="num font-semibold">{percent(modifierCoverage.coveragePct)}</span></p>
                             <p className="text-sm text-[var(--text-muted)]">ตัวเลือกที่เคยขายและยังอยู่ในทะเบียนทั้งหมด เรียงตามยอดขาย · ป้ายใต้ชื่อบอกสถานะการผูกปัจจุบัน ป้ายใต้มาร์จิ้นบอกต้นทุนที่คิดได้จากบิล · ผูกได้ที่หน้าแอดมินในรายการตัวเลือก (#)</p>
-                            <Table rows={soldModifiers} columns={modifierColumns} empty="ยังไม่มีตัวเลือกที่เคยขายและยังอยู่ในทะเบียน" caption="ต้นทุนของตัวเลือก" />
-                            {modifierCoverage.missing.length > 0 && <p className="text-sm text-[var(--state-warn)]">มีอีก {number(modifierCoverage.missing.length)} ตัวเลือกที่ถูกลบไปแล้ว บิลเก่าจะไม่มีต้นทุนตลอดไป แก้ไม่ได้</p>}
+                            <Table rows={soldModifiers} columns={modifierColumns} empty="ช่วงนี้ยังไม่มีตัวเลือก (#) ที่ขายได้" caption="ต้นทุนของตัวเลือก" />
+                            {modifierHistory.missing.length > 0 && <p className="text-sm text-[var(--state-warn)]">มีอีก {number(modifierHistory.missing.length)} ตัวเลือกที่ถูกลบไปแล้ว บิลเก่าจะไม่มีต้นทุนตลอดไป แก้ไม่ได้</p>}
                             {unsoldUnlinked.length > 0 && <p className="text-sm text-[var(--state-warn)]">ยังไม่ผูกและยังไม่เคยขาย {number(unsoldUnlinked.length)} ตัวเลือก: {unsoldUnlinked.map(row => row.name).join(' · ')} · ควรผูกก่อนเริ่มขาย</p>}
                         </div>
                     </SectionCard>
@@ -293,16 +339,10 @@ export default function ProfitabilityView() {
                         <div className="flex flex-col gap-3">
                             <div>
                                 <h2 id="pf-trend" className="text-[length:var(--fs-lg)] leading-[var(--lh-lg)] font-semibold">แนวโน้มและวิเคราะห์เมนู</h2>
-                                <p className="text-sm text-[var(--text-muted)]">ช่วงนี้ใช้กับกราฟ ตัวเลขสรุป และตารางด้านล่าง · สิ้นสุด{isDaily ? 'วัน' : 'เดือน'}ล่าสุดที่มีขาย · <span className="text-[var(--text-secondary)]">{rangeLabel}</span></p>
+                                <p className="text-sm text-[var(--text-muted)]">ใช้ช่วงเดียวกับด้านบน · <span className="text-[var(--text-secondary)]">{rangeLabel}</span></p>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
-                                <SegmentedControl ariaLabel="โหมดกราฟ" options={MODE_OPTIONS} value={mode} onChange={setMode} />
-                                <SegmentedControl
-                                    ariaLabel="ช่วงเวลาสำหรับกราฟและวิเคราะห์เมนู"
-                                    options={isDaily ? DAY_RANGES : MONTH_RANGES}
-                                    value={isDaily ? daysBack : monthsBack}
-                                    onChange={value => isDaily ? setDaysBack(value) : setMonthsBack(value)}
-                                />
+                                <SegmentedControl ariaLabel="กราฟแบ่งเป็น" options={MODE_OPTIONS} value={mode} onChange={setChartMode} />
                             </div>
                         </div>
                         <SectionCard title={`ยอดขาย ต้นทุน และกำไร${isDaily ? 'รายวัน' : 'รายเดือน'}`} description="แกนซ้าย: บาท · แกนขวา: มาร์จิ้น % · ต้นทุนที่ยังไม่ผูกอาจทำให้กำไรสูงเกินจริง">
