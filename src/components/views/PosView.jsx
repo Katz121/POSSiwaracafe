@@ -517,6 +517,10 @@ export default function PosView() {
           const freshOrder = orderSnap.exists() ? orderSnap.data() : null;
           const editStock = freshOrder?.stockDeducted ? planEditDeduction(freshOrder, orderData.items, stockById, milkSwap) : null;
           if (freshOrder?.status) editData.status = freshOrder.status;
+          // บิล QR: คงเวลาสั่ง โต๊ะ ช่องทางเดิม (เดิมแก้แล้วกลายเป็น Walk-in + เวลาที่แก้)
+          if (freshOrder) {
+            ['time', 'table'].forEach((k) => { if (freshOrder[k] !== undefined) editData[k] = freshOrder[k]; });
+          }
           if (editStock) {
             editData.stockDeduction = {
               ...freshOrder.stockDeduction,

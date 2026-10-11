@@ -190,6 +190,13 @@ export async function checkoutOrderHandler(request, database = db, sendNotificat
         checkoutRequestId: requestId,
         pointsEarned: checkout.pointsToAdd,
         redeemedReward: checkout.redeemedReward,
+        // ใช้แต้มแลกส่วนลด (ไม่ใช่ของรางวัล) · จดแบบเดียวกับ POS ให้ร้านแก้บิลแล้วส่วนลดไม่หาย
+        // และยกเลิกบิลแล้วคืนแต้มได้ (ยืนยันกับ pointsHistory ที่มี orderId เดียวกัน)
+        ...(checkout.redeemDeduct > 0 && !checkout.redeemedReward && memberRef ? {
+          pointsRedeemed: true,
+          pointsRedeemId: memberRef.id,
+          pointsRedeemAmount: checkout.redeemDeduct,
+        } : {}),
       };
       const response = {
         orderId: orderRef.id,

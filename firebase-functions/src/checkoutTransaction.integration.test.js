@@ -83,6 +83,8 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)('checkout Firestore transa
     expect(member.data().pendingPoints).toBe(1);
     expect(member.data().pendingOrderIds).toEqual([orders.docs[0].id]);
     expect(orders.docs[0].data().pointsEarned).toBe(1);
+    // ใช้แต้มแลกส่วนลด: จดลงบิลให้ POS แก้บิลแล้วส่วนลดไม่หาย / ยกเลิกแล้วคืนแต้มได้
+    expect(orders.docs[0].data()).toMatchObject({ pointsRedeemed: true, pointsRedeemId: PHONE, pointsRedeemAmount: 100 });
     expect(member.data().pointsHistory).toEqual([
       expect.objectContaining({
         delta: -100,
@@ -115,6 +117,7 @@ describe.skipIf(!process.env.FIRESTORE_EMULATOR_HOST)('checkout Firestore transa
     expect(result.total).toBe(60);
     const order = (await db.doc(`${BASE_PATH}/orders/${result.orderId}`).get()).data();
     expect(order).toMatchObject({ redeemedReward: { id: 'shot', name: reward.name, cost: 20 }, discount: 0, pointsEarned: 6 });
+    expect(order.pointsRedeemed).toBeUndefined(); // แลกของรางวัล ไม่ใช่ส่วนลด · POS ไม่ต้องถือว่าใช้แต้มลดราคา
     const member = (await db.doc(`${BASE_PATH}/members/${PHONE}`).get()).data();
     expect(member).toMatchObject({ points: 0, pendingPoints: 6 });
     expect(member.pointsHistory).toEqual([expect.objectContaining({
