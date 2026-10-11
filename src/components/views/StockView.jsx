@@ -12,6 +12,7 @@ import {
 } from '../ui';
 import { findStockUsers, isArchivedStock, isRetiredStock, planUnitFixes, suggestDuplicates } from '../../utils/stockMerge';
 import { isPrep } from '../../utils/production';
+import { normalizePacks } from '../../utils/stockIntake';
 import MergeSheet from './inventory/MergeSheet';
 import { runMerge, runUnitFixes } from './production/productionActions';
 import { auth } from '../../services/firebase';
@@ -142,7 +143,7 @@ export default function StockView() {
 
   const saveStockItem = async (form, editingItem) => {
     const col = collection(db, 'artifacts', appId, 'public', 'data', 'stock');
-    const data = { ...form, quantity: Number(form.quantity), minQuantity: Number(form.minQuantity), unitCost: Number(form.unitCost) || 0 };
+    const data = { ...form, quantity: Number(form.quantity), minQuantity: Number(form.minQuantity), unitCost: Number(form.unitCost) || 0, packs: normalizePacks(form.packs) };
     setBusy(true);
     const ok = await runDbAction(async () => {
       if (editingItem) await updateDoc(doc(col, editingItem.id), data);
@@ -468,6 +469,7 @@ export default function StockView() {
         onMode={switchMode}
         onStep={updateStockQuantity}
         onDelete={(item) => setToDelete(item)}
+        onRetire={(item) => setToRetire(item)}
         onSaveItem={saveStockItem}
         onAdjust={handleAdjustStock}
         onIntake={handleIntake}

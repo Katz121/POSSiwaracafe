@@ -2,7 +2,7 @@
 // ExpensesView so the Stock intake sheet and the Expenses form share it.
 import { getStockCategory } from '../../../config/constants';
 import {
-  isInventoryCategory, findAliasMatch, findStockCandidates, planStockIntake, normalizeName,
+  isInventoryCategory, findAliasMatch, findStockCandidates, planStockIntake, normalizeName, normalizePacks, roundUnitCost,
 } from '../../../utils/stockIntake';
 
 export const EMPTY_EXPENSE = Object.freeze({ title: '', quantity: '', unit: 'ชิ้น', pricePerUnit: '', amount: '', category: 'วัตถุดิบ' });
@@ -86,12 +86,14 @@ export function resolveStockIntake(line, stock) {
 
 /** Form values for receiving `item` (same prefill as picking its name in Expenses). */
 export function intakeFormFor(item) {
+  // มีหน่วยซื้อ (ขวด/ถุง) = ตั้งต้นที่หน่วยซื้อตัวแรก เพราะร้านซื้อเป็นหน่วยนั้น · ราคาต่อหน่วยคูณขนาดให้
+  const pack = normalizePacks(item?.packs)[0];
   return {
     ...EMPTY_EXPENSE,
     title: item?.name || '',
     category: getStockCategory(item),
-    unit: item?.unit || EMPTY_EXPENSE.unit,
-    pricePerUnit: item?.unitCost || '',
+    unit: pack ? pack.label : (item?.unit || EMPTY_EXPENSE.unit),
+    pricePerUnit: item?.unitCost ? roundUnitCost(Number(item.unitCost) * (pack ? pack.size : 1)) : '',
   };
 }
 

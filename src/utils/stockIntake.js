@@ -54,6 +54,37 @@ export function unitFactor(fromUnit, toUnit) {
   return null;
 }
 
+// ── หน่วยซื้อ (ตัวเทียบ) ─────────────────────────────────────────────────
+// stock.packs = [{ label: 'ขวด', size: 1000 }] · size เป็นหน่วยของสต็อกเอง (เช่น กรัม)
+// ร้านซื้อเป็นขวด/ถุง/ลัง แต่สูตรตัดเป็นกรัม · รับของเข้า "12 ขวด" จึงลง 12,000 กรัม
+// ของเหลวที่ตัดเป็นกรัมให้ใส่น้ำหนักจริงของ 1 ขวด (ไซรัป 1,000 มล. หนักกว่า 1,000 กรัม)
+export function normalizePacks(packs) {
+  if (!Array.isArray(packs)) return [];
+  const seen = new Set();
+  return packs
+    .map((p) => ({ label: String(p?.label || '').trim(), size: Number(p?.size) || 0 }))
+    .filter((p) => {
+      const key = normalizeName(p.label);
+      if (!p.label || p.size <= 0 || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+/** หน่วยซื้อของสต็อกนี้ที่ชื่อตรงกับ unit · ไม่เจอ = null */
+export function findPack(stock, unit) {
+  const key = normalizeName(String(unit || ''));
+  if (!key) return null;
+  return normalizePacks(stock?.packs).find((p) => normalizeName(p.label) === key) || null;
+}
+
+/** คงเหลือเป็นหน่วยซื้อหลัก (ตัวแรก) เช่น { label: 'ขวด', count: 11.5 } · ไม่มี = null */
+export function inPacks(stock, quantity) {
+  const pack = normalizePacks(stock?.packs)[0];
+  if (!pack) return null;
+  return { label: pack.label, size: pack.size, count: Math.round(((Number(quantity) || 0) / pack.size) * 10) / 10 };
+}
+
 // ทำความสะอาดชื่อ ลบ space ส่วนเกิน และเปลี่ยนเป็นพิมพ์เล็กเพื่อใช้ค้นหา
 export function normalizeName(s) {
   if (typeof s !== 'string') return '';
@@ -142,7 +173,10 @@ export function planStockIntake({ quantity, unit, amount }, stock, alias = null)
   const qty = Number(quantity) || 0;
   const amt = Number(amount) || 0;
   
-  const factor = (alias && alias.toBase != null) ? Number(alias.toBase) : unitFactor(unit, stock.unit);
+  const pack = findPack(stock, unit);
+  const factor = (alias && alias.toBase != null)
+    ? Number(alias.toBase)
+    : (pack ? pack.size : unitFactor(unit, stock.unit));
   
   // แปลงหน่วยไม่ได้
   if (factor == null || factor <= 0) {
@@ -169,6 +203,7 @@ export function planStockIntake({ quantity, unit, amount }, stock, alias = null)
     ok: true,
     stockId: stock.id,
     stockUnit: stock.unit,
+    factor,
     inQty,
     inUnitCost,
     newUnitCost,

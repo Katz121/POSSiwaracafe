@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  normalizePacks, findPack, inPacks,
   roundMoney,
   roundUnitCost,
   normalizeUnit,
@@ -187,4 +188,32 @@ describe('stockIntake utils', () => {
     });
   });
 
+});
+
+describe('หน่วยซื้อ (packs)', () => {
+  const plan = planStockIntake;
+  const syrup = { id: 's1', name: 'น้ำช่อดอกมะพร้าว', unit: 'กรัม', quantity: 500, unitCost: 0.1, packs: [{ label: 'ขวด', size: 1000 }, { label: 'ลัง', size: 12000 }] };
+
+  it('รับเข้า 12 ขวด = 12,000 กรัม และต้นทุนต่อกรัมถูก', () => {
+    const p = plan({ quantity: 12, unit: 'ขวด', amount: 1800 }, syrup);
+    expect(p.ok).toBe(true);
+    expect(p.factor).toBe(1000);
+    expect(p.inQty).toBe(12000);
+    expect(p.inUnitCost).toBe(0.15);
+    expect(p.newQuantity).toBe(12500);
+  });
+
+  it('1 ลัง และหน่วยฐานเดิมยังใช้ได้', () => {
+    expect(plan({ quantity: 1, unit: ' ลัง ', amount: 1800 }, syrup).inQty).toBe(12000);
+    expect(plan({ quantity: 2, unit: 'กิโลกรัม', amount: 300 }, syrup).inQty).toBe(2000);
+    expect(plan({ quantity: 2, unit: 'แกลลอน', amount: 300 }, syrup).ok).toBe(false);
+  });
+
+  it('ทำความสะอาดรายการ และแสดงคงเหลือเป็นหน่วยซื้อหลัก', () => {
+    expect(normalizePacks([{ label: ' ขวด ', size: '1000' }, { label: 'ขวด', size: 5 }, { label: '', size: 3 }, { label: 'ถุง', size: 0 }])).toEqual([{ label: 'ขวด', size: 1000 }]);
+    expect(findPack(syrup, 'ขวด')).toEqual({ label: 'ขวด', size: 1000 });
+    expect(findPack({ unit: 'กรัม' }, 'ขวด')).toBeNull();
+    expect(inPacks(syrup, 11500)).toEqual({ label: 'ขวด', size: 1000, count: 11.5 });
+    expect(inPacks({ unit: 'กรัม' }, 10)).toBeNull();
+  });
 });

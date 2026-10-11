@@ -98,7 +98,7 @@ export function auditParams({ date, tab, today }) {
 }
 
 // ── Add / edit item form values (same shape StockView always saved) ────────
-export const emptyStockItem = () => ({ name: '', category: 'อื่น ๆ', quantity: 0, unit: DEFAULT_STOCK_UNIT, minQuantity: DEFAULT_MIN_QUANTITY, unitCost: 0 });
+export const emptyStockItem = () => ({ name: '', category: 'อื่น ๆ', quantity: 0, unit: DEFAULT_STOCK_UNIT, minQuantity: DEFAULT_MIN_QUANTITY, unitCost: 0, packs: [] });
 export const stockItemForm = (item) => ({
   name: item.name || '',
   category: getStockCategory(item),
@@ -106,4 +106,5 @@ export const stockItemForm = (item) => ({
   unit: item.unit || DEFAULT_STOCK_UNIT,
   minQuantity: item.minQuantity || DEFAULT_MIN_QUANTITY,
   unitCost: item.unitCost || 0,
+  packs: Array.isArray(item.packs) ? item.packs.map((p) => ({ label: p.label || '', size: p.size ?? '' })) : [],
 });
