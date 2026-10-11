@@ -54,19 +54,30 @@
     <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" />
     <link rel="preconnect" href="https://identitytoolkit.googleapis.com" />
 
-    <!-- Fix iPad viewport: Safari may report narrow device-width in mobile mode -->
+    <!-- Fix iPad viewport: Safari may report narrow device-width in mobile mode
+         ใช้ความกว้างตามแนวที่ถืออยู่จริง · เดิมใช้ด้านยาวเสมอ ถือแนวตั้ง (เช่นแอปบนหน้า Home)
+         หน้าจอถูกวาดกว้างแบบแนวนอนแล้วย่อลง ปุ่ม/ตัวหนังสือ/แป้นตัวเลขเล็กลง ~25% -->
     <script>
       (function() {
         var tp = navigator.maxTouchPoints || 0;
         var maxDim = Math.max(screen.width || 0, screen.height || 0);
         // Tablet detection: touch device with large screen (not phone)
-        if (tp > 1 && maxDim >= 1024) {
-          var meta = document.querySelector('meta[name="viewport"]');
-          if (meta) {
-            meta.setAttribute('content',
-              'width=' + maxDim + ', initial-scale=1.0, user-scalable=no, viewport-fit=cover'
-            );
-          }
+        if (!(tp > 1 && maxDim >= 1024)) return;
+        var meta = document.querySelector('meta[name="viewport"]');
+        if (!meta) return;
+        var apply = function() {
+          var portrait = window.matchMedia && window.matchMedia('(orientation: portrait)').matches;
+          var minDim = Math.min(screen.width || 0, screen.height || 0);
+          var width = portrait ? minDim : maxDim;
+          meta.setAttribute('content',
+            'width=' + width + ', initial-scale=1.0, user-scalable=no, viewport-fit=cover'
+          );
+        };
+        apply();
+        window.addEventListener('orientationchange', function() { setTimeout(apply, 50); });
+        if (window.matchMedia) {
+          var mq = window.matchMedia('(orientation: portrait)');
+          if (mq.addEventListener) mq.addEventListener('change', apply);
         }
       })();
     </script>
