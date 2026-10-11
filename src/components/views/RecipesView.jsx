@@ -5,6 +5,7 @@ import { db, appId } from '../../services/firebase';
 import { useDataContext, useConfigContext, useUIContext } from '../../context/AppContext';
 import { Badge, Button, Input, Textarea, Modal, EmptyState, FilterChips, PageHeader, Sheet, Toolbar, useToast } from '../ui';
 import RecipeSheet from '../RecipeSheet';
+import { effectiveRecipe } from '../../utils/recipeDraft';
 
 const ALL = 'ทั้งหมด';
 const hasRecipe = (recipes, id) => Boolean(String(recipes[id]?.text || '').trim());
@@ -16,7 +17,10 @@ const hasRecipe = (recipes, id) => Boolean(String(recipes[id]?.text || '').trim(
  * UX v2 (WP5): PageHeader + Toolbar, "ยังไม่มีสูตร" chip, dense list, editor in a Sheet.
  */
 export default function RecipesView() {
-  const { menu, recipes = {}, dynamicCategories } = useDataContext();
+  const { menu, recipes = {}, dynamicCategories, stock = [] } = useDataContext();
+  // เมนูที่ยังไม่มีสูตรของร้าน แสดงสูตรที่ดึงจากวัตถุดิบที่ผูก (ไม่บันทึก) · ดู utils/recipeDraft.js
+  const stockById = useMemo(() => new Map(stock.map((s) => [s.id, s])), [stock]);
+  const recipeOf = (m) => effectiveRecipe(recipes, m, stockById);
   const { pinEnabled, adminPin } = useConfigContext();
   const { runDbAction } = useUIContext();
   const toast = useToast();
@@ -56,14 +60,14 @@ export default function RecipesView() {
   const startEdit = (item) => {
     setViewing(null);
     if (needsPin) { setPin(''); setPinError(''); setPinFor(item); return; }
-    setEditing({ item, text: recipes[item.id]?.text || '' });
+    setEditing({ item, text: recipeOf(item)?.text || '' });
   };
 
   const confirmPin = () => {
     if (pin === String(adminPin)) {
       const item = pinFor;
       setPinFor(null); setPin('');
-      setEditing({ item, text: recipes[item.id]?.text || '' });
+      setEditing({ item, text: recipeOf(item)?.text || '' });
     } else {
       setPinError('รหัส PIN ไม่ถูกต้อง'); setPin('');
     }
@@ -122,7 +126,8 @@ export default function RecipesView() {
         ) : (
           <ul className="grid grid-cols-1 xl:grid-cols-2 gap-px rounded-[var(--radius)] overflow-hidden bg-[var(--border-light)] shadow-[var(--elev-1)]">
             {items.map((m) => {
-              const text = String(recipes[m.id]?.text || '').trim();
+              const r = recipeOf(m);
+              const text = String(r?.text || '').trim();
               return (
                 <li key={m.id} className="bg-[var(--bg-surface)]">
                   <button
@@ -141,8 +146,11 @@ export default function RecipesView() {
                         <span className="text-sm text-[var(--text-muted)]">{m.category || 'ไม่มีหมวด'}</span>
                       </span>
                       {text
-                        ? <span className="block text-sm leading-[var(--lh-sm)] text-[var(--text-secondary)] truncate">{text.split('\n').filter(Boolean).join(' · ')}</span>
-                        : <Badge tone="warn" className="mt-1">ยังไม่มีสูตร</Badge>}
+                        ? <span className="flex items-center gap-2 min-w-0">
+                            {r.auto && <Badge tone="info" size="xs" className="shrink-0">ดึงจากสต็อก</Badge>}
+                            <span className="block min-w-0 text-sm leading-[var(--lh-sm)] text-[var(--text-secondary)] truncate">{text.split('\n').filter(Boolean).slice(r.auto ? 1 : 0).map((l) => l.replace(/^• /, '')).join(' · ')}</span>
+                          </span>
+                        : <Badge tone="warn" className="mt-1">ยังไม่มีสูตร · ยังไม่ผูกวัตถุดิบ</Badge>}
                     </span>
                     <ChevronRight size={18} className="shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
                   </button>
@@ -157,10 +165,10 @@ export default function RecipesView() {
         isOpen={!!viewing}
         onClose={() => setViewing(null)}
         menuName={viewing?.name}
-        recipe={viewing ? recipes[viewing.id] : null}
+        recipe={viewing ? recipeOf(viewing) : null}
         actions={viewing && (
           <Button leftIcon={needsPin ? <Lock size={16} /> : <Pencil size={16} />} onClick={() => startEdit(viewing)}>
-            {recipes[viewing.id]?.text ? 'แก้ไขสูตร' : 'เพิ่มสูตร'}
+            {recipes[viewing.id]?.text ? 'แก้ไขสูตร' : 'เขียนสูตรของร้าน'}
           </Button>
         )}
       />

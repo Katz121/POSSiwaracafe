@@ -14,6 +14,9 @@ export default function RecipeSheet({ isOpen, onClose, menuName, recipe, childre
     <Modal isOpen={isOpen} onClose={onClose} title={menuName ? `สูตร · ${menuName}` : 'สูตร'} size="lg">
       <div className="space-y-4">
         {children}
+        {recipe?.auto && (
+          <p className="rounded-[var(--radius-sm)] bg-[var(--state-info-soft)] px-3 py-2 text-sm text-[var(--state-info)]">ดึงจากวัตถุดิบที่ผูกไว้ในเมนู · ยังไม่มีสูตรที่ร้านเขียนเอง</p>
+        )}
         {text ? (
           <div className="rounded-[var(--radius)] border border-[var(--border-color)] bg-[var(--bg-tertiary)] p-4 max-h-[60vh] overflow-y-auto">
             <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-[var(--text-primary)]">{text}</p>

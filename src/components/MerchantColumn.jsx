@@ -1,8 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Inbox } from 'lucide-react';
 import { useDataContext } from '../context/AppContext';
 import RecipeSheet from './RecipeSheet';
+import { effectiveRecipe } from '../utils/recipeDraft';
 import Ticket from './views/kitchen/Ticket';
 
 const EMPTY_TEXT = {
@@ -17,12 +18,16 @@ const EMPTY_TEXT = {
  * filtered to `status` here), now (ms, for ticket ages), onUpdate, onCancel, onEdit.
  */
 export default function MerchantColumn({ title, color, status, orders, now, onUpdate, onCancel, onEdit, className = '' }) {
-  const { recipes = {} } = useDataContext();
+  const { recipes = {}, menu = [], stock = [] } = useDataContext();
+  // สูตรของร้านก่อน ไม่มีค่อยใช้ที่ดึงจากวัตถุดิบที่ผูก (utils/recipeDraft.js)
+  const menuById = useMemo(() => new Map(menu.map((m) => [m.id, m])), [menu]);
+  const stockById = useMemo(() => new Map(stock.map((s) => [s.id, s])), [stock]);
+  const recipeOf = useCallback((id) => effectiveRecipe(recipes, menuById.get(id) || { id }, stockById), [recipes, menuById, stockById]);
   const [recipeItem, setRecipeItem] = useState(null); // order line whose recipe is open
   const filtered = (orders || [])
     .filter(o => o.status === status)
     .sort((a, b) => (Number(a.queueNumber) || 0) - (Number(b.queueNumber) || 0));
-  const hasRecipe = useCallback((id) => !!String(recipes[id]?.text || '').trim(), [recipes]);
+  const hasRecipe = useCallback((id) => !!recipeOf(id), [recipeOf]);
 
   return (
     <>
@@ -30,7 +35,7 @@ export default function MerchantColumn({ title, color, status, orders, now, onUp
         isOpen={!!recipeItem}
         onClose={() => setRecipeItem(null)}
         menuName={recipeItem?.name}
-        recipe={recipeItem ? recipes[recipeItem.id] : null}
+        recipe={recipeItem ? recipeOf(recipeItem.id) : null}
       >
         {recipeItem && (
           <div className="flex flex-wrap items-center gap-2">
