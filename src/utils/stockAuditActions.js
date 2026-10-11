@@ -6,10 +6,52 @@
  * - runDeductBillTransaction: บิลเสร็จแต่ไม่ถูกตัด → ตัดตามสูตรในบิล เหมือน App.updateStatus ทุกอย่าง
  */
 import { arrayUnion, doc, increment, runTransaction } from 'firebase/firestore';
+import { resolveStockId } from './stockMerge.js';
 import { backfillStockTotals, buildFixContext, planBackfill } from './stockAuditFix.js';
 import { planOrderDeduction } from './stockAudit.js';
 
 const dataDoc = (db, appId, col, id) => doc(db, 'artifacts', appId, 'public', 'data', col, id);
+
+/**
+ * ลบลิงก์ในบิลที่ชี้ไปสต็อกที่ถูกลบแล้ว (ผูกผิดแล้วลบสต็อกทิ้ง) · ลิงก์พวกนี้ไม่เคยตัดอะไร
+ * (planOrderDeduction ข้ามไว้ใน skipped) จึงเอาออกได้โดยยอดสต็อกไม่ขยับ · หน้าตรวจเลิกเตือน
+ * @returns {{ changed: boolean, items, skipped, removed: string[] }}
+ */
+export function planStripDeadLinks(order, stockById) {
+  const alive = (id) => stockById.has(resolveStockId(id, stockById));
+  const removed = new Set();
+  const items = (order?.items || []).map((item) => {
+    const links = Array.isArray(item?.stockLinks) ? item.stockLinks : [];
+    const keep = links.filter((l) => !l?.stockId || alive(l.stockId));
+    links.filter((l) => l?.stockId && !alive(l.stockId)).forEach((l) => removed.add(l.stockId));
+    return keep.length === links.length ? item : { ...item, stockLinks: keep };
+  });
+  const skipped = (order?.stockDeduction?.skipped || []).filter((s) => !s?.stockId || alive(s.stockId));
+  return { changed: removed.size > 0, items, skipped, removed: [...removed] };
+}
+
+/** ล้างลิงก์เสียของหลายบิลในทรานแซกชันเดียว · อ่านบิลสดก่อน · คืนจำนวนบิลที่แก้ */
+export async function runStripDeadLinksTransaction(db, appId, orderIds, stock, by = '') {
+  const ids = [...new Set((orderIds || []).filter(Boolean))];
+  if (!ids.length) return 0;
+  const stockById = new Map((stock || []).map((s) => [s.id, s]));
+  return runTransaction(db, async (tx) => {
+    const snaps = await Promise.all(ids.map((id) => tx.get(dataDoc(db, appId, 'orders', id))));
+    let count = 0;
+    const at = new Date().toISOString();
+    snaps.forEach((snap, i) => {
+      if (!snap.exists()) return;
+      const order = snap.data();
+      const plan = planStripDeadLinks(order, stockById);
+      if (!plan.changed) return;
+      const update = { items: plan.items, deadLinksCleared: arrayUnion({ at, by, stockIds: plan.removed }) };
+      if (order.stockDeduction) update['stockDeduction.skipped'] = plan.skipped;
+      tx.update(dataDoc(db, appId, 'orders', ids[i]), update);
+      count += 1;
+    });
+    return count;
+  });
+}
 
 /**
  * @param {Array<{orderId, index, requireMenuLinks}>} lineRefs จาก issue.lines ที่ state = needs_backfill

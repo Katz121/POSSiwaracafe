@@ -350,6 +350,7 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap, b
         status: LINK_STATUS.OK,
         stock: new Map(),
         deadLinks: 0,
+        deadOrders: [],
         menuLinkedNow: currentMenu ? (currentMenu.stockLinks || []).length > 0 : null,
       };
       prev.quantity += qty;
@@ -357,6 +358,7 @@ export function auditDay({ orders = [], stock = [], menu = [], date, milkSwap, b
       prev.bills += 1;
       prev.status = worstStatus(prev.status, status);
       prev.deadLinks += dead.length;
+      if (dead.length && !prev.deadOrders.includes(order.id)) prev.deadOrders.push(order.id);
       alive.forEach((link) => {
         const row = prev.stock.get(link.stockId) || { ...link, perUnit: link.usage, total: 0 };
         row.total += link.usage * qty;

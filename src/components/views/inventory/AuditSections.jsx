@@ -23,7 +23,7 @@ export function AuditEmpty({ text, icon = Package, tone = 'neutral' }) {
 }
 
 // ── ขายได้ ──────────────────────────────────────────────────────────────────
-export function SoldList({ sold }) {
+export function SoldList({ sold, onClearDead, busy }) {
   const [open, setOpen] = useState(null);
   if (!sold.length) return <AuditEmpty icon="search" text="ไม่มีรายการที่ตรงกับคำค้น" />;
   return (
@@ -68,7 +68,14 @@ export function SoldList({ sold }) {
                   <p className="text-sm text-[var(--state-warn)]">รายการนี้ไม่ได้ตัดสต็อกเลย</p>
                 )}
                 {row.deadLinks > 0 && (
-                  <p className="mt-2 text-sm text-[var(--state-danger)]">มี {row.deadLinks} ลิงก์ในสูตรที่ชี้ไปสต็อกที่ถูกลบแล้ว (ไม่ถูกตัด)</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <p className="text-sm text-[var(--state-danger)]">มี {row.deadLinks} ลิงก์ในสูตรที่ชี้ไปสต็อกที่ถูกลบแล้ว (ไม่ถูกตัด)</p>
+                    {onClearDead && row.deadOrders?.length > 0 && (
+                      <Button size="sm" variant="secondary" loading={busy} disabled={busy} onClick={() => onClearDead(row)}>
+                        ล้างลิงก์เสีย ({row.deadOrders.length} บิล)
+                      </Button>
+                    )}
+                  </div>
                 )}
                 {row.menuLinkedNow === false && (
                   <p className="mt-2 text-sm text-[var(--text-muted)]">ตอนนี้เมนูนี้ก็ยังไม่ได้ผูกสต็อก · ผูกได้ที่ "จัดการเมนู"</p>

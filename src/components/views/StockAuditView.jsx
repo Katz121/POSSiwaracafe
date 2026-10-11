@@ -7,9 +7,10 @@ import { addDaysISO, formatNumber, formatThaiDate } from '../../utils/format';
 import { Banner, Button, DateStepper, Money, PageHeader, StatCard, Tabs, useToast } from '../ui';
 import { auditDay, auditDays, auditMenuLinks, negativeStock, planOrderDeduction, STATUS_LABEL } from '../../utils/stockAudit';
 import { buildFixContext, planBackfill } from '../../utils/stockAuditFix';
-import { runBackfillTransaction, runDeductBillTransaction } from '../../utils/stockAuditActions';
+import { runBackfillTransaction, runDeductBillTransaction, runStripDeadLinksTransaction } from '../../utils/stockAuditActions';
 import { auth, db, appId } from '../../services/firebase';
 import { BackfillSheet, DeductBillSheet } from './inventory/IssueFixSheets';
+import TopConfirm from './inventory/TopConfirm';
 import { AuditEmpty, IssueList, MenuHealth, SoldList, StockUsedList } from './inventory/AuditSections';
 import { pct, qtyText } from './inventory/auditFormat';
 import { auditDateFromParam, auditParams, auditTabFromParam } from './inventory/stockStatus';
@@ -136,6 +137,8 @@ export default function StockAuditView() {
   const [busy, setBusy] = useState(false);
   const [backfillOpen, setBackfillOpen] = useState(false);
   const [deductId, setDeductId] = useState(null);
+  const [clearDead, setClearDead] = useState(null); // sold row ที่จะล้างลิงก์เสีย
+  const [clearing, setClearing] = useState(false);
   const backfillRefs = useMemo(() => issues
     .filter((i) => i.state === 'fixed_pending_backfill')
     .flatMap((i) => i.lines.filter((l) => l.state === 'needs_backfill')
@@ -190,6 +193,19 @@ export default function StockAuditView() {
     setDeductId(null);
     if (plan) toast.success('ตัดสต็อกบิลนี้แล้ว');
     else toast.info('บิลนี้ถูกตัดสต็อกไปแล้ว หรือยังไม่เสร็จ');
+  };
+
+  const confirmClearDead = async () => {
+    const row = clearDead;
+    setClearDead(null);
+    if (!row || clearing) return;
+    setClearing(true);
+    let count = 0;
+    const ok = await runDbAction(async () => {
+      count = await runStripDeadLinksTransaction(db, appId, row.deadOrders, stock, auth.currentUser?.email || '');
+    }, 'ล้างลิงก์เสียไม่สำเร็จ');
+    setClearing(false);
+    if (ok) toast.success(count ? `ล้างลิงก์เสียแล้ว ${count} บิล · ยอดสต็อกไม่เปลี่ยน` : 'ไม่มีลิงก์เสียให้ล้างแล้ว');
   };
 
   const exportCsv = () => {
@@ -325,7 +341,7 @@ export default function StockAuditView() {
           </div>
 
           <div className="mt-2">
-            {tab === 'sold' && (summary.verdict === 'empty' ? <AuditEmpty text="วันนี้ยังไม่มีบิล" /> : <SoldList sold={soldFiltered} />)}
+            {tab === 'sold' && (summary.verdict === 'empty' ? <AuditEmpty text="วันนี้ยังไม่มีบิล" /> : <SoldList sold={soldFiltered} onClearDead={(row) => setClearDead(row)} busy={clearing} />)}
             {tab === 'stock' && <StockUsedList rows={stockFiltered} />}
             {tab === 'issues' && (
               <IssueList
@@ -371,6 +387,15 @@ export default function StockAuditView() {
         stockById={stockById}
         busy={busy}
         onConfirm={confirmDeduct}
+      />
+      <TopConfirm
+        isOpen={Boolean(clearDead)}
+        onClose={() => setClearDead(null)}
+        onConfirm={confirmClearDead}
+        title="ล้างลิงก์เสีย"
+        message={`เอาลิงก์ที่ชี้ไปวัตถุดิบที่ถูกลบแล้วออกจาก ${clearDead?.deadOrders?.length || 0} บิลของ "${clearDead?.name || ''}" · ลิงก์พวกนี้ไม่เคยตัดสต็อกอยู่แล้ว ยอดสต็อกจึงไม่เปลี่ยน · ถ้าวัตถุดิบที่ควรตัดจริงถูกลบไป ให้นับสต็อกตัวใหม่แทน`}
+        confirmText="ล้างลิงก์เสีย"
+        cancelText="ยกเลิก"
       />
     </div>
   );
